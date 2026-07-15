@@ -1,0 +1,4 @@
+interface:
+  display_name: "Wiki Reader"
+  short_description: "Search partially disclosed wiki content reliably"
+  default_prompt: "Use $wiki-reader to search and synthesize the disclosed wiki material even when parent indexes, logs, or linked files are absent."

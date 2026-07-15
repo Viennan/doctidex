@@ -1,0 +1,1 @@
+[only-html-version](https://developers.openai.com/api/reference/resources/images/generation-streaming-events)
