@@ -1,6 +1,6 @@
 ---
 name: whero-wiki
-description: "Create, organize, maintain, query, cite, curate, review, and selectively disclose a Whero Wiki: a source-preserving, agent-readable Markdown knowledge base identified by `whero-wiki-meta.md` in a root directory of any name. Use when establishing a new Whero Wiki; importing, deriving, reviewing, or refreshing knowledge; creating framework indexes, logs, or agent-curated concepts; repairing or marking local-looking links; searching complete or partially disclosed material; answering from local snapshots; or building and incrementally expanding a structure-preserving symlink view. Do not impose these conventions on an unrelated knowledge base unless the user asks to adopt the Whero Wiki model."
+description: "Create, organize, maintain, query, cite, curate, review, preserve, and selectively disclose a Whero Wiki: a source-preserving, agent-readable Markdown knowledge base identified by `whero-wiki-meta.md` in a root directory of any name. Use when establishing a new Whero Wiki; importing, deriving, reviewing, or refreshing knowledge; declaring non-invasive preserved boundaries; creating framework indexes, logs, or agent-curated concepts; repairing or marking local-looking links; searching complete or partially disclosed material; answering from local snapshots; or building and incrementally expanding a structure-preserving symlink view. Do not impose these conventions on an unrelated knowledge base unless the user asks to adopt the Whero Wiki model."
 ---
 
 # Whero Wiki
@@ -16,7 +16,8 @@ identity contract. Do not infer Wiki identity from a directory name alone.
 2. Classify the available material before acting:
    - complete Wiki or partial disclosure;
    - collected source, maintained knowledge, or framework metadata;
-   - ordinary directory, nested Wiki, partial view, or Git submodule mount.
+   - ordinary directory, preserved path, nested Wiki, partial view, or Git
+     submodule mount.
 3. Choose one primary operation:
    - **Query**: read, search, compare, cite, or answer; remain read-only.
    - **Maintain**: establish structure, curate, refresh authorized sources,
@@ -76,6 +77,31 @@ Set `whero_curated: true` on them, but never make them scope-required. Read
 `references/curated-knowledge.md` before creating, restructuring, refreshing, or
 reviewing a curated collection.
 
+A **preserved path** is an index-declared ownership boundary, not a fifth file
+class and not frontmatter added to the preserved content. A maintained,
+scope-required `index.md` declares files or directories relative to its own
+directory:
+
+```yaml
+---
+type: Whero Wiki Index
+whero_maintenance: true
+whero_scope_required: true
+whero_preserved_paths:
+  - vendor
+  - snapshots/raw-export.md
+---
+```
+
+Each entry must be a safe, non-overlapping relative POSIX path to an existing
+file or directory in a full Wiki. It must not name `index.md`, `log.md`,
+`whero-wiki-meta.md`, or `partial-disclosure.md`. The declaration means the
+outer Wiki may route to, query, and cite the path, but does not inject metadata,
+validate or repair its internals, create framework files within it, or otherwise
+perform in-place maintenance there. A preserved boundary overrides nested mount
+discovery below it. Use a mount instead when the outer Wiki must delegate partial
+disclosure or independent Wiki operations inside that content.
+
 Apply these invariants in every workflow:
 
 - Treat collected sources as immutable snapshots. Never translate, normalize,
@@ -89,6 +115,9 @@ Apply these invariants in every workflow:
 - Update maintained knowledge only through an authorized derivation or
   maintenance workflow. Keep its provenance and distinction from collected
   snapshots clear.
+- Never perform Whero maintenance inside an index-declared preserved path. Read
+  it when useful, but treat changes as owner-managed replacements or as a
+  separate task rooted at that content's own ownership boundary.
 - Write maintained instructions, framework files, and logs in English unless the
   host repository specifies another language.
 - Match each index entry's language to the source or source group it describes.
@@ -118,10 +147,13 @@ Apply these invariants in every workflow:
 4. A disclosure may omit parents, siblings, knowledge files, or linked targets,
    but must retain scope-required framework files along disclosed paths. Treat
    unavailable knowledge as a coverage limitation, not malformed content.
-5. If explicitly supplied material lacks a valid meta file, it may still be read
+5. Treat a preserved path as opaque to outer Wiki validation and graph scans.
+   It may still be read directly for a query. In a partial view, an undisclosed
+   preserved path is an availability limitation, not a malformed declaration.
+6. If explicitly supplied material lacks a valid meta file, it may still be read
    as ordinary documents, but do not identify it as a Whero Wiki or apply Whero
    maintenance/disclosure assumptions without user direction.
-6. If a status inventory differs from readable symlinks after an interrupted
+7. If a status inventory differs from readable symlinks after an interrupted
    update, use the readable filesystem. A later successful disclosure run can
    reconstruct status.
 
@@ -134,7 +166,7 @@ Apply these invariants in every workflow:
    collected sources.
 2. When indexes are absent or incomplete, inventory recursively. Use
    `rg --files -L` for views containing directory symlinks.
-3. Group candidates by preserved path, source or provider, product, topic,
+3. Group candidates by source-relative path, source or provider, product, topic,
    filename, and document family. Extract headings before reading large files.
 4. Search filenames and headings first, then bodies and exact schema fields:
 
@@ -232,8 +264,13 @@ requested or authorized.
    `references/curated-knowledge.md`; keep whole-document provenance separate
    from claim-local Markdown links and preserve source authority.
 8. When the Wiki is also a software project, read
-   `references/project-knowledge.md`; preserve code vocabulary, separate design
-   from implementation knowledge, and maintain concepts with code changes.
+   `references/project-knowledge.md`; preserve code vocabulary, keep durable
+   requirement evolution separate from normalized current design and
+   implementation knowledge, and maintain concepts with code changes.
+9. Declare owner-managed source trees, exports, or documents under
+   `whero_preserved_paths` when Whero must not maintain their internals and
+   whole-only disclosure is acceptable. Keep the declaration in the nearest
+   useful owning index; do not add metadata to the preserved target.
 
 Treat the directory named by the maintenance task as the write boundary. Read
 available indexes, then inventory the complete boundary recursively with
@@ -258,13 +295,17 @@ whero_scope_required: true
   choose what to read next.
 - Design for partial disclosure. An index must remain useful when ancestors,
   siblings, logs, or linked targets are absent, without duplicating context that
-  preserved paths already convey.
+  source-relative paths already convey.
 - Group entries by retrieval intent, such as provider, product area, developer
   problem, API family, guidance, or schema reference.
 - Link documents or subdirectories with standard relative Markdown links and
   state what question each entry answers.
 - For a small scope, summarize each source. For a large scope, summarize coherent
   groups and add deeper indexes only where distinctions improve routing.
+- Form one reachable index chain. When the root has `index.md`, it is the sole
+  entry; otherwise each direct-child `index.md` is an entry. Link a child
+  directory or its `index.md` from a reachable parent before relying on that
+  child to route knowledge. An isolated index does not provide coverage.
 - Make every collected source discoverable through an index chain or an
   explicitly described grouped scope where indexes are maintained.
 - Allow useful cross-scope links and acceptable dangling links under partial
@@ -272,6 +313,10 @@ whero_scope_required: true
   self-contained.
 - Update the owning index when a source or child scope is added, refreshed,
   moved, removed, or materially reclassified.
+- Use `whero_preserved_paths` for explicit non-invasive boundaries. Keep entries
+  relative to the declaring index, non-overlapping, and accompanied by enough
+  index prose for a reader to understand ownership and why only whole disclosure
+  is available.
 
 ### Maintain Logs
 
@@ -300,6 +345,7 @@ whero_scope_required: true
 ### Repair Collected-Source Links
 
 Use each direct child of the wiki root as the default localization boundary.
+Never repair links or add unresolved markers inside a preserved path.
 
 1. Inspect exported site-root destinations such as `/docs/...`, broken relative
    links, and other clearly local-looking routes during authorized maintenance.
@@ -349,8 +395,10 @@ the Python interpreter required by the host repository:
   --include source-scope/topic/document.md
 ```
 
-Use repeated `--include` values or `--include-from <file>`. Run `--dry-run` first
-when source identity, requested paths, or collisions are uncertain.
+Use the builder rather than normalizing paths or creating symlinks manually. Pass absolute,
+`~`-based, source-relative, or working-directory-relative paths through `--include` or
+`--include-from`; list entries may be relative to that file. The builder stores canonical POSIX
+selections. Use an absolute path on ambiguity and `--dry-run` when uncertain.
 
 Use this expansion loop: select the narrowest useful path, run a dry run, read
 the disclosed view, and expand only when a missing link would close a material
@@ -359,8 +407,8 @@ transitively or decide whether a structural repair is appropriate.
 
 ### Selection and Layout
 
-- Selections are relative to the source root. Preserve their complete paths
-  under the disclosed view root; never flatten, rename, or relocate them.
+- The model stores source-root-relative POSIX selections without `.` or `..`; let
+  the builder derive this form, and never flatten, rename, or relocate it.
 - Select files for narrow needs. Select a directory explicitly when most of its
   contents are useful and the entire subtree may be disclosed.
 - When a relevant curated collection exists, prefer disclosing its narrowest
@@ -392,88 +440,39 @@ transitively or decide whether a structural repair is appropriate.
   it in outer collapse coverage. An internal selection delegates to a nested
   partial disclosure; selecting the mount root explicitly discloses it whole.
   Read `references/links-and-mounts.md` before disclosing mounted content.
+- Treat each preserved file or directory as an atomic disclosure root. Selecting
+  its exact path or any descendant promotes the selection to the preserved root
+  and discloses it whole. Ancestor selections may also include it whole, but
+  adaptive collapse neither crosses it nor counts its files. The outer builder
+  does not inspect inner scope files. Wiki documents may link into preserved
+  content; because links are not followed transitively, promotion occurs only
+  when the target enters the actual selection set.
 
-### Status and Source Identity
+### Operational Safety
 
-Every view contains `partial-disclosure.md` at its generated wiki root with
-`whero_maintenance: true`, `whero_scope_required: true`,
-`whero_partial_disclosure: true`, a source-relative layout declaration, the view
-name, the collapse threshold, and a reconstructed symlink inventory. The source
-`whero-wiki-meta.md` is retained as a symlink and remains the Wiki identity file.
+Every view contains generated `partial-disclosure.md` status and a symlinked
+source `whero-wiki-meta.md`. Preflight all selections, source migration, boundary
+rules, collapses, and collisions before mutation; use relative symlinks, never
+copy or edit sources, and write status atomically.
 
-- Store `source` relative to the status directory whenever possible.
-- For a Git-controlled source containing tracked files, record the current commit
-  and the Wiki root's path relative to the Git worktree. A relocated source at
-  the same commit is valid; rewrite generated links and status to the supplied
-  path.
-- Record a credential-sanitized preferred Git remote when one is available. Use
-  it only for fetch or checkout repair guidance; commit ancestry and tree
-  structure remain the source identity checks.
-- When the supplied commit differs, require a strictly forward history: the
-  recorded commit must be an ancestor of the supplied commit. Reject divergent,
-  rewritten, or backward history before structural comparison.
-- For an accepted forward commit, compare Git tree structure between commits.
-  Ignore regular-file content and executable-bit changes. Treat file or directory
-  additions, removals, renames, file/directory/symlink type changes, symlink target
-  changes, and Git submodule pointer changes as structural changes.
-- Intersect structural changes with current disclosure roots by ancestor or
-  descendant relationship. Accept and record a forward commit when no structural
-  change intersects the disclosure, while reporting that the source advanced.
-  This includes content-only changes and structural changes outside the visible
-  roots.
-- If a forward commit changes disclosed structure, stop before changing links or
-  status. Report affected disclosure roots and summarized change kinds, but do
-  not automatically repair or print the raw Git diff.
-- Without a recorded Git commit, require the resolved source path to remain
-  unchanged.
-- Treat a stale inventory after interruption as recoverable metadata. Readable
-  links remain usable, and a later successful run reconstructs status.
+For Git-controlled sources, require forward commit ancestry and stop when file
+content or tree structure changes intersect disclosed roots. Before recording
+`HEAD`, also reject selected tracked-file content edits, untracked or ignored
+content, and uncommitted structural changes. Changes outside the final disclosure
+roots and executable-bit-only changes may advance the recorded source. Reject
+unsafe paths, invalid preserved declarations, non-forward history, unexpected
+target content, and source identity mismatches. Remote metadata is guidance only
+and must omit userinfo, query parameters, and fragments.
 
-### Handle Disclosure Errors
+On failure, report **What happened**. Add **Possible handling** when committed or
+uncommitted content changes require the user to review and repair or rebuild the
+affected disclosure, or when an accepted forward Git update requires a reviewed
+structural repair. Treat normal builder output as diagnostics and surface only
+material scope expansion, relocation, commit advancement, warnings, and errors.
 
-When the builder fails, organize the response to the user under these two labels:
-
-- **What happened**: state the failed validation or operation, its relevant path
-  or disclosure roots, and whether the view and status were left unchanged.
-- **Possible handling**: include this only when an accepted forward Git update
-  was blocked because it changes disclosed structure. Inspect the summarized
-  affected roots and, when needed, run the command printed by the builder to get
-  `git diff --name-status`; do not paste the raw diff by default. Propose a
-  concrete disclosure restructure, such as removing obsolete roots, selecting
-  renamed paths, replacing child roots with a parent directory, or rebuilding a
-  focused view. Present the plan for user review and do not apply it implicitly.
-  The builder reports affected structure; the agent proposes the plan and the
-  user decides whether to authorize a rebuild or new selections.
-
-For non-forward Git history, invalid metadata, source identity failures, unsafe
-selections, collisions, or filesystem errors, report only **What happened** and
-the direct reason. Do not invent a repair plan. Ask for a new user decision only
-when resolution requires changing history, replacing user-owned target content,
-or otherwise expanding authority.
-
-Treat normal builder output as diagnostics, not an activity log. Do not report
-routine per-selection link creation. Surface commit advancement, source
-relocation, automatic or requested directory collapse and its visible-scope
-increase, dry-run action counts, warnings, and errors.
-
-### Disclosure Safety
-
-- Require every `--include` value and every non-comment entry from
-  `--include-from` to be a non-empty path relative to the source root. Reject an
-  absolute selection, any selection containing a `..` path component, and direct
-  selection of the generated `partial-disclosure.md`.
-- After resolving a selection, reject a missing source item or any item that
-  resolves outside the source root. Separately reject non-matching content or
-  symlink collisions in the target view.
-- Preflight source migration and every link or collapse before mutation.
-- Replace an existing child-container hierarchy with a parent-directory symlink
-  only after recursively proving it contains solely source-matching generated
-  symlinks and corresponding container directories. Preserve and reject regular
-  files or unexpected links.
-- Use relative symlinks and never edit or copy source documents.
-- Write status atomically. If a later runtime operation fails, reconcile status
-  only when every disclosed link matches the active source; otherwise keep the
-  readable view and allow the next run to recover.
+Read `references/links-and-mounts.md` for the exact status schema, Git identity
+and relocation rules, structural comparison, preflight guarantees, recovery,
+and error-response contract.
 
 After disclosure, return to the query workflow against the generated view.
 
@@ -481,16 +480,17 @@ After disclosure, return to the query workflow against the generated view.
 
 - `scripts/build_partial_disclosure.py` implements deterministic disclosure and
   incremental expansion. Use it instead of recreating symlink logic.
-- `scripts/whero_wiki.py` provides `init-index`, `init-log`, `init-curated`,
-  `init-concept`, `record-source-digests`, `validate`, and `affected` commands
-  for maintained knowledge and project Wikis.
+- `scripts/whero_wiki.py` provides project initialization, maintained document
+  scaffolding, curation, validation, affected-concept, link-graph, mount, and
+  preserved-boundary commands for maintained knowledge and project Wikis.
 - `references/curated-knowledge.md` defines curated collection discovery,
   concept frontmatter, source authority, provenance, lifecycle, and validation.
   Read it for every curated maintenance or review task.
 - `references/project-knowledge.md` defines software-project Wiki organization,
   code/discussion provenance, diagrams, and Git-centered maintenance.
 - `references/links-and-mounts.md` defines `whero-wiki:/`, backlink and graph
-  queries, nested Wiki ownership, and delegated submodule disclosure.
+  queries, preserved ownership boundaries, nested Wiki ownership, and delegated
+  submodule disclosure.
 - `references/curated-review-agent-prompt.md` is a self-contained, read-only
   prompt for an independent curated-knowledge review agent. Replace its input
   placeholders and give it the available Wiki scope.

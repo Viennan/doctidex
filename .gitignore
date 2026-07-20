@@ -18,3 +18,5 @@ htmlcov/
 dist/
 *.egg-info/
 .whero-collapse-*/
+todo.md
+TODO.md

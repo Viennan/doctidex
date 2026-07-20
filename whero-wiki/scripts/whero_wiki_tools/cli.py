@@ -27,7 +27,7 @@ from .links import (
     render_suggestions,
 )
 from .model import STATUS_FILENAME, validate_wiki_root
-from .mounts import discover_mounts
+from .mounts import discover_boundaries
 from .paths import parse_relative_path, path_from_root
 from .git import changed_paths, repository_root
 from .project import init_project_wiki
@@ -56,12 +56,20 @@ def build_parser() -> argparse.ArgumentParser:
         command = link_commands.add_parser(name, help=help_text)
         command.add_argument("--wiki", required=True, type=Path)
         command.add_argument("--file")
-        command.add_argument("--mode", choices=("full", "available"), default="full")
+        command.add_argument(
+            "--mode",
+            choices=("auto", "full", "available"),
+            default="auto",
+        )
         command.add_argument("--format", choices=("text", "json"), default="text")
     inbound = link_commands.add_parser("inbound", help="find links to one Wiki path")
     inbound.add_argument("--wiki", required=True, type=Path)
     inbound.add_argument("--target", required=True)
-    inbound.add_argument("--mode", choices=("full", "available"), default="full")
+    inbound.add_argument(
+        "--mode",
+        choices=("auto", "full", "available"),
+        default="auto",
+    )
     inbound.add_argument("--format", choices=("text", "json"), default="text")
     normalize = link_commands.add_parser(
         "normalize",
@@ -71,8 +79,12 @@ def build_parser() -> argparse.ArgumentParser:
     normalize.add_argument("--dry-run", action="store_true", required=True)
     normalize.add_argument("--format", choices=("text", "json"), default="text")
 
-    mounts = commands.add_parser("mounts", help="list nested Wiki and submodule boundaries")
+    mounts = commands.add_parser(
+        "mounts",
+        help="list preserved, nested Wiki, and submodule boundaries",
+    )
     mounts.add_argument("--wiki", required=True, type=Path)
+    mounts.add_argument("--mode", choices=("auto", "full", "available"), default="auto")
     mounts.add_argument("--format", choices=("text", "json"), default="text")
 
     project = commands.add_parser("init-project-wiki", help="initialize a project repository as a Whero Wiki")
@@ -184,11 +196,15 @@ def main(argv: list[str] | None = None) -> int:
                     )
             return 0
         if args.command == "links":
+            candidate = args.wiki.expanduser().resolve(strict=False)
+            link_mode = getattr(args, "mode", "full")
+            available = link_mode == "available" or (
+                link_mode == "auto" and (candidate / STATUS_FILENAME).is_file()
+            )
             root = validate_wiki_root(
                 args.wiki,
-                allow_symlink_meta=getattr(args, "mode", "full") == "available",
+                allow_symlink_meta=available,
             )
-            available = getattr(args, "mode", "full") == "available"
             if args.links_command == "inbound":
                 references = inbound_links(root, args.target, available=available)
                 output = render_link_references(references, args.format)
@@ -218,8 +234,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "mounts":
             from dataclasses import asdict
 
-            root = validate_wiki_root(args.wiki)
-            mounts_found = discover_mounts(root)
+            candidate = args.wiki.expanduser().resolve(strict=False)
+            available = args.mode == "available" or (
+                args.mode == "auto" and (candidate / STATUS_FILENAME).is_file()
+            )
+            root = validate_wiki_root(args.wiki, allow_symlink_meta=available)
+            mounts_found, preserved, problems = discover_boundaries(root)
+            if problems:
+                raise WheroToolError(problems[0])
             if args.format == "json":
                 print(
                     json.dumps(
@@ -230,6 +252,18 @@ def main(argv: list[str] | None = None) -> int:
                                 "root": str(mount.root),
                             }
                             for mount in mounts_found
+                        ]
+                        + [
+                            {
+                                "path": entry.path.as_posix(),
+                                "root": str(entry.root),
+                                "kind": "preserved",
+                                "submodule": False,
+                                "git_commit": None,
+                                "git_url": None,
+                                "index": str(entry.index),
+                            }
+                            for entry in preserved
                         ],
                         indent=2,
                     )
@@ -238,6 +272,8 @@ def main(argv: list[str] | None = None) -> int:
                 for mount in mounts_found:
                     submodule = " submodule" if mount.submodule else ""
                     print(f"{mount.kind}{submodule}: {mount.path.as_posix()}")
+                for entry in preserved:
+                    print(f"preserved: {entry.path.as_posix()}")
             return 0
         if args.command == "validate":
             diagnostics = validate_wiki(

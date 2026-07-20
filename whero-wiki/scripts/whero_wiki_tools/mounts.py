@@ -9,9 +9,11 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Iterator
 
+from .errors import WheroToolError
 from .frontmatter import frontmatter_is_true, read_flat_frontmatter
 from .model import STATUS_FILENAME, WIKI_META_FILENAME
 from .paths import is_within
+from .preserved import PreservedPath, discover_preserved_paths, path_is_within
 
 
 @dataclass(frozen=True)
@@ -102,7 +104,7 @@ def _gitlink_commit(repository_root: Path, path: PurePosixPath) -> str | None:
     return None
 
 
-def discover_mounts(root: Path) -> list[WikiMount]:
+def _discover_mounts_raw(root: Path) -> list[WikiMount]:
     root = root.resolve(strict=False)
     repository_root = git_root(root)
     submodules: dict[PurePosixPath, tuple[str | None, str | None]] = {}
@@ -142,6 +144,57 @@ def discover_mounts(root: Path) -> list[WikiMount]:
     return sorted(mounts, key=lambda mount: mount.path.as_posix())
 
 
+def discover_boundaries(
+    root: Path,
+) -> tuple[list[WikiMount], list[PreservedPath], list[str]]:
+    raw_mounts = _discover_mounts_raw(root)
+    preserved, problems = discover_preserved_paths(
+        root,
+        excluded_roots={mount.path for mount in raw_mounts},
+    )
+    mounts = [
+        mount
+        for mount in raw_mounts
+        if not any(path_is_within(mount.path, entry.path) for entry in preserved)
+    ]
+    return mounts, preserved, problems
+
+
+def discover_mounts(root: Path) -> list[WikiMount]:
+    mounts, _, _ = discover_boundaries(root)
+    return mounts
+
+
+def require_owned_write_path(root: Path, path: Path) -> None:
+    """Reject writes that enter an outer Wiki ownership boundary."""
+    root = root.resolve(strict=True)
+    logical = Path(os.path.abspath(path))
+    try:
+        relative = PurePosixPath(*logical.relative_to(root).parts)
+    except ValueError as exc:
+        raise WheroToolError(f"write path is outside the Wiki root: {path}") from exc
+    resolved_parent = logical.parent.resolve(strict=False)
+    if not is_within(resolved_parent, root):
+        raise WheroToolError(f"write path resolves outside the Wiki root: {path}")
+
+    mounts, preserved, problems = discover_boundaries(root)
+    if problems:
+        raise WheroToolError(problems[0])
+    mount = mount_for_path(relative, mounts)
+    if mount is not None:
+        raise WheroToolError(
+            f"write path enters mounted ownership boundary {mount.path}: {relative}"
+        )
+    preserved_entry = next(
+        (entry for entry in preserved if path_is_within(relative, entry.path)),
+        None,
+    )
+    if preserved_entry is not None:
+        raise WheroToolError(
+            f"write path enters preserved boundary {preserved_entry.path}: {relative}"
+        )
+
+
 def mount_for_path(
     relative: PurePosixPath,
     mounts: list[WikiMount],
@@ -155,8 +208,11 @@ def mount_for_path(
 
 
 def walk_owned_files(root: Path) -> Iterator[Path]:
-    """Yield files owned by this Wiki without entering nested mounts."""
-    mount_paths = {mount.path for mount in discover_mounts(root)}
+    """Yield files owned by this Wiki without entering declared boundaries."""
+    mounts, preserved, _ = discover_boundaries(root)
+    excluded_paths = {mount.path for mount in mounts} | {
+        entry.path for entry in preserved
+    }
     partial = _is_partial(root)
     disclosed_directory_links: list[Path] = []
     for directory, dirnames, filenames in os.walk(root, followlinks=False):
@@ -169,7 +225,7 @@ def walk_owned_files(root: Path) -> Iterator[Path]:
                 if relative_current.parts
                 else PurePosixPath(name)
             )
-            if child.is_symlink() and relative not in mount_paths and partial:
+            if child.is_symlink() and relative not in excluded_paths and partial:
                 disclosed_directory_links.append(child)
         dirnames[:] = [
             name
@@ -178,10 +234,16 @@ def walk_owned_files(root: Path) -> Iterator[Path]:
             and (
                 relative_current / name if relative_current.parts else PurePosixPath(name)
             )
-            not in mount_paths
+            not in excluded_paths
         ]
         for name in filenames:
-            yield current / name
+            relative = (
+                relative_current / name
+                if relative_current.parts
+                else PurePosixPath(name)
+            )
+            if not any(path_is_within(relative, boundary) for boundary in excluded_paths):
+                yield current / name
 
     for disclosed_root in disclosed_directory_links:
         for directory, dirnames, filenames in os.walk(
@@ -189,12 +251,30 @@ def walk_owned_files(root: Path) -> Iterator[Path]:
             followlinks=False,
         ):
             current = Path(directory)
+            relative_current = PurePosixPath(*current.relative_to(root).parts)
             dirnames[:] = [
                 name
                 for name in dirnames
                 if not (current / name).is_symlink()
                 and not _valid_wiki_meta(current / name)
                 and not ((current / name) / ".git").exists()
+                and not any(
+                    path_is_within(
+                        relative_current / name
+                        if relative_current.parts
+                        else PurePosixPath(name),
+                        boundary,
+                    )
+                    for boundary in excluded_paths
+                )
             ]
             for name in filenames:
-                yield current / name
+                relative = (
+                    relative_current / name
+                    if relative_current.parts
+                    else PurePosixPath(name)
+                )
+                if not any(
+                    path_is_within(relative, boundary) for boundary in excluded_paths
+                ):
+                    yield current / name

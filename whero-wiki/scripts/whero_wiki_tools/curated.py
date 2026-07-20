@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 from datetime import date, datetime
 from pathlib import Path, PurePosixPath
@@ -17,11 +18,12 @@ from .frontmatter import (
     write_markdown_atomic,
 )
 from .links import (
-    HEADING_RE,
     heading_anchors,
+    markdown_headings,
     markdown_destinations,
     resolve_markdown_destination,
 )
+from .mounts import discover_boundaries, require_owned_write_path
 from .model import (
     INDEX_FILENAME,
     LOG_FILENAME,
@@ -43,6 +45,9 @@ from .provenance import validate_provenance
 
 CURATION_MODES = {"adapted", "distilled", "synthesized"}
 CURATION_STATUSES = {"draft", "reviewed", "needs-review", "deprecated"}
+INDEX_TYPES = {"Whero Wiki Index", "Whero Curated Collection Index"}
+
+
 def _relative_directory(root: Path, raw: str) -> tuple[PurePosixPath | None, Path]:
     if raw.strip() in ("", "."):
         return None, root
@@ -62,8 +67,14 @@ def init_index(
     dry_run: bool = False,
 ) -> Path:
     root = validate_wiki_root(raw_root)
-    _, directory = _relative_directory(root, directory_text)
+    relative, directory = _relative_directory(root, directory_text)
     path = directory / INDEX_FILENAME
+    logical_path = (
+        root / INDEX_FILENAME
+        if relative is None
+        else path_from_root(root, relative) / INDEX_FILENAME
+    )
+    require_owned_write_path(root, logical_path)
     if path.exists() or path.is_symlink():
         raise WheroToolError(f"refusing to overwrite existing index: {path}")
     fields = {
@@ -87,8 +98,14 @@ def init_log(
     dry_run: bool = False,
 ) -> Path:
     root = validate_wiki_root(raw_root)
-    _, directory = _relative_directory(root, directory_text)
+    relative, directory = _relative_directory(root, directory_text)
     path = directory / LOG_FILENAME
+    logical_path = (
+        root / LOG_FILENAME
+        if relative is None
+        else path_from_root(root, relative) / LOG_FILENAME
+    )
+    require_owned_write_path(root, logical_path)
     if path.exists() or path.is_symlink():
         raise WheroToolError(f"refusing to overwrite existing log: {path}")
     fields = {
@@ -136,6 +153,8 @@ def init_curated_collection(
     if not scope_root.is_dir():
         raise WheroToolError(f"top-level scope is not a directory: {scope}")
     top_index = scope_root / INDEX_FILENAME
+    logical_scope_root = path_from_root(root, scope)
+    require_owned_write_path(root, logical_scope_root / INDEX_FILENAME)
     top_document = read_markdown(top_index)
     require_framework_file(top_index)
     existing = top_document.fields.get("whero_curated_path")
@@ -144,6 +163,10 @@ def init_curated_collection(
             f"top-level index already declares a different curated path: {existing}"
         )
     collection_root = scope_root / curated.as_posix()
+    require_owned_write_path(
+        root,
+        logical_scope_root / curated.as_posix() / INDEX_FILENAME,
+    )
     if collection_root.exists() or collection_root.is_symlink():
         raise WheroToolError(f"curated collection path already exists: {collection_root}")
 
@@ -248,12 +271,19 @@ def init_curated_concept(
         raise WheroToolError(f"unsupported curation mode: {curation_mode}")
     if status not in CURATION_STATUSES:
         raise WheroToolError(f"unsupported curation status: {status}")
-    collections, problems = discover_curated_collections(root)
+    _, preserved, preserved_problems = discover_boundaries(root)
+    if preserved_problems:
+        raise WheroToolError(preserved_problems[0])
+    collections, problems = discover_curated_collections(
+        root,
+        excluded_roots={entry.path for entry in preserved},
+    )
     if problems:
         raise WheroToolError(problems[0])
     if not _is_project_wiki(root):
         _collection_for_concept(concept, collections)
     output = path_from_root(root, concept)
+    require_owned_write_path(root, output)
     if output.exists() or output.is_symlink():
         raise WheroToolError(f"refusing to overwrite existing concept: {output}")
     if not source_values and not provenance:
@@ -303,6 +333,7 @@ def record_source_digests(
     root = validate_wiki_root(raw_root)
     concept = parse_relative_path(concept_text, label="concept path")
     concept_path = resolve_within(root, concept)
+    require_owned_write_path(root, path_from_root(root, concept))
     document = read_markdown(concept_path)
     if not frontmatter_is_true(document.fields, "whero_curated"):
         raise WheroToolError(f"not a curated concept: {concept}")
@@ -390,6 +421,121 @@ def _timestamp_is_valid(value: Any) -> bool:
             return True
         except ValueError:
             return False
+
+
+def _logical_path(path: Path) -> Path:
+    return Path(os.path.abspath(path))
+
+
+def _validate_framework_document(
+    path: Path,
+    document: Any,
+    diagnostics: Diagnostics,
+) -> None:
+    fields = document.fields
+    expected_types = INDEX_TYPES if path.name == INDEX_FILENAME else {"Whero Wiki Log"}
+    document_type = scalar_text(fields.get("type"))
+    if document_type not in expected_types:
+        diagnostics.error(
+            "FRAMEWORK_TYPE",
+            f"{path.name} must use one of these types: {', '.join(sorted(expected_types))}",
+            path,
+        )
+    if not frontmatter_is_true(fields, "whero_maintenance"):
+        diagnostics.error(
+            "FRAMEWORK_MAINTENANCE",
+            f"{path.name} must set whero_maintenance: true",
+            path,
+        )
+    if not frontmatter_is_true(fields, "whero_scope_required"):
+        diagnostics.error(
+            "FRAMEWORK_SCOPE_REQUIRED",
+            f"{path.name} must set whero_scope_required: true",
+            path,
+        )
+
+    headings = markdown_headings(document.body)
+    first_heading = headings[0] if headings else None
+    if first_heading is None or first_heading[0] != 1:
+        diagnostics.error(
+            "FRAMEWORK_HEADING",
+            f"{path.name} must start its content with a level-one heading",
+            path,
+        )
+    else:
+        title = scalar_text(fields.get("title"))
+        if title and first_heading[1] != title:
+            diagnostics.error(
+                "FRAMEWORK_TITLE_HEADING",
+                "first Markdown heading must match the frontmatter title",
+                path,
+            )
+
+    if path.name != LOG_FILENAME:
+        return
+    date_headings = [text for level, text in headings if level == 2]
+    if not date_headings:
+        diagnostics.error(
+            "LOG_DATE_HEADING",
+            "log must contain at least one ISO YYYY-MM-DD level-two heading",
+            path,
+        )
+        return
+    dates: list[date] = []
+    for heading in date_headings:
+        try:
+            dates.append(date.fromisoformat(heading.strip()))
+        except ValueError:
+            diagnostics.error(
+                "LOG_DATE_HEADING",
+                f"log level-two heading is not ISO YYYY-MM-DD: {heading!r}",
+                path,
+            )
+    if len(dates) == len(date_headings) and dates != sorted(dates, reverse=True):
+        diagnostics.error(
+            "LOG_DATE_ORDER",
+            "log date headings must be newest first",
+            path,
+        )
+
+
+def _linked_index_target(target: Path) -> Path | None:
+    candidate = target / INDEX_FILENAME if target.is_dir() else target
+    if candidate.name != INDEX_FILENAME or not candidate.is_file():
+        return None
+    return _logical_path(candidate)
+
+
+def _reachable_indexes(
+    root: Path,
+    index_routes: dict[Path, set[Path]],
+) -> set[Path]:
+    all_indexes = set(index_routes)
+    root_index = _logical_path(root / INDEX_FILENAME)
+    if root_index in all_indexes:
+        pending = [root_index]
+    else:
+        logical_root = _logical_path(root)
+        pending = [
+            index
+            for index in all_indexes
+            if len(index.relative_to(logical_root).parts) == 2
+        ]
+    reachable: set[Path] = set()
+    while pending:
+        index = pending.pop()
+        if index in reachable:
+            continue
+        reachable.add(index)
+        pending.extend((index_routes.get(index, set()) & all_indexes) - reachable)
+    return reachable
+
+
+def _project_collection_root(root: Path, concept: Path) -> Path:
+    relative = _logical_path(concept).relative_to(_logical_path(root))
+    if len(relative.parts) <= 1:
+        return root
+    return root / relative.parts[0]
 
 
 def _validate_concept(
@@ -484,8 +630,9 @@ def _validate_concept(
     )
 
     title = scalar_text(fields.get("title"))
-    first_heading = HEADING_RE.search(document.body)
-    if title and (first_heading is None or first_heading.group(1).strip() != title):
+    headings = markdown_headings(document.body)
+    first_heading = headings[0][1] if headings else None
+    if title and first_heading != title:
         diagnostics.error(
             "CURATED_TITLE_HEADING",
             "first Markdown heading must match the frontmatter title",
@@ -509,43 +656,76 @@ def validate_wiki(
     root = validate_wiki_root(raw_root, allow_symlink_meta=available)
     diagnostics = Diagnostics(root)
     project_wiki = _is_project_wiki(root)
-    collections, discovery_problems = discover_curated_collections(root)
+    _, preserved, preserved_problems = discover_boundaries(root)
+    for problem in preserved_problems:
+        diagnostics.error("PRESERVED_DECLARATION", problem)
+    for entry in preserved:
+        if not entry.root.exists():
+            reporter = diagnostics.notice if available else diagnostics.error
+            reporter(
+                "PRESERVED_UNAVAILABLE" if available else "PRESERVED_MISSING",
+                f"declared preserved path is unavailable: {entry.path}",
+                entry.index,
+            )
+            continue
+        try:
+            resolved = entry.root.resolve(strict=True)
+        except OSError as exc:
+            diagnostics.error(
+                "PRESERVED_PATH",
+                f"cannot resolve preserved path {entry.path}: {exc}",
+                entry.index,
+            )
+            continue
+        if not available and not resolved.is_relative_to(root):
+            diagnostics.error(
+                "PRESERVED_BOUNDARY",
+                f"preserved path resolves outside the Wiki root: {entry.path}",
+                entry.index,
+            )
+    collections, discovery_problems = discover_curated_collections(
+        root,
+        excluded_roots={entry.path for entry in preserved},
+    )
     for problem in discovery_problems:
         diagnostics.error("CURATED_DECLARATION", problem)
 
-    declared_roots = {collection.root.resolve(strict=False) for collection in collections}
-    top_indexes = {collection.top_index for collection in collections}
+    declared_roots = {_logical_path(collection.root) for collection in collections}
     from .mounts import walk_owned_files
 
     owned_markdown = [
         path for path in walk_owned_files(root) if path.suffix.lower() == ".md"
     ]
-    project_indexed_targets: set[Path] = set()
-    for candidate in (path for path in owned_markdown if path.name == INDEX_FILENAME):
-        try:
-            fields = read_frontmatter(candidate)
-        except WheroToolError as exc:
-            diagnostics.error("INDEX_FRONTMATTER", str(exc), candidate)
-            continue
-        if frontmatter_is_true(fields, "whero_curated_root"):
-            if (
-                candidate.parent.resolve(strict=False) not in declared_roots
-                and not (project_wiki and candidate == root / INDEX_FILENAME)
-            ):
-                diagnostics.error(
-                    "CURATED_ROOT_UNDECLARED",
-                    "curated root is not declared by a top-level index",
-                    candidate,
-                )
-
+    documents: dict[Path, Any] = {}
+    index_targets: dict[Path, set[Path]] = {}
+    index_routes: dict[Path, set[Path]] = {}
     for maintained in owned_markdown:
+        logical = _logical_path(maintained)
         try:
             document = read_markdown(maintained)
         except WheroToolError as exc:
             if maintained.name in (INDEX_FILENAME, LOG_FILENAME):
                 diagnostics.error("FRAMEWORK_FRONTMATTER", str(exc), maintained)
             continue
+        documents[logical] = document
         fields = document.fields
+        if maintained.name in (INDEX_FILENAME, LOG_FILENAME):
+            _validate_framework_document(maintained, document, diagnostics)
+        if maintained.name == INDEX_FILENAME and frontmatter_is_true(
+            fields, "whero_curated_root"
+        ):
+            if (
+                _logical_path(maintained.parent) not in declared_roots
+                and not (
+                    project_wiki
+                    and _logical_path(maintained) == _logical_path(root / INDEX_FILENAME)
+                )
+            ):
+                diagnostics.error(
+                    "CURATED_ROOT_UNDECLARED",
+                    "curated root is not declared by a top-level index",
+                    maintained,
+                )
         if frontmatter_is_true(fields, "whero_scope_required") and not frontmatter_is_true(
             fields, "whero_maintenance"
         ):
@@ -554,32 +734,50 @@ def validate_wiki(
                 "scope-required file must set whero_maintenance: true",
                 maintained,
             )
-        if frontmatter_is_true(fields, "whero_maintenance"):
-            inside_curated = any(
-                maintained == collection.root
-                or collection.root in maintained.parents
-                for collection in collections
-            )
-            if maintained not in top_indexes and not inside_curated:
-                linked = _validate_local_links(
+        if maintained.name == INDEX_FILENAME:
+            linked = {
+                _logical_path(target)
+                for target in _validate_local_links(
                     root,
                     maintained,
                     document.body,
                     diagnostics,
                     available,
                 )
-                if project_wiki and maintained.name == INDEX_FILENAME:
-                    project_indexed_targets.update(linked)
+            }
+            index_targets[logical] = linked
+            index_routes[logical] = {
+                route
+                for target in linked
+                if (route := _linked_index_target(target)) is not None
+            }
+        elif frontmatter_is_true(fields, "whero_maintenance") and not frontmatter_is_true(
+            fields, "whero_curated"
+        ):
+            _validate_local_links(
+                root,
+                maintained,
+                document.body,
+                diagnostics,
+                available,
+            )
+
+    reachable_indexes = _reachable_indexes(root, index_routes)
+    for index in sorted(set(index_routes) - reachable_indexes):
+        reporter = diagnostics.notice if available else diagnostics.error
+        reporter(
+            "INDEX_UNREACHABLE",
+            "maintained index is not reachable from the Wiki index chain",
+            index,
+        )
+
+    project_indexed_targets = {
+        target
+        for index in reachable_indexes
+        for target in index_targets.get(index, set())
+    }
 
     for collection in collections:
-        try:
-            top_fields = require_framework_file(
-                collection.top_index,
-                allow_symlink=available,
-            )
-        except WheroToolError as exc:
-            diagnostics.error("CURATED_TOP_INDEX", str(exc), collection.top_index)
-            top_fields = {}
         if not collection.root.is_dir():
             reporter = diagnostics.notice if available else diagnostics.error
             reporter(
@@ -588,18 +786,20 @@ def validate_wiki(
                 collection.top_index,
             )
             continue
-        try:
-            collection_fields = require_framework_file(
+        collection_index_path = _logical_path(collection.collection_index)
+        collection_document = documents.get(collection_index_path)
+        if collection_document is None:
+            reporter = diagnostics.notice if available else diagnostics.error
+            reporter(
+                "CURATED_COLLECTION_INDEX_UNAVAILABLE"
+                if available
+                else "CURATED_COLLECTION_INDEX",
+                "declared curated collection index is unavailable",
                 collection.collection_index,
-                allow_symlink=available,
             )
-        except WheroToolError as exc:
-            diagnostics.error(
-                "CURATED_COLLECTION_INDEX",
-                str(exc),
-                collection.collection_index,
-            )
-            collection_fields = {}
+            collection_fields: dict[str, Any] = {}
+        else:
+            collection_fields = collection_document.fields
         if collection_fields and not frontmatter_is_true(
             collection_fields, "whero_curated_root"
         ):
@@ -608,61 +808,50 @@ def validate_wiki(
                 "collection index must set whero_curated_root: true",
                 collection.collection_index,
             )
-        if scalar_text(collection_fields.get("whero_curated_format_version")) != "0.1":
+        if collection_fields and scalar_text(
+            collection_fields.get("whero_curated_format_version")
+        ) != "0.1":
             diagnostics.error(
                 "CURATED_FORMAT_VERSION",
                 'collection index must set whero_curated_format_version: "0.1"',
                 collection.collection_index,
             )
-        if top_fields:
-            try:
-                top_document = read_markdown(collection.top_index)
-                linked = _validate_local_links(
-                    root,
-                    collection.top_index,
-                    top_document.body,
-                    diagnostics,
-                    available,
-                )
-                if collection.root.resolve(strict=False) not in linked and collection.collection_index.resolve(
-                    strict=False
-                ) not in linked:
-                    diagnostics.error(
-                        "CURATED_TOP_INDEX_LINK",
-                        "top-level index body must link the declared curated collection",
-                        collection.top_index,
-                    )
-            except WheroToolError as exc:
-                diagnostics.error("CURATED_TOP_INDEX", str(exc), collection.top_index)
 
-        indexed_targets: set[Path] = set()
-        for index in collection.root.rglob(INDEX_FILENAME):
-            try:
-                index_fields = require_framework_file(index, allow_symlink=available)
-                if not index_fields:
-                    continue
-                index_document = read_markdown(index)
-            except WheroToolError as exc:
-                diagnostics.error("CURATED_INDEX", str(exc), index)
-                continue
-            indexed_targets.update(
-                _validate_local_links(
-                    root,
-                    index,
-                    index_document.body,
-                    diagnostics,
-                    available,
-                )
+        top_index_path = _logical_path(collection.top_index)
+        if top_index_path not in documents:
+            diagnostics.error(
+                "CURATED_TOP_INDEX",
+                "curated declaration index is unavailable",
+                collection.top_index,
             )
-        for log in collection.root.rglob(LOG_FILENAME):
-            try:
-                require_framework_file(log, allow_symlink=available)
-            except WheroToolError as exc:
-                diagnostics.error("CURATED_LOG", str(exc), log)
+        else:
+            linked = index_targets.get(top_index_path, set())
+            if (
+                _logical_path(collection.root) not in linked
+                and collection_index_path not in linked
+            ):
+                diagnostics.error(
+                    "CURATED_TOP_INDEX_LINK",
+                    "top-level index body must link the declared curated collection",
+                    collection.top_index,
+                )
+
+        collection_root = _logical_path(collection.root)
+        collection_indexes = {
+            index
+            for index in reachable_indexes
+            if index == collection_index_path or collection_root in index.parents
+        }
+        indexed_targets = {
+            target
+            for index in collection_indexes
+            for target in index_targets.get(index, set())
+        }
 
         concepts = sorted(
             path
-            for path in collection.root.rglob("*.md")
+            for path in owned_markdown
+            if _logical_path(path).is_relative_to(collection_root)
             if path.name not in (INDEX_FILENAME, LOG_FILENAME)
         )
         for concept in concepts:
@@ -675,7 +864,7 @@ def validate_wiki(
                 strict_stale,
                 collection.root,
             )
-            if concept.resolve(strict=False) not in indexed_targets:
+            if _logical_path(concept) not in indexed_targets:
                 diagnostics.error(
                     "CURATED_INDEX_COVERAGE",
                     "curated concept is not linked from a collection index",
@@ -700,9 +889,9 @@ def validate_wiki(
                     diagnostics,
                     available,
                     strict_stale,
-                    root,
+                    _project_collection_root(root, concept),
                 )
-                if concept.resolve(strict=False) not in project_indexed_targets:
+                if _logical_path(concept) not in project_indexed_targets:
                     diagnostics.error(
                         "CURATED_INDEX_COVERAGE",
                         "project concept is not linked from a maintained index",

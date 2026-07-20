@@ -73,6 +73,110 @@ class LinkAndMountTests(unittest.TestCase):
         self.assertEqual(references[0].status, "external")
         self.assertEqual(references[0].kind, "external")
 
+    def test_arbitrary_hostname_tld_is_external_but_markdown_file_is_local(self) -> None:
+        source = self.write(
+            "source.md",
+            "[Guide](docs.example.tech/guide)\n"
+            "[Markdown](foo.md)\n"
+            "[Python](module.py)\n"
+            "[Config](config.yaml)\n",
+        )
+        self.write("foo.md", "# Local\n")
+        self.write("module.py", "value = 1\n")
+        self.write("config.yaml", "value: 1\n")
+
+        references = inspect_document_links(self.root, source)
+
+        self.assertEqual(references[0].status, "external")
+        self.assertEqual(
+            [reference.status for reference in references[1:]],
+            ["resolved", "resolved", "resolved"],
+        )
+        self.assertEqual(
+            [reference.target for reference in references[1:]],
+            ["foo.md", "module.py", "config.yaml"],
+        )
+
+    def test_query_is_not_part_of_local_target_path(self) -> None:
+        self.write("target.md", "# Details\n")
+        source = self.write(
+            "source.md",
+            "[Target](target.md?view=compact#details)\n",
+        )
+
+        references = inspect_document_links(self.root, source)
+
+        self.assertEqual(references[0].status, "resolved")
+        self.assertEqual(references[0].target, "target.md")
+        self.assertEqual(references[0].anchor, "details")
+
+    def test_self_link_does_not_define_its_own_anchor(self) -> None:
+        source = self.write("source.md", "[Broken](#missing)\n")
+
+        references = inspect_document_links(self.root, source)
+
+        self.assertEqual(references[0].status, "anchor-missing")
+
+    def test_html_anchor_is_resolved(self) -> None:
+        target = self.write(
+            "target.md",
+            '<a id="explicit"></a>\n<a name="legacy"></a>\n',
+        )
+        source = self.write(
+            "source.md",
+            "[Explicit](target.md#explicit)\n[Legacy](target.md#legacy)\n",
+        )
+
+        references = inspect_document_links(self.root, source)
+
+        self.assertTrue(target.is_file())
+        self.assertEqual([item.status for item in references], ["resolved", "resolved"])
+
+    def test_fenced_heading_does_not_define_anchor_and_duplicates_are_numbered(self) -> None:
+        self.write(
+            "target.md",
+            "# Repeat\n\n# Repeat\n\n```markdown\n# Fenced\n```\n",
+        )
+        source = self.write(
+            "source.md",
+            "[Second](target.md#repeat-1)\n[Fenced](target.md#fenced)\n",
+        )
+
+        references = inspect_document_links(self.root, source)
+
+        self.assertEqual(references[0].status, "resolved")
+        self.assertEqual(references[1].status, "anchor-missing")
+
+    def test_frontmatter_does_not_define_links_or_anchors(self) -> None:
+        self.write(
+            "target.md",
+            "---\ntitle: Metadata\n---\n\n# Actual\n",
+        )
+        source = self.write(
+            "source.md",
+            "---\ndescription: '[Metadata](ignored.md)'\n---\n\n"
+            "[Actual](target.md#actual)\n"
+            "[Metadata](target.md#title-metadata)\n",
+        )
+
+        references = inspect_document_links(self.root, source)
+
+        self.assertEqual(len(references), 2)
+        self.assertEqual(references[0].status, "resolved")
+        self.assertEqual(references[1].status, "anchor-missing")
+
+    def test_leading_horizontal_rules_are_not_treated_as_frontmatter(self) -> None:
+        self.write("target.md", "# Target\n")
+        source = self.write(
+            "source.md",
+            "---\nordinary prose\n---\n\n[Target](target.md)\n",
+        )
+
+        references = inspect_document_links(self.root, source)
+
+        self.assertEqual(len(references), 1)
+        self.assertEqual(references[0].status, "resolved")
+
     def test_whero_rooted_link_and_inbound_query(self) -> None:
         target = self.write("concepts/model.md", "# Model\n")
         source = self.write(
@@ -162,6 +266,34 @@ whero_partial_disclosure: true
         link = next(item for item in references if item.source == "docs/source.md")
         self.assertEqual(link.target, "docs/target.md")
         self.assertEqual(link.status, "resolved")
+
+    def test_link_and_mount_cli_auto_detect_partial_disclosure(self) -> None:
+        view = self.root.parent / "partial-cli"
+        view.mkdir()
+        (view / "whero-wiki-meta.md").symlink_to(
+            os.path.relpath(self.root / "whero-wiki-meta.md", start=view)
+        )
+        (view / "partial-disclosure.md").write_text(
+            "---\nwhero_partial_disclosure: true\n---\n",
+            encoding="utf-8",
+        )
+        script = SCRIPTS / "whero_wiki.py"
+
+        links = subprocess.run(
+            [sys.executable, str(script), "links", "list", "--wiki", str(view)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        mounts = subprocess.run(
+            [sys.executable, str(script), "mounts", "--wiki", str(view)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(links.returncode, 0, links.stderr)
+        self.assertEqual(mounts.returncode, 0, mounts.stderr)
 
     def test_git_submodule_is_a_mount_even_without_whero_meta(self) -> None:
         repository = self.root.parent / "repository"

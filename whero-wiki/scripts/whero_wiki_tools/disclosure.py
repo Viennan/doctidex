@@ -29,7 +29,11 @@ from whero_wiki_tools.model import (
     validate_wiki_root,
 )
 from whero_wiki_tools.git import GitRemote, preferred_remote
-from whero_wiki_tools.mounts import WikiMount, discover_mounts, mount_for_path
+from whero_wiki_tools.mounts import WikiMount, discover_boundaries, mount_for_path
+from whero_wiki_tools.preserved import (
+    PreservedPath,
+    preserved_for_path,
+)
 
 
 DEFAULT_COLLAPSE_THRESHOLD = 80.0
@@ -50,7 +54,7 @@ class GitTreeNode:
 
 
 @dataclass(frozen=True)
-class StructuralChange:
+class SourceChange:
     kind: str
     path: PurePosixPath
 
@@ -74,17 +78,67 @@ def is_within(path: Path, root: Path) -> bool:
         return False
 
 
-def parse_selection(raw: str) -> PurePosixPath:
+def _selection_candidate(
+    source: Path,
+    candidate: Path,
+) -> tuple[PurePosixPath, bool] | None:
+    logical = Path(os.path.abspath(candidate.expanduser()))
+    try:
+        resolved = logical.resolve(strict=False)
+    except OSError:
+        return None
+    if not is_within(resolved, source):
+        return None
+    selected = logical if is_within(logical, source) else resolved
+    try:
+        relative = selected.relative_to(source)
+    except ValueError:
+        return None
+    if not relative.parts:
+        return PurePosixPath("."), logical.exists()
+    return PurePosixPath(*relative.parts), logical.exists()
+
+
+def parse_selection(
+    raw: str,
+    source: Path,
+    *,
+    additional_bases: list[Path] | None = None,
+) -> PurePosixPath:
     value = raw.strip()
     if not value:
         fail("include paths must not be empty")
-    path = PurePosixPath(value)
-    if path.is_absolute() or ".." in path.parts:
-        fail(f"include path must stay relative to the source root: {raw!r}")
-    parts = tuple(part for part in path.parts if part not in ("", "."))
-    if not parts:
-        fail(f"include path must identify a source item: {raw!r}")
-    result = PurePosixPath(*parts)
+    supplied = Path(value).expanduser()
+    raw_candidates = (
+        [supplied]
+        if supplied.is_absolute()
+        else [
+            source / supplied,
+            Path.cwd() / supplied,
+            *((base / supplied) for base in additional_bases or []),
+        ]
+    )
+    candidate_states = {
+        candidate: exists
+        for raw_candidate in raw_candidates
+        if (parsed := _selection_candidate(source, raw_candidate)) is not None
+        for candidate, exists in [parsed]
+    }
+    if not candidate_states:
+        fail(
+            f"include path must resolve inside the source Wiki: {raw!r}"
+        )
+    existing = {path for path, exists in candidate_states.items() if exists}
+    candidates = existing or set(candidate_states)
+    if len(candidates) > 1:
+        names = ", ".join(path.as_posix() for path in sorted(candidates, key=str))
+        fail(
+            f"include path is ambiguous across valid base directories: "
+            f"{raw!r} -> [{names}]; use an absolute path"
+        )
+    result = next(iter(candidates))
+    if result == PurePosixPath("."):
+        fail("include path must identify an item below the source Wiki root")
     if result == PurePosixPath(STATUS_FILENAME):
         fail(f"{STATUS_FILENAME} is generated and cannot be selected from source")
     return result
@@ -129,22 +183,31 @@ def collapse_selections(paths: set[PurePosixPath]) -> list[PurePosixPath]:
     return collapsed
 
 
-def load_selections(values: list[str], files: list[Path]) -> list[PurePosixPath]:
-    raw_values = list(values)
+def load_selections(
+    source: Path,
+    values: list[str],
+    files: list[Path],
+) -> list[PurePosixPath]:
+    selections = {parse_selection(value, source) for value in values}
     for selection_file in files:
         try:
-            lines = selection_file.read_text(encoding="utf-8").splitlines()
+            resolved_file = selection_file.expanduser().resolve(strict=True)
+            lines = resolved_file.read_text(encoding="utf-8").splitlines()
         except OSError as exc:
             fail(f"cannot read include file {selection_file}: {exc}")
-        raw_values.extend(
-            line.strip()
+        selections.update(
+            parse_selection(
+                line.strip(),
+                source,
+                additional_bases=[resolved_file.parent],
+            )
             for line in lines
             if line.strip() and not line.lstrip().startswith("#")
         )
-    if not raw_values:
+    if not selections:
         fail("provide at least one --include or --include-from path")
 
-    return collapse_selections({parse_selection(value) for value in raw_values})
+    return collapse_selections(selections)
 
 
 def read_frontmatter(path: Path) -> dict[str, Any]:
@@ -269,7 +332,7 @@ def git_tree_inventory(
         elif mode == "160000" or object_type == "commit":
             node = GitTreeNode("gitlink", object_id)
         else:
-            node = GitTreeNode("file")
+            node = GitTreeNode("file", object_id)
         inventory[relative] = node
         for depth in range(1, len(relative.parts)):
             directory = PurePosixPath(*relative.parts[:depth])
@@ -277,20 +340,25 @@ def git_tree_inventory(
     return inventory
 
 
-def structural_changes(
+def tree_changes(
     previous: dict[PurePosixPath, GitTreeNode],
     current: dict[PurePosixPath, GitTreeNode],
-) -> list[StructuralChange]:
-    changes: list[StructuralChange] = []
+) -> list[SourceChange]:
+    changes: list[SourceChange] = []
     for path in sorted(set(previous) | set(current), key=str):
         old = previous.get(path)
         new = current.get(path)
         if old is None:
-            changes.append(StructuralChange("added", path))
+            changes.append(SourceChange("added", path))
         elif new is None:
-            changes.append(StructuralChange("removed", path))
+            changes.append(SourceChange("removed", path))
         elif old != new:
-            changes.append(StructuralChange("type-or-link-changed", path))
+            kind = (
+                "content-changed"
+                if old.kind == new.kind == "file"
+                else "type-or-link-changed"
+            )
+            changes.append(SourceChange(kind, path))
     return changes
 
 
@@ -299,10 +367,10 @@ def paths_intersect(left: PurePosixPath, right: PurePosixPath) -> bool:
     return left.parts[:shared] == right.parts[:shared]
 
 
-def affected_structural_changes(
-    changes: list[StructuralChange],
+def affected_source_changes(
+    changes: list[SourceChange],
     disclosed_roots: list[PurePosixPath],
-) -> tuple[list[StructuralChange], list[PurePosixPath]]:
+) -> tuple[list[SourceChange], list[PurePosixPath]]:
     affected = [
         change
         for change in changes
@@ -317,6 +385,169 @@ def affected_structural_changes(
         key=str,
     )
     return affected, affected_roots
+
+
+def _git_paths(
+    git_source: GitSource,
+    *arguments: str,
+) -> list[PurePosixPath]:
+    result = git_command(git_source.root, *arguments)
+    if result.returncode != 0:
+        detail = result.stderr.decode("utf-8", errors="replace").strip()
+        fail(f"cannot inspect Git worktree: {detail or 'Git command failed'}")
+    paths: list[PurePosixPath] = []
+    for raw in result.stdout.split(b"\0"):
+        if not raw:
+            continue
+        relative = relative_git_tree_path(
+            decode_git_path(raw),
+            git_source.wiki_path,
+        )
+        if relative is not None:
+            paths.append(relative)
+    return paths
+
+
+def worktree_blob_identity(
+    source: Path,
+    git_source: GitSource,
+    relative: PurePosixPath,
+) -> str | None:
+    source_item = source.joinpath(*relative.parts)
+    repository_relative = (
+        relative
+        if git_source.wiki_path == PurePosixPath(".")
+        else git_source.wiki_path / relative
+    )
+    result = git_command(
+        git_source.root,
+        "hash-object",
+        f"--path={repository_relative.as_posix()}",
+        "--",
+        str(source_item),
+    )
+    if result.returncode != 0:
+        return None
+    value = result.stdout.decode("ascii", errors="replace").strip()
+    return value or None
+
+
+def validate_git_worktree_disclosure(
+    source: Path,
+    git_source: GitSource | None,
+    disclosed_roots: list[PurePosixPath],
+) -> None:
+    if git_source is None or not disclosed_roots:
+        return
+    pathspec = git_source.wiki_path.as_posix()
+    result = git_command(
+        git_source.root,
+        "diff",
+        "--name-status",
+        "-z",
+        "--no-renames",
+        "HEAD",
+        "--",
+        pathspec,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.decode("utf-8", errors="replace").strip()
+        fail(f"cannot inspect Git worktree: {detail or 'git diff failed'}")
+    fields = [field for field in result.stdout.split(b"\0") if field]
+    if len(fields) % 2:
+        fail("cannot parse Git worktree status")
+
+    head_tree = git_tree_inventory(
+        git_source,
+        git_source.commit,
+        git_source.wiki_path,
+    )
+    changes: list[SourceChange] = []
+    for offset in range(0, len(fields), 2):
+        status = decode_git_path(fields[offset])
+        relative = relative_git_tree_path(
+            decode_git_path(fields[offset + 1]),
+            git_source.wiki_path,
+        )
+        if relative is None:
+            continue
+        head_node = head_tree.get(relative)
+        current = source.joinpath(*relative.parts)
+        regular_file = (
+            status == "M"
+            and head_node is not None
+            and head_node.kind == "file"
+            and current.is_file()
+            and not current.is_symlink()
+        )
+        if regular_file:
+            current_identity = worktree_blob_identity(
+                source,
+                git_source,
+                relative,
+            )
+            if current_identity != head_node.identity:
+                changes.append(
+                    SourceChange("worktree-content-changed", relative)
+                )
+        else:
+            changes.append(SourceChange(f"worktree-{status.lower()}", relative))
+
+    untracked = _git_paths(
+        git_source,
+        "ls-files",
+        "-z",
+        "--full-name",
+        "--others",
+        "--exclude-standard",
+        "--",
+        pathspec,
+    )
+    ignored = _git_paths(
+        git_source,
+        "ls-files",
+        "-z",
+        "--full-name",
+        "--others",
+        "--ignored",
+        "--exclude-standard",
+        "--",
+        pathspec,
+    )
+    changes.extend(SourceChange("untracked", path) for path in untracked)
+    changes.extend(SourceChange("ignored", path) for path in ignored)
+    for root in disclosed_roots:
+        if root not in head_tree and not any(
+            paths_intersect(change.path, root) for change in changes
+        ):
+            changes.append(SourceChange("untracked-root", root))
+
+    affected, affected_roots = affected_source_changes(changes, disclosed_roots)
+    if not affected:
+        return
+    counts: dict[str, int] = {}
+    for change in affected:
+        counts[change.kind] = counts.get(change.kind, 0) + 1
+    impact = ", ".join(
+        f"{kind}={count}" for kind, count in sorted(counts.items())
+    )
+    roots = ", ".join(path.as_posix() for path in affected_roots)
+    paths = ", ".join(sorted({change.path.as_posix() for change in affected}))
+    message = (
+        "Git worktree cannot provide a stable disclosure identity\n"
+        f"what happened: uncommitted content, structure, or untracked material intersects "
+        f"disclosed roots [{roots}] ({impact}): {paths}; no disclosure changes "
+        "were applied"
+    )
+    if any(change.kind == "worktree-content-changed" for change in affected):
+        message += (
+            "; existing read-through symlinks may already expose the changed "
+            "source bytes, but generated links and status were not updated"
+            "\npossible handling: inspect the listed paths, then commit the intended "
+            "source state or restore it to HEAD before repairing or rebuilding the "
+            "affected disclosure"
+        )
+    fail(message)
 
 
 def git_diff_command(
@@ -430,8 +661,8 @@ def validate_git_transition(
         git_source.commit,
         git_source.wiki_path,
     )
-    changes = structural_changes(previous_tree, current_tree)
-    affected, affected_roots = affected_structural_changes(changes, disclosed_roots)
+    changes = tree_changes(previous_tree, current_tree)
+    affected, affected_roots = affected_source_changes(changes, disclosed_roots)
     inspect_command = git_diff_command(
         git_source,
         previous_commit,
@@ -445,21 +676,28 @@ def validate_git_transition(
             f"{kind}={count}" for kind, count in sorted(counts.items())
         )
         roots = ", ".join(path.as_posix() for path in affected_roots)
+        content_changed = any(
+            change.kind == "content-changed" for change in affected
+        )
+        change_subject = "content or structure" if content_changed else "structure"
         fail(
-            "forward Git update changes the disclosed structure\n"
+            f"forward Git update changes the disclosed {change_subject}\n"
             f"what happened: {previous_commit[:12]}..{git_source.commit[:12]} is "
-            f"forward, but structural changes intersect disclosed roots "
-            f"[{roots}] ({impact}); no disclosure changes were applied\n"
-            "possible handling: inspect the Git change, design a disclosure "
-            "restructure for the affected roots, and ask the user to review it; "
+            f"forward, but source changes intersect disclosed roots "
+            f"[{roots}] ({impact}); generated links and status were not updated, "
+            "although existing read-through symlinks may already expose changed "
+            "source bytes\n"
+            "possible handling: inspect the Git change, repair or rebuild the "
+            "affected disclosure for the new source state, and ask the user to "
+            "review the proposed scope and content; "
             f"inspect with: {inspect_command}"
         )
     outside_count = len(changes)
     return (
         f"Git source advanced {previous_commit[:12]}..{git_source.commit[:12]}; "
-        "no structural change intersects the current disclosure"
+        "no source change intersects the current disclosure"
         + (
-            f" ({outside_count} structural change(s) remain outside its roots)"
+            f" ({outside_count} source change(s) remain outside its roots)"
             if outside_count
             else ""
         )
@@ -511,9 +749,9 @@ def add_path_scope_files(
         owner_parts = (
             selection.parts if resolved_item.is_dir() else selection.parts[:-1]
         )
-        for mount in stop_at:
-            if selection.parts[: len(mount.parts)] == mount.parts and selection != mount:
-                owner_parts = mount.parts[:-1]
+        for boundary in stop_at:
+            if selection.parts[: len(boundary.parts)] == boundary.parts:
+                owner_parts = boundary.parts[:-1]
                 break
         for depth in range(len(owner_parts) + 1):
             directory = source.joinpath(*owner_parts[:depth])
@@ -1185,6 +1423,37 @@ def partition_mount_selections(
     }
 
 
+def promote_preserved_selections(
+    selections: list[PurePosixPath],
+    preserved: list[PreservedPath],
+) -> tuple[list[PurePosixPath], dict[PurePosixPath, list[PurePosixPath]]]:
+    promoted: set[PurePosixPath] = set()
+    expansions: dict[PurePosixPath, list[PurePosixPath]] = {}
+    for selection in selections:
+        boundary = preserved_for_path(selection, preserved)
+        if boundary is not None and selection != boundary.path:
+            expansions.setdefault(boundary.path, []).append(selection)
+            promoted.add(boundary.path)
+        else:
+            promoted.add(selection)
+    return collapse_selections(promoted), expansions
+
+
+def preserved_expansion_notices(
+    expansions: dict[PurePosixPath, list[PurePosixPath]],
+    *,
+    label: str,
+) -> list[str]:
+    notices: list[str] = []
+    for boundary, descendants in sorted(expansions.items(), key=lambda item: str(item[0])):
+        names = ", ".join(path.as_posix() for path in sorted(descendants, key=str))
+        notices.append(
+            f"preserved boundary expansion ({label}): [{names}] selects whole "
+            f"boundary {boundary.as_posix()}"
+        )
+    return notices
+
+
 def run_delegated_disclosure(
     mount: WikiMount,
     selections: list[PurePosixPath],
@@ -1248,14 +1517,17 @@ def main(argv: list[str] | None = None) -> int:
         "--include",
         action="append",
         default=[],
-        help="source-relative file or directory; repeat as needed",
+        help=(
+            "file or directory path; accepts source-relative, current-working-"
+            "directory-relative, absolute, and user-home forms; repeat as needed"
+        ),
     )
     parser.add_argument(
         "--include-from",
         action="append",
         default=[],
         type=Path,
-        help="file containing source-relative selections",
+        help="file containing selection paths, one per non-comment line",
     )
     parser.add_argument(
         "--collapse-threshold",
@@ -1309,8 +1581,21 @@ def main(argv: list[str] | None = None) -> int:
         git_source,
         output_root,
     )
-    requested_all = load_selections(args.include, args.include_from)
-    mounts = discover_mounts(source)
+    requested_all = load_selections(source, args.include, args.include_from)
+    mounts, preserved, preserved_problems = discover_boundaries(source)
+    if preserved_problems:
+        fail(preserved_problems[0])
+    for entry in preserved:
+        try:
+            resolved_preserved = entry.root.resolve(strict=True)
+        except OSError as exc:
+            fail(f"declared preserved path does not exist: {entry.path} ({exc})")
+        if not is_within(resolved_preserved, source):
+            fail(f"preserved path resolves outside the source wiki: {entry.path}")
+    requested_all, requested_preserved_expansions = promote_preserved_selections(
+        requested_all,
+        preserved,
+    )
     requested, delegated_requests = partition_mount_selections(
         requested_all,
         mounts,
@@ -1318,15 +1603,21 @@ def main(argv: list[str] | None = None) -> int:
         allow_mount_parent=args.allow_mount_parent,
     )
     mount_roots = {mount.path for mount in mounts}
+    preserved_roots = {entry.path for entry in preserved}
+    protected_roots = mount_roots | preserved_roots
     compatible_source = (
         status_state.previous_source if status_state.source_moved else None
     )
     existing = disclosed_selections(source, output_root, compatible_source)
+    existing, existing_preserved_expansions = promote_preserved_selections(
+        existing,
+        preserved,
+    )
     scope_seeds = [mount.path for mount in delegated_requests]
     expanded = add_path_scope_files(
         source,
         collapse_selections(set(existing) | set(requested) | set(scope_seeds)),
-        mount_roots,
+        protected_roots,
     ) if requested or existing or scope_seeds else []
     expanded = [selection for selection in expanded if selection not in scope_seeds]
     pre_collapse_selections = expanded
@@ -1334,18 +1625,35 @@ def main(argv: list[str] | None = None) -> int:
         source,
         expanded,
         args.collapse_threshold,
-        mount_roots,
+        protected_roots,
+    )
+    validate_git_worktree_disclosure(
+        source,
+        git_source,
+        collapse_selections(set(selections) | set(scope_seeds)),
     )
     notices: list[str] = []
     if status_state.git_notice:
         notices.append(status_state.git_notice)
+    notices.extend(
+        preserved_expansion_notices(
+            requested_preserved_expansions,
+            label="requested selection",
+        )
+    )
+    notices.extend(
+        preserved_expansion_notices(
+            existing_preserved_expansions,
+            label="existing view",
+        )
+    )
     notices.extend(
         adaptive_collapse_notices(
             source,
             pre_collapse_selections,
             adaptive_directories,
             args.collapse_threshold,
-            mount_roots,
+            protected_roots,
         )
     )
     explicit_directory_collapses = [
@@ -1365,7 +1673,7 @@ def main(argv: list[str] | None = None) -> int:
             existing,
             directory,
             "requested parent collapse",
-            excluded_roots=mount_roots,
+            excluded_roots=protected_roots,
         )
         for directory in explicit_directory_collapses
     )

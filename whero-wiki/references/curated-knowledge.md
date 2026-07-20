@@ -140,6 +140,11 @@ materially grounds the concept as a whole:
 - `role` is optional descriptive context such as `primary`, `supporting`, or
   `contrast`; consumers must tolerate unknown role values.
 
+A source may live inside an index-declared preserved path. The curated concept
+may read, cite, and hash that source, but curation maintenance must not rewrite
+the preserved source or add metadata within its boundary. Curated collection
+roots and concept outputs themselves must not be created inside preserved paths.
+
 For generalized `provenance`, use the kinds and fields in
 `references/project-knowledge.md`. A `repository-path` may identify code in the
 same project or a mounted third-party repository; a `git-revision` records a
@@ -189,8 +194,11 @@ For code repositories, project discussions, and development workflows, read
 `project-knowledge.md`. First distinguish non-invasive third-party analysis
 from a development-mode project Wiki. The former may use any concept-oriented
 organization around an unchanged source mount; the latter defaults to
-`docs/user`, `docs/design`, `docs/impl`, and `docs/references` outside source
-directories, with a semantically similar parent when `docs/` conflicts.
+`docs/user`, `docs/requirements`, `docs/design`, `docs/impl`, and
+`docs/references` outside source directories, with a semantically similar parent
+when `docs/` conflicts. Requirement concepts may retain clearly labeled,
+decision-relevant evolution while design and implementation concepts stay
+normalized to the current model.
 
 ## Indexes and Partial Disclosure
 
@@ -198,7 +206,10 @@ Treat collection indexes as high-density concept maps. Group entries by domain
 model, developer problem, lifecycle, or decision rather than source filename.
 Make every current curated concept reachable through an index chain. The
 top-level source index should also retain direct routes to authoritative source
-material.
+material. If the Wiki has a root `index.md`, treat it as the chain entry;
+otherwise treat each direct-child `index.md` as an entry. A nested index joins
+the chain only when a reachable index links its directory or the index file
+itself. Links from an isolated nested index do not satisfy concept coverage.
 
 When building a partial disclosure:
 
@@ -212,6 +223,9 @@ When building a partial disclosure:
   missing detail, or comparison with external knowledge makes it useful.
 - Treat undisclosed provenance and cross-concept links as coverage limitations,
   not malformed documents.
+- A request for a preserved source document or any other descendant selects and
+  discloses the entire declared preserved root. An explicit selection of the
+  root or one of its ancestor directories has the same whole-boundary effect.
 
 ## Lifecycle
 
@@ -256,7 +270,8 @@ Validate mechanically:
 - absence of `whero_scope_required: true` on curated concepts;
 - safe provenance paths, source existence, and applicable digest or revision
   freshness;
-- maintained index/log invariants;
+- framework type, ownership flags, title heading, and log date/order invariants;
+- reachability of maintained indexes from the applicable chain entries;
 - local Markdown targets and curated index coverage;
 - full-Wiki errors versus acceptable unavailable targets in a partial view.
 

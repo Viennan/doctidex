@@ -18,6 +18,8 @@ and, when present, the curated collection declaration. For a development-mode
 project Wiki, use the root index and its declared `docs/` (or replacement) areas.
 If only a partial disclosure is available, state that limitation and do not
 assume undisclosed files are absent from the source Wiki.
+When an index declares source material preserved, read it when available but do
+not expect or require outer Wiki metadata, validation, or link repair inside it.
 
 ## Authority Model
 

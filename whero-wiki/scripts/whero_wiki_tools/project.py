@@ -9,6 +9,7 @@ from pathlib import Path
 from .errors import WheroToolError
 from .frontmatter import write_markdown_atomic
 from .model import WIKI_META_FILENAME
+from .paths import is_within
 
 
 def init_project_wiki(
@@ -23,6 +24,9 @@ def init_project_wiki(
     planned = [root / WIKI_META_FILENAME, root / "index.md", root / "log.md"]
     if agent_guide is not None:
         guide = agent_guide if agent_guide.is_absolute() else root / agent_guide
+        guide = guide.resolve(strict=False)
+        if not is_within(guide, root):
+            raise WheroToolError(f"agent guide must stay inside the project root: {guide}")
         planned.append(guide)
     collisions = [path for path in planned if os.path.lexists(path)]
     if collisions:
@@ -44,11 +48,14 @@ def init_project_wiki(
     meta_body = (
         f"\n# {title}\n\n## Scope\n\n{description}\n\n"
         "## Knowledge Maintenance\n\n"
-        "Maintain project design, implementation, user, and reference knowledge "
+        "Maintain project requirement, design, implementation, user, and "
+        "reference knowledge "
         "alongside the code that it explains. Keep these knowledge directories "
         "outside source directories. Use a root `docs/` directory by default, "
         "or a semantically similar name when `docs/` conflicts, and record its "
-        "route in the root index.\n"
+        "route in the root index. Declare owner-managed trees under "
+        "`whero_preserved_paths` when Whero must not maintain their internals and "
+        "whole-only disclosure is acceptable.\n"
     )
     index_fields = {
         "type": "Whero Wiki Index",
@@ -62,9 +69,13 @@ def init_project_wiki(
     index_body = (
         f"\n# {title}\n\n{description}\n\n"
         "Create curated knowledge under root `docs/` by default, using "
-        "`docs/user`, `docs/design`, `docs/impl/<language>`, and "
-        "`docs/references` only when needed. If `docs/` conflicts, choose a "
+        "`docs/user`, `docs/requirements`, `docs/design`, "
+        "`docs/impl/<language>`, and `docs/references` only when needed. If "
+        "`docs/` conflicts, choose a "
         "semantically similar parent such as `knowledge/` and link it here.\n"
+        "Use `whero_preserved_paths` in this index or a nearer maintained index "
+        "for owner-managed files and directories that must remain non-invasive "
+        "and can only be disclosed whole.\n"
     )
     log_fields = {
         "type": "Whero Wiki Log",
@@ -87,9 +98,9 @@ def init_project_wiki(
 
 PROJECT_AGENT_GUIDE = """# Whero Wiki Project Maintenance
 
-Treat this project as a Whero Wiki. Maintain design, implementation, user, and
-reference knowledge as part of normal development rather than as a later cleanup
-task.
+Treat this project as a Whero Wiki. Maintain requirement, design,
+implementation, user, and reference knowledge as part of normal development
+rather than as a later cleanup task.
 
 Keep curated knowledge under root `docs/` by default, outside source directories,
 and link its roots from the root `index.md`. If `docs/` conflicts, use another
@@ -97,16 +108,25 @@ semantically similar, user-approved parent. This development layout is distinct
 from non-invasive analysis of a third-party repository; that analysis may use
 any concept organization.
 
-- Record why and what in design concepts before or with direction-changing code.
+- Record materially changed needs and their useful decision history in
+  `docs/requirements`; label superseded, rejected, and version-bound statements.
+- Keep only history that explains constraints, tradeoffs, reversals,
+  compatibility obligations, or likely future decisions. Remove obsolete
+  speculation that would mislead retrieval.
+- Normalize current why and what into design concepts before or with
+  direction-changing code, linking requirement history when useful.
 - Update implementation concepts with code entry points, responsibilities, and
   call relationships when implementation changes.
 - Explain every field in documented records, schemas, configs, DTOs, and events.
 - Inspect existing directory names before using `docs/`; choose a semantically
   similar parent such as `knowledge/` when it conflicts.
-- Ask the user for missing intent and design history when adapting an existing
-  project; do not infer design decisions from code alone.
+- Ask the user for missing intent, requirement history, and design history when
+  adapting an existing project; do not infer design decisions from code alone.
 - Preserve external references and mounted Whero Wikis under their own ownership
   boundaries.
+- Declare owner-managed source, generated, or legacy paths under
+  `whero_preserved_paths` when Whero must not write inside them and whole-only
+  disclosure is acceptable. Use a mount when inner partial disclosure is needed.
 - Before completing a change, inspect `git diff --name-status`, run the Whero
   affected-concept query, validate the Wiki, and run `git diff --check`.
 """

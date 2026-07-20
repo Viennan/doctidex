@@ -8,10 +8,11 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from .diagnostics import Diagnostics
-from .frontmatter import read_markdown, scalar_text
-from .git import head_commit, repository_root
+from .errors import WheroToolError
+from .frontmatter import frontmatter_is_true, read_frontmatter, read_markdown, scalar_text
+from .git import head_commit, repository_root, resolve_commit
 from .mounts import walk_owned_files
-from .paths import parse_relative_path, path_from_root, sha256_file
+from .paths import parse_relative_path, path_from_root, resolve_within, sha256_file
 
 
 PROVENANCE_KINDS = {
@@ -44,6 +45,77 @@ def concept_provenance(fields: dict[str, Any]) -> list[dict[str, Any]]:
     return entries
 
 
+def _provenance_target(
+    root: Path,
+    concept: Path,
+    raw: str,
+    kind: str,
+    diagnostics: Diagnostics,
+    *,
+    available: bool,
+) -> tuple[PurePosixPath, Path] | None:
+    try:
+        relative = parse_relative_path(raw, label=f"{kind} provenance path")
+        target = (
+            path_from_root(root, relative)
+            if available
+            else resolve_within(root, relative, must_exist=False)
+        )
+    except WheroToolError as exc:
+        diagnostics.error("CURATED_PROVENANCE_PATH", str(exc), concept)
+        return None
+    return relative, target
+
+
+def _report_unavailable_provenance(
+    diagnostics: Diagnostics,
+    concept: Path,
+    kind: str,
+    relative: PurePosixPath,
+    *,
+    available: bool,
+) -> None:
+    reporter = diagnostics.notice if available else diagnostics.error
+    if kind == "collected-source":
+        code = "CURATED_SOURCE_UNAVAILABLE" if available else "CURATED_SOURCE_MISSING"
+    else:
+        code = (
+            "CURATED_PROVENANCE_UNAVAILABLE"
+            if available
+            else "CURATED_PROVENANCE_MISSING"
+        )
+    reporter(code, f"{kind} provenance is unavailable: {relative}", concept)
+
+
+def _validate_record_reference(
+    target: Path,
+    relative: PurePosixPath,
+    kind: str,
+    concept: Path,
+    diagnostics: Diagnostics,
+) -> bool:
+    if not target.is_file():
+        diagnostics.error(
+            "CURATED_PROVENANCE_REFERENCE",
+            f"{kind} provenance must reference a maintained file: {relative}",
+            concept,
+        )
+        return False
+    try:
+        fields = read_frontmatter(target)
+    except WheroToolError as exc:
+        diagnostics.error("CURATED_PROVENANCE_REFERENCE", str(exc), concept)
+        return False
+    if not frontmatter_is_true(fields, "whero_maintenance"):
+        diagnostics.error(
+            "CURATED_PROVENANCE_REFERENCE_MAINTENANCE",
+            f"{kind} provenance reference must set whero_maintenance: true: {relative}",
+            concept,
+        )
+        return False
+    return True
+
+
 def validate_provenance(
     root: Path,
     concept: Path,
@@ -70,27 +142,47 @@ def validate_provenance(
                 concept,
             )
             continue
-        if kind in ("collected-source", "repository-path", "discussion"):
-            try:
-                relative = parse_relative_path(
-                    scalar_text(entry.get("path") or entry.get("reference")),
-                    label=f"{kind} provenance path",
-                )
-            except ValueError as exc:
-                diagnostics.error("CURATED_PROVENANCE_PATH", str(exc), concept)
+        if kind in (
+            "collected-source",
+            "repository-path",
+            "discussion",
+            "user-authored",
+        ):
+            field = "reference" if kind in ("discussion", "user-authored") else "path"
+            resolved = _provenance_target(
+                root,
+                concept,
+                scalar_text(entry.get(field)),
+                kind,
+                diagnostics,
+                available=available,
+            )
+            if resolved is None:
                 continue
-            target = path_from_root(root, relative)
+            relative, target = resolved
             if not target.exists():
-                reporter = diagnostics.notice if available else diagnostics.error
-                if kind == "collected-source":
-                    code = "CURATED_SOURCE_UNAVAILABLE" if available else "CURATED_SOURCE_MISSING"
-                else:
-                    code = "CURATED_PROVENANCE_UNAVAILABLE" if available else "CURATED_PROVENANCE_MISSING"
-                reporter(
-                    code,
-                    f"{kind} provenance is unavailable: {relative}",
+                _report_unavailable_provenance(
+                    diagnostics,
+                    concept,
+                    kind,
+                    relative,
+                    available=available,
+                )
+                continue
+            if kind == "collected-source" and not target.is_file():
+                diagnostics.error(
+                    "CURATED_SOURCE_PATH",
+                    f"collected-source provenance must name a regular file: {relative}",
                     concept,
                 )
+                continue
+            if kind in ("discussion", "user-authored") and not _validate_record_reference(
+                target,
+                relative,
+                kind,
+                concept,
+                diagnostics,
+            ):
                 continue
             expected_sha = scalar_text(entry.get("sha256"))
             if kind == "collected-source" and not HEX_64_RE.fullmatch(expected_sha):
@@ -109,12 +201,34 @@ def validate_provenance(
                 )
             expected_commit = scalar_text(entry.get("git_commit"))
             if expected_commit:
-                current = head_commit(target if target.is_dir() else target.parent)
-                if current and current != expected_commit:
+                repository_path = repository_root(target if target.is_dir() else target.parent)
+                if repository_path is None:
+                    reporter = diagnostics.notice if available else diagnostics.error
+                    reporter(
+                        "CURATED_PROVENANCE_GIT_UNAVAILABLE"
+                        if available
+                        else "CURATED_PROVENANCE_GIT_REPOSITORY",
+                        f"git_commit requires provenance inside a Git repository: {relative}",
+                        concept,
+                    )
+                    continue
+                recorded = resolve_commit(repository_path, expected_commit)
+                if recorded is None:
+                    reporter = diagnostics.notice if available else diagnostics.error
+                    reporter(
+                        "CURATED_PROVENANCE_COMMIT_UNAVAILABLE"
+                        if available
+                        else "CURATED_PROVENANCE_COMMIT",
+                        f"recorded Git commit does not exist: {expected_commit}",
+                        concept,
+                    )
+                    continue
+                current = head_commit(repository_path)
+                if current and current != recorded:
                     reporter = diagnostics.error if strict_stale else diagnostics.warning
                     reporter(
                         "CURATED_PROVENANCE_GIT_STALE",
-                        f"repository provenance advanced from {expected_commit[:12]} to {current[:12]}",
+                        f"repository provenance advanced from {recorded[:12]} to {current[:12]}",
                         concept,
                     )
         elif kind == "git-revision":
@@ -128,28 +242,64 @@ def validate_provenance(
                 )
                 continue
             try:
-                repository_path = path_from_root(
-                    root,
-                    parse_relative_path(repository, label="provenance repository")
-                    if repository != "."
-                    else PurePosixPath(),
+                repository_path = (
+                    root
+                    if repository == "."
+                    else (
+                        path_from_root(
+                            root,
+                            parse_relative_path(
+                                repository,
+                                label="provenance repository",
+                            ),
+                        )
+                        if available
+                        else resolve_within(
+                            root,
+                            parse_relative_path(
+                                repository,
+                                label="provenance repository",
+                            ),
+                            must_exist=False,
+                        )
+                    )
                 )
-            except ValueError as exc:
+            except WheroToolError as exc:
                 diagnostics.error("CURATED_PROVENANCE_REPOSITORY", str(exc), concept)
                 continue
-            if repository_root(repository_path) is None:
+            if not repository_path.exists():
                 reporter = diagnostics.notice if available else diagnostics.error
                 reporter(
                     "CURATED_PROVENANCE_GIT_UNAVAILABLE",
                     f"Git repository is unavailable: {repository}",
                     concept,
                 )
-        elif kind == "user-authored" and not scalar_text(entry.get("reference")):
-            diagnostics.error(
-                "CURATED_PROVENANCE_REFERENCE",
-                "user-authored provenance requires a stable reference",
-                concept,
-            )
+                continue
+            if not repository_path.is_dir():
+                diagnostics.error(
+                    "CURATED_PROVENANCE_REPOSITORY",
+                    f"provenance repository is not a directory: {repository}",
+                    concept,
+                )
+                continue
+            git_root = repository_root(repository_path)
+            if git_root is None:
+                reporter = diagnostics.notice if available else diagnostics.error
+                reporter(
+                    "CURATED_PROVENANCE_GIT_UNAVAILABLE",
+                    f"Git repository is unavailable: {repository}",
+                    concept,
+                )
+                continue
+            if resolve_commit(git_root, commit) is None:
+                reporter = diagnostics.notice if available else diagnostics.error
+                reporter(
+                    "CURATED_PROVENANCE_COMMIT_UNAVAILABLE"
+                    if available
+                    else "CURATED_PROVENANCE_COMMIT",
+                    f"Git commit is unavailable: {commit}",
+                    concept,
+                )
 
 
 def affected_concepts(
@@ -165,11 +315,16 @@ def affected_concepts(
             document = read_markdown(path)
         except ValueError:
             continue
-        if document.fields.get("whero_curated") is not True:
+        if not frontmatter_is_true(document.fields, "whero_curated"):
             continue
         for entry in concept_provenance(document.fields):
             kind = scalar_text(entry.get("kind"))
-            if kind not in ("repository-path", "collected-source", "discussion"):
+            if kind not in (
+                "repository-path",
+                "collected-source",
+                "discussion",
+                "user-authored",
+            ):
                 continue
             raw = scalar_text(entry.get("path") or entry.get("reference"))
             try:

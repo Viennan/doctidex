@@ -6,10 +6,12 @@ import json
 import os
 import re
 from dataclasses import asdict, dataclass
+from html.parser import HTMLParser
 from pathlib import Path, PurePosixPath
 from typing import Iterable, Iterator
 from urllib.parse import unquote, urlsplit
 
+import yaml
 from markdown_it import MarkdownIt
 from markdown_it.token import Token
 
@@ -21,9 +23,48 @@ from .paths import is_within, parse_relative_path, path_from_root, wiki_relative
 
 
 WHERO_SCHEME = "whero-wiki:/"
-EXPLICIT_ANCHOR_RE = re.compile(r"\]\(#([^\s\)\"']+)")
-HEADING_RE = re.compile(r"^#{1,6}\s+(.+?)\s*$", re.MULTILINE)
 MARKDOWN = MarkdownIt("commonmark")
+LOCAL_FILE_TLDS = {
+    "c",
+    "cc",
+    "conf",
+    "config",
+    "cpp",
+    "css",
+    "csv",
+    "gif",
+    "go",
+    "h",
+    "hpp",
+    "adoc",
+    "html",
+    "htm",
+    "ini",
+    "java",
+    "jpeg",
+    "jpg",
+    "js",
+    "json",
+    "jsx",
+    "md",
+    "markdown",
+    "pdf",
+    "png",
+    "properties",
+    "py",
+    "rst",
+    "rs",
+    "sh",
+    "sql",
+    "toml",
+    "textile",
+    "ts",
+    "tsx",
+    "txt",
+    "xml",
+    "yaml",
+    "yml",
+}
 
 
 @dataclass(frozen=True)
@@ -57,19 +98,38 @@ def markdown_destinations(body: str) -> list[str]:
     return destinations
 
 
+def markdown_body(text: str) -> str:
+    lines = text.splitlines(keepends=True)
+    if not lines or lines[0].strip() != "---":
+        return text
+    for index, line in enumerate(lines[1:], start=1):
+        if line.strip() == "---":
+            raw = "".join(lines[1:index])
+            try:
+                fields = yaml.safe_load(raw)
+            except yaml.YAMLError:
+                return text
+            if fields is None or isinstance(fields, dict):
+                return "".join(lines[index + 1 :])
+            return text
+    return text
+
+
 def _is_external(destination: str) -> bool:
     if destination.startswith("//"):
         return True
     parsed = urlsplit(destination)
     if parsed.scheme and parsed.scheme != "whero-wiki":
         return True
-    first = destination.split("/", 1)[0].partition("?")[0].partition("#")[0]
-    return bool(
-        re.fullmatch(
-            r"(?:[A-Za-z0-9-]+\.)+(?:com|org|net|io|ai|dev|app|cloud|cn|co|edu|gov)",
-            first,
-        )
-    )
+    first = parsed.path.split("/", 1)[0]
+    hostname = first.rsplit(":", 1)[0] if first.rsplit(":", 1)[-1].isdigit() else first
+    if not re.fullmatch(
+        r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+"
+        r"[A-Za-z]{2,63}",
+        hostname,
+    ):
+        return False
+    return hostname.rsplit(".", 1)[-1].lower() not in LOCAL_FILE_TLDS
 
 
 def _is_partial_root(root: Path) -> bool:
@@ -106,15 +166,16 @@ def resolve_markdown_destination(
 ) -> tuple[Path | None, str, str]:
     if _is_external(destination):
         return None, "", "external"
-    path_text, separator, fragment = destination.partition("#")
-    fragment = unquote(fragment) if separator else ""
+    parsed = urlsplit(destination)
+    path_text = parsed.path
+    fragment = unquote(parsed.fragment)
     mounts = mounts or []
     owner = owning_wiki_root(document, wiki_root, mounts)
     preserve_logical_path = _is_partial_root(owner)
     if destination.startswith("whero-wiki:"):
         if not destination.startswith(WHERO_SCHEME):
             return None, fragment, "invalid"
-        path_text = destination[len(WHERO_SCHEME) :].partition("#")[0]
+        path_text = parsed.path.lstrip("/")
         target = _logical_path(owner / unquote(path_text))
         if not is_within(target, owner):
             return target, fragment, "cross-boundary"
@@ -153,14 +214,51 @@ def _slug(text: str) -> str:
     return re.sub(r"[\s]+", "-", "".join(characters)).strip("-")
 
 
+def markdown_headings(body: str) -> list[tuple[int, str]]:
+    tokens = MARKDOWN.parse(body)
+    headings: list[tuple[int, str]] = []
+    for index, token in enumerate(tokens[:-1]):
+        if token.type != "heading_open" or tokens[index + 1].type != "inline":
+            continue
+        try:
+            level = int(token.tag.removeprefix("h"))
+        except ValueError:
+            continue
+        headings.append((level, tokens[index + 1].content.strip()))
+    return headings
+
+
+class _AnchorParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.anchors: set[str] = set()
+
+    def handle_starttag(
+        self,
+        tag: str,
+        attrs: list[tuple[str, str | None]],
+    ) -> None:
+        for name, value in attrs:
+            if value and (name.lower() == "id" or (tag.lower() == "a" and name.lower() == "name")):
+                self.anchors.add(value)
+
+    handle_startendtag = handle_starttag
+
+
 def heading_anchors(path: Path) -> set[str]:
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeError):
         return set()
-    anchors = set(EXPLICIT_ANCHOR_RE.findall(text))
+    text = markdown_body(text)
+    tokens = MARKDOWN.parse(text)
+    parser = _AnchorParser()
+    for token in _walk_tokens(tokens):
+        if token.type in ("html_block", "html_inline"):
+            parser.feed(token.content)
+    anchors = set(parser.anchors)
     counts: dict[str, int] = {}
-    for heading in HEADING_RE.findall(text):
+    for _, heading in markdown_headings(text):
         base = _slug(heading)
         if not base:
             continue
@@ -173,7 +271,7 @@ def heading_anchors(path: Path) -> set[str]:
 def _parent_traversals(destination: str) -> int:
     if destination.startswith(("/", "whero-wiki:")):
         return 0
-    path_text = unquote(destination.partition("#")[0])
+    path_text = unquote(urlsplit(destination).path)
     count = 0
     for part in PurePosixPath(path_text).parts:
         if part == "..":
@@ -192,7 +290,7 @@ def inspect_document_links(
 ) -> list[LinkReference]:
     mounts = mounts if mounts is not None else discover_mounts(root)
     try:
-        body = document.read_text(encoding="utf-8")
+        body = markdown_body(document.read_text(encoding="utf-8"))
     except (OSError, UnicodeError) as exc:
         raise WheroToolError(f"cannot read Markdown links from {document}: {exc}") from exc
     owner = owning_wiki_root(document, root, mounts)

@@ -1,4 +1,4 @@
 interface:
   display_name: "Whero Wiki"
   short_description: "Build, curate, query, and disclose Whero Wikis"
-  default_prompt: "Use $whero-wiki to establish, curate, review, query, maintain, or selectively disclose a Whero Wiki with source-authoritative provenance and structure-aware validation."
+  default_prompt: "Use $whero-wiki to establish, curate, review, query, maintain, preserve, or selectively disclose a Whero Wiki with source-authoritative provenance, index-declared non-invasive boundaries, structure-aware validation, and durable requirement history for development-mode projects."

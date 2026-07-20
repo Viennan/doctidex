@@ -6,6 +6,7 @@ import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from urllib.parse import urlsplit, urlunsplit
 
 from .errors import WheroToolError
 
@@ -39,15 +40,39 @@ def head_commit(path: Path) -> str | None:
     return git_output(path, "rev-parse", "HEAD")
 
 
+def resolve_commit(path: Path, revision: str) -> str | None:
+    if not revision.strip():
+        return None
+    return git_output(
+        path,
+        "rev-parse",
+        "--verify",
+        "--end-of-options",
+        f"{revision}^{{commit}}",
+    )
+
+
 def sanitize_remote_url(url: str) -> str | None:
     value = url.strip()
     if not value:
         return None
-    value = re.sub(r"^(https?://)[^/@]+@", r"\1", value)
-    value = re.sub(r"^(ssh://)[^/@]+@", r"\1", value)
-    if re.search(r"(?:token|password|passwd|oauth|access_key)=", value, re.I):
-        value = value.split("?", 1)[0]
-    return value
+    parsed = urlsplit(value)
+    if parsed.scheme and parsed.netloc:
+        hostname = parsed.hostname
+        if hostname is None:
+            return None
+        host = f"[{hostname}]" if ":" in hostname else hostname
+        try:
+            port = parsed.port
+        except ValueError:
+            return None
+        netloc = f"{host}:{port}" if port is not None else host
+        return urlunsplit((parsed.scheme, netloc, parsed.path, "", ""))
+
+    value = value.split("#", 1)[0].split("?", 1)[0]
+    if re.fullmatch(r"[^/\s]+@[^/\s:]+:.+", value):
+        value = value.rsplit("@", 1)[1]
+    return value or None
 
 
 def normalize_remote_url(url: str) -> str:
@@ -82,14 +107,27 @@ def changed_paths(path: Path, revision: str) -> list[PurePosixPath]:
     if root is None:
         raise WheroToolError(f"path is not under Git version control: {path}")
     result = subprocess.run(
-        ["git", "-C", str(root), "diff", "--name-only", "--find-renames", revision, "--"],
+        [
+            "git",
+            "-C",
+            str(root),
+            "diff",
+            "--name-only",
+            "-z",
+            "--no-renames",
+            revision,
+            "--",
+        ],
         capture_output=True,
-        text=True,
         check=False,
     )
     if result.returncode != 0:
         raise WheroToolError(
-            f"cannot inspect Git diff {revision}: {result.stderr.strip() or 'git diff failed'}"
+            f"cannot inspect Git diff {revision}: "
+            f"{result.stderr.decode(errors='replace').strip() or 'git diff failed'}"
         )
-    return [PurePosixPath(line) for line in result.stdout.splitlines() if line.strip()]
-
+    return [
+        PurePosixPath(raw.decode("utf-8", errors="surrogateescape"))
+        for raw in result.stdout.split(b"\0")
+        if raw
+    ]

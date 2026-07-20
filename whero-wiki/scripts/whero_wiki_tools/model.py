@@ -64,13 +64,24 @@ def require_framework_file(
     return fields
 
 
-def discover_curated_collections(root: Path) -> tuple[list[CuratedCollection], list[str]]:
+def discover_curated_collections(
+    root: Path,
+    *,
+    excluded_roots: set[PurePosixPath] | None = None,
+) -> tuple[list[CuratedCollection], list[str]]:
     collections: list[CuratedCollection] = []
     problems: list[str] = []
+    excluded_roots = excluded_roots or set()
     for scope_root in sorted(
         (path for path in root.iterdir() if path.is_dir()),
         key=lambda path: path.name,
     ):
+        relative_scope = PurePosixPath(scope_root.name)
+        if any(
+            relative_scope.parts[: len(excluded.parts)] == excluded.parts
+            for excluded in excluded_roots
+        ):
+            continue
         top_index = scope_root / INDEX_FILENAME
         if not top_index.is_file():
             continue
@@ -92,6 +103,11 @@ def discover_curated_collections(root: Path) -> tuple[list[CuratedCollection], l
             problems.append(str(exc))
             continue
         relative_root = PurePosixPath(scope_root.name, *curated_name.parts)
+        if any(
+            relative_root.parts[: len(excluded.parts)] == excluded.parts
+            for excluded in excluded_roots
+        ):
+            continue
         curated_root = path_from_root(root, relative_root)
         collection_index = curated_root / INDEX_FILENAME
         collections.append(
