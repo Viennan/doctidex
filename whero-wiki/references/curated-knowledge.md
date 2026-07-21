@@ -7,7 +7,7 @@
 - [Concept Documents](#concept-documents)
 - [Provenance and Links](#provenance-and-links)
 - [Curation Decisions](#curation-decisions)
-- [Indexes and Partial Disclosure](#indexes-and-partial-disclosure)
+- [Indexes and Views](#indexes-and-views)
 - [Lifecycle](#lifecycle)
 - [Validation](#validation)
 
@@ -31,42 +31,42 @@ Apply this authority order:
    necessarily the latest real-world truth.
 
 Curated concepts are Whero-maintained knowledge. Set `whero_maintenance: true`
-and `whero_curated: true`, but do not set `whero_scope_required: true`.
+and `whero_curated: true`, but do not set `whero_view_required: true`.
 
 ## Collection Discovery
 
-A Wiki top-level scope may declare one curated collection. Add
-`whero_curated_path` to that scope's maintained `index.md`:
+A Wiki top-level section may declare one curated collection. Add
+`whero_curated_path` to that section's maintained `index.md`:
 
 ```yaml
 ---
 type: Whero Wiki Index
 whero_maintenance: true
-whero_scope_required: true
+whero_view_required: true
 whero_curated_path: agent-curated
 ---
 ```
 
 The path must be one direct child directory name relative to the top-level
-scope. Do not use an absolute path, `.` or `..`. A missing field means that the
-scope has no declared curated collection.
+section. Do not use an absolute path, `.` or `..`. A missing field means that
+the section has no declared curated collection.
 
 Development-mode project Wikis are the exception to this top-level declaration:
 their root `index.md` identifies project knowledge areas, and concepts under
 `docs/` (or its approved replacement) do not need `whero_curated_path`.
 
 Introduce and link the collection in the index body. The collection root must
-contain a maintained, scope-required `index.md` with:
+contain a maintained, View-required `index.md` with:
 
 ```yaml
 ---
 type: Whero Curated Collection Index
 title: Agent-Curated Knowledge
-description: Concept-oriented knowledge derived from this scope's sources.
+description: Concept-oriented knowledge derived from this section's sources.
 whero_maintenance: true
-whero_scope_required: true
+whero_view_required: true
 whero_curated_root: true
-whero_curated_format_version: "0.1"
+whero_curated_format_version: "0.0.2"
 ---
 ```
 
@@ -200,7 +200,7 @@ when `docs/` conflicts. Requirement concepts may retain clearly labeled,
 decision-relevant evolution while design and implementation concepts stay
 normalized to the current model.
 
-## Indexes and Partial Disclosure
+## Indexes and Views
 
 Treat collection indexes as high-density concept maps. Group entries by domain
 model, developer problem, lifecycle, or decision rather than source filename.
@@ -211,12 +211,12 @@ otherwise treat each direct-child `index.md` as an entry. A nested index joins
 the chain only when a reachable index links its directory or the index file
 itself. Links from an isolated nested index do not satisfy concept coverage.
 
-When building a partial disclosure:
+When building a View with the active runtime:
 
 - Prefer the narrowest useful curated concept or curated directory when it can
   answer the task with less noise.
 - Retain top-level and collection indexes automatically through
-  `whero_scope_required: true`.
+  `whero_view_required: true`.
 - Do not automatically disclose `source_documents`; they remain selectable
   knowledge rather than framework dependencies.
 - Expand to source material only when exact verification, ambiguity, conflict,
@@ -256,7 +256,7 @@ Link its replacement when one exists and remove it from current index routes.
 ## Validation
 
 Run the bundled validator in full mode against a complete source Wiki and in
-available mode against a partial disclosure:
+View mode against a View:
 
 ```bash
 <python> <skill-directory>/scripts/whero_wiki.py validate \
@@ -267,13 +267,13 @@ Validate mechanically:
 
 - collection declaration and collection-root metadata agreement;
 - required concept fields and allowed lifecycle values;
-- absence of `whero_scope_required: true` on curated concepts;
+- absence of `whero_view_required: true` on curated concepts;
 - safe provenance paths, source existence, and applicable digest or revision
   freshness;
 - framework type, ownership flags, title heading, and log date/order invariants;
 - reachability of maintained indexes from the applicable chain entries;
 - local Markdown targets and curated index coverage;
-- full-Wiki errors versus acceptable unavailable targets in a partial view.
+- full-Wiki errors versus acceptable unavailable targets in a View.
 
 Treat source or revision mismatches and drafts as review diagnostics. Use
 `--strict-stale` when CI should fail on stale provenance. Mechanical validation

@@ -4,15 +4,22 @@ from __future__ import annotations
 
 import configparser
 import os
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Iterator
+from typing import Any, Iterator
 
 from .errors import WheroToolError
-from .frontmatter import frontmatter_is_true, read_flat_frontmatter
-from .model import STATUS_FILENAME, WIKI_META_FILENAME
-from .paths import is_within
+from .frontmatter import frontmatter_is_true, read_frontmatter
+from .git import sanitize_remote_url
+from .model import (
+    INDEX_FILENAME,
+    is_view_required,
+    is_view_root,
+    validate_wiki_root,
+)
+from .paths import is_within, parse_relative_path, path_from_root
 from .preserved import PreservedPath, discover_preserved_paths, path_is_within
 
 
@@ -24,33 +31,192 @@ class WikiMount:
     submodule: bool = False
     git_commit: str | None = None
     git_url: str | None = None
+    projection: str = "mount"
+    content: str = "ordinary"
+    locator_kind: str | None = None
+    locator_path: str | None = None
+    expected_type: str | None = None
+    index: Path | None = None
+
+
+EXTERNAL_REFERENCES_FIELD = "whero_external_references"
+EXTERNAL_REFERENCES_RE = re.compile(rf"^{EXTERNAL_REFERENCES_FIELD}\s*:")
 
 
 def _valid_wiki_meta(path: Path) -> bool:
-    meta = path / WIKI_META_FILENAME
-    if not meta.is_file():
-        return False
     try:
-        fields = read_flat_frontmatter(meta)
-    except ValueError:
+        validate_wiki_root(path, allow_symlink_meta=is_view_root(path))
+    except WheroToolError:
         return False
-    return all(
-        frontmatter_is_true(fields, key)
-        for key in ("whero_wiki", "whero_maintenance", "whero_scope_required")
-    )
+    return True
 
 
-def _is_partial(path: Path) -> bool:
-    status = path / STATUS_FILENAME
-    if not status.is_file():
-        return False
+def _is_view(path: Path) -> bool:
     try:
-        return frontmatter_is_true(
-            read_flat_frontmatter(status),
-            "whero_partial_disclosure",
-        )
-    except ValueError:
+        return is_view_root(path)
+    except WheroToolError:
         return False
+
+
+def _declares_external_references(index: Path) -> bool:
+    try:
+        with index.open(encoding="utf-8") as stream:
+            if stream.readline().strip() != "---":
+                return False
+            for line_number, line in enumerate(stream, start=2):
+                if line_number > 256 or line.strip() == "---":
+                    return False
+                if EXTERNAL_REFERENCES_RE.match(line):
+                    return True
+    except (OSError, UnicodeError):
+        return False
+    return False
+
+
+def _locator_text(locator: dict[str, Any], key: str) -> str | None:
+    value = locator.get(key)
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def discover_declared_references(
+    root: Path,
+    *,
+    excluded_roots: set[PurePosixPath] | None = None,
+) -> tuple[list[WikiMount], list[str]]:
+    root = root.resolve(strict=False)
+    excluded_roots = excluded_roots or set()
+    references: list[WikiMount] = []
+    problems: list[str] = []
+    for directory, dirnames, filenames in os.walk(root, followlinks=False):
+        current = Path(directory)
+        relative_current = PurePosixPath(*current.relative_to(root).parts)
+        dirnames[:] = [
+            name
+            for name in dirnames
+            if name != ".git"
+            and not any(
+                path_is_within(
+                    relative_current / name
+                    if relative_current.parts
+                    else PurePosixPath(name),
+                    boundary,
+                )
+                for boundary in excluded_roots
+            )
+        ]
+        index = current / INDEX_FILENAME
+        if INDEX_FILENAME not in filenames or not _declares_external_references(index):
+            continue
+        try:
+            fields = read_frontmatter(index)
+        except WheroToolError as exc:
+            problems.append(str(exc))
+            continue
+        if not frontmatter_is_true(fields, "whero_maintenance") or not is_view_required(
+            fields
+        ):
+            problems.append(
+                f"{EXTERNAL_REFERENCES_FIELD} requires a maintained, "
+                f"View-required index: {index}"
+            )
+            continue
+        raw_references = fields.get(EXTERNAL_REFERENCES_FIELD)
+        if not isinstance(raw_references, list):
+            problems.append(f"{EXTERNAL_REFERENCES_FIELD} must be a YAML list: {index}")
+            continue
+        for offset, raw in enumerate(raw_references):
+            label = f"{EXTERNAL_REFERENCES_FIELD}[{offset}] in {index}"
+            if not isinstance(raw, dict):
+                problems.append(f"{label} must be a mapping")
+                continue
+            unknown = set(raw) - {"path", "projection", "content", "locator"}
+            if unknown:
+                problems.append(
+                    f"{label} contains reserved fields: {', '.join(sorted(unknown))}"
+                )
+                continue
+            if not isinstance(raw.get("path"), str):
+                problems.append(f"{label} path must be a string")
+                continue
+            try:
+                declared = parse_relative_path(raw["path"], label=label)
+            except WheroToolError as exc:
+                problems.append(str(exc))
+                continue
+            relative = relative_current / declared if relative_current.parts else declared
+            projection = raw.get("projection")
+            content = raw.get("content")
+            locator = raw.get("locator")
+            if projection not in ("mount", "view"):
+                problems.append(f"{label} projection must be mount or view")
+                continue
+            if content not in ("ordinary", "whero-wiki", "view"):
+                problems.append(
+                    f"{label} content must be ordinary, whero-wiki, or view"
+                )
+                continue
+            if projection == "view" and content == "ordinary":
+                problems.append(f"{label} cannot project ordinary content as a View")
+                continue
+            if not isinstance(locator, dict):
+                problems.append(f"{label} locator must be a mapping")
+                continue
+            locator_kind = locator.get("kind")
+            if locator_kind not in ("filesystem", "git", "git-submodule"):
+                problems.append(
+                    f"{label} locator kind must be filesystem, git, or git-submodule"
+                )
+                continue
+            allowed_locator_fields = {
+                "filesystem": {"kind", "path", "type"},
+                "git": {"kind", "url", "revision"},
+                "git-submodule": {"kind"},
+            }[locator_kind]
+            unknown_locator = set(locator) - allowed_locator_fields
+            if unknown_locator:
+                problems.append(
+                    f"{label} locator contains reserved fields: "
+                    f"{', '.join(sorted(unknown_locator))}"
+                )
+                continue
+            locator_path = _locator_text(locator, "path")
+            expected_type = _locator_text(locator, "type")
+            git_url = sanitize_remote_url(_locator_text(locator, "url") or "")
+            git_commit = _locator_text(locator, "revision")
+            if locator_kind == "filesystem":
+                if locator_path is None:
+                    problems.append(f"{label} filesystem locator requires path")
+                    continue
+                if expected_type not in ("file", "directory"):
+                    problems.append(
+                        f"{label} filesystem locator type must be file or directory"
+                    )
+                    continue
+            if locator_kind == "git" and git_url is None:
+                problems.append(f"{label} git locator requires a valid URL")
+                continue
+            if locator_kind == "git" and git_commit is not None and not re.fullmatch(
+                r"[0-9a-fA-F]{40}", git_commit
+            ):
+                problems.append(f"{label} revision must be a full Git commit ID")
+                continue
+            references.append(
+                WikiMount(
+                    relative,
+                    path_from_root(root, relative),
+                    "declared-view" if projection == "view" else "declared-mount",
+                    locator_kind == "git-submodule",
+                    git_commit,
+                    git_url,
+                    projection,
+                    content,
+                    locator_kind,
+                    locator_path,
+                    expected_type,
+                    index,
+                )
+            )
+    return references, problems
 
 
 def git_root(path: Path) -> Path | None:
@@ -132,11 +298,24 @@ def _discover_mounts_raw(root: Path) -> list[WikiMount]:
             relative = relative_current / name if relative_current.parts else PurePosixPath(name)
             submodule = relative in submodules
             wiki = _valid_wiki_meta(child)
-            partial = wiki and _is_partial(child)
+            view = wiki and _is_view(child)
             if submodule or wiki:
                 commit, url = submodules.get(relative, (None, None))
-                kind = "partial-wiki" if partial else "whero-wiki" if wiki else "submodule"
-                mounts.append(WikiMount(relative, child, kind, submodule, commit, url))
+                kind = "view" if view else "whero-wiki" if wiki else "submodule"
+                content = "view" if view else "whero-wiki" if wiki else "ordinary"
+                mounts.append(
+                    WikiMount(
+                        relative,
+                        child,
+                        kind,
+                        submodule,
+                        commit,
+                        sanitize_remote_url(url or ""),
+                        "mount",
+                        content,
+                        "git-submodule" if submodule else None,
+                    )
+                )
                 continue
             if name != ".git":
                 retained.append(name)
@@ -148,13 +327,53 @@ def discover_boundaries(
     root: Path,
 ) -> tuple[list[WikiMount], list[PreservedPath], list[str]]:
     raw_mounts = _discover_mounts_raw(root)
-    preserved, problems = discover_preserved_paths(
+    declared, problems = discover_declared_references(
         root,
         excluded_roots={mount.path for mount in raw_mounts},
     )
+    by_path: dict[PurePosixPath, WikiMount] = {mount.path: mount for mount in raw_mounts}
+    for reference in declared:
+        existing = by_path.get(reference.path)
+        if existing is not None:
+            if existing.index is not None:
+                problems.append(
+                    f"external reference {reference.path} is declared more than once"
+                )
+                continue
+            reference = WikiMount(
+                reference.path,
+                reference.root,
+                reference.kind,
+                reference.submodule or existing.submodule,
+                reference.git_commit or existing.git_commit,
+                reference.git_url or existing.git_url,
+                reference.projection,
+                reference.content,
+                reference.locator_kind or existing.locator_kind,
+                reference.locator_path,
+                reference.expected_type,
+                reference.index,
+            )
+        by_path[reference.path] = reference
+    merged = sorted(by_path.values(), key=lambda mount: mount.path.as_posix())
+    collapsed: list[WikiMount] = []
+    for mount in merged:
+        parent = mount_for_path(mount.path, collapsed)
+        if parent is not None:
+            if mount.index is not None and parent.index is not None:
+                problems.append(
+                    f"external reference {mount.path} overlaps ancestor {parent.path}"
+                )
+            continue
+        collapsed.append(mount)
+    preserved, preserved_problems = discover_preserved_paths(
+        root,
+        excluded_roots={mount.path for mount in collapsed},
+    )
+    problems.extend(preserved_problems)
     mounts = [
         mount
-        for mount in raw_mounts
+        for mount in collapsed
         if not any(path_is_within(mount.path, entry.path) for entry in preserved)
     ]
     return mounts, preserved, problems
@@ -213,7 +432,7 @@ def walk_owned_files(root: Path) -> Iterator[Path]:
     excluded_paths = {mount.path for mount in mounts} | {
         entry.path for entry in preserved
     }
-    partial = _is_partial(root)
+    view_context = _is_view(root)
     disclosed_directory_links: list[Path] = []
     for directory, dirnames, filenames in os.walk(root, followlinks=False):
         current = Path(directory)
@@ -225,7 +444,7 @@ def walk_owned_files(root: Path) -> Iterator[Path]:
                 if relative_current.parts
                 else PurePosixPath(name)
             )
-            if child.is_symlink() and relative not in excluded_paths and partial:
+            if child.is_symlink() and relative not in excluded_paths and view_context:
                 disclosed_directory_links.append(child)
         dirnames[:] = [
             name

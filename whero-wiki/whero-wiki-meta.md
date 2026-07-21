@@ -2,10 +2,10 @@
 type: Whero Wiki
 title: Whero Wiki Product
 description: Canonical specification, portable skill, tooling, references, and tests for the Whero Wiki model.
-format_version: "0.1"
+format_version: "0.0.2"
 whero_wiki: true
 whero_maintenance: true
-whero_scope_required: true
+whero_view_required: true
 ---
 
 # Whero Wiki Product

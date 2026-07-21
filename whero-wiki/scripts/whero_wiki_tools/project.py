@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .errors import WheroToolError
 from .frontmatter import write_markdown_atomic
-from .model import WIKI_META_FILENAME
+from .model import CURATED_FORMAT_VERSION, FORMAT_VERSION, WIKI_META_FILENAME
 from .paths import is_within
 
 
@@ -39,10 +39,10 @@ def init_project_wiki(
         "type": "Whero Wiki",
         "title": title,
         "description": description,
-        "format_version": "0.1",
+        "format_version": FORMAT_VERSION,
         "whero_wiki": True,
         "whero_maintenance": True,
-        "whero_scope_required": True,
+        "whero_view_required": True,
         "whero_project_wiki": True,
     }
     meta_body = (
@@ -62,9 +62,9 @@ def init_project_wiki(
         "title": title,
         "description": description,
         "whero_maintenance": True,
-        "whero_scope_required": True,
+        "whero_view_required": True,
         "whero_curated_root": True,
-        "whero_curated_format_version": "0.1",
+        "whero_curated_format_version": CURATED_FORMAT_VERSION,
     }
     index_body = (
         f"\n# {title}\n\n{description}\n\n"
@@ -81,7 +81,7 @@ def init_project_wiki(
         "type": "Whero Wiki Log",
         "title": f"{title} Knowledge Log",
         "whero_maintenance": True,
-        "whero_scope_required": True,
+        "whero_view_required": True,
     }
     log_body = (
         f"\n# {title} Knowledge Log\n\n## {date.today().isoformat()}\n\n"
@@ -126,7 +126,7 @@ any concept organization.
   boundaries.
 - Declare owner-managed source, generated, or legacy paths under
   `whero_preserved_paths` when Whero must not write inside them and whole-only
-  disclosure is acceptable. Use a mount when inner partial disclosure is needed.
+  disclosure is acceptable. Use a View projection when selective exposure is needed.
 - Before completing a change, inspect `git diff --name-status`, run the Whero
   affected-concept query, validate the Wiki, and run `git diff --check`.
 """

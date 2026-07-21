@@ -25,11 +25,13 @@ from .links import (
 )
 from .mounts import discover_boundaries, require_owned_write_path
 from .model import (
+    CURATED_FORMAT_VERSION,
     INDEX_FILENAME,
     LOG_FILENAME,
-    STATUS_FILENAME,
     CuratedCollection,
     discover_curated_collections,
+    is_view_root,
+    is_view_required,
     path_is_in_collection,
     require_framework_file,
     validate_wiki_root,
@@ -82,7 +84,7 @@ def init_index(
         "title": title,
         "description": description,
         "whero_maintenance": True,
-        "whero_scope_required": True,
+        "whero_view_required": True,
     }
     body = f"\n# {title}\n\n{description}\n"
     if not dry_run:
@@ -112,7 +114,7 @@ def init_log(
         "type": "Whero Wiki Log",
         "title": title,
         "whero_maintenance": True,
-        "whero_scope_required": True,
+        "whero_view_required": True,
     }
     body = f"\n# {title}\n\n## {date.today().isoformat()}\n\n- **Initialization**: Created this maintained log.\n"
     if not dry_run:
@@ -134,7 +136,7 @@ def _body_links_to_directory(body: str, document: Path, target: Path) -> bool:
 
 def init_curated_collection(
     raw_root: Path,
-    scope_text: str,
+    section_text: str,
     curated_text: str,
     title: str,
     description: str,
@@ -143,18 +145,22 @@ def init_curated_collection(
     dry_run: bool = False,
 ) -> Path:
     root = validate_wiki_root(raw_root)
-    scope = parse_relative_path(scope_text, label="top-level scope", single_component=True)
+    section = parse_relative_path(
+        section_text,
+        label="top-level section",
+        single_component=True,
+    )
     curated = parse_relative_path(
         curated_text,
         label="curated collection path",
         single_component=True,
     )
-    scope_root = resolve_within(root, scope)
-    if not scope_root.is_dir():
-        raise WheroToolError(f"top-level scope is not a directory: {scope}")
-    top_index = scope_root / INDEX_FILENAME
-    logical_scope_root = path_from_root(root, scope)
-    require_owned_write_path(root, logical_scope_root / INDEX_FILENAME)
+    section_root = resolve_within(root, section)
+    if not section_root.is_dir():
+        raise WheroToolError(f"top-level section is not a directory: {section}")
+    top_index = section_root / INDEX_FILENAME
+    logical_section_root = path_from_root(root, section)
+    require_owned_write_path(root, logical_section_root / INDEX_FILENAME)
     top_document = read_markdown(top_index)
     require_framework_file(top_index)
     existing = top_document.fields.get("whero_curated_path")
@@ -162,10 +168,10 @@ def init_curated_collection(
         raise WheroToolError(
             f"top-level index already declares a different curated path: {existing}"
         )
-    collection_root = scope_root / curated.as_posix()
+    collection_root = section_root / curated.as_posix()
     require_owned_write_path(
         root,
-        logical_scope_root / curated.as_posix() / INDEX_FILENAME,
+        logical_section_root / curated.as_posix() / INDEX_FILENAME,
     )
     if collection_root.exists() or collection_root.is_symlink():
         raise WheroToolError(f"curated collection path already exists: {collection_root}")
@@ -183,9 +189,9 @@ def init_curated_collection(
         "title": title,
         "description": description,
         "whero_maintenance": True,
-        "whero_scope_required": True,
+        "whero_view_required": True,
         "whero_curated_root": True,
-        "whero_curated_format_version": "0.1",
+        "whero_curated_format_version": CURATED_FORMAT_VERSION,
     }
     collection_body = (
         f"\n# {title}\n\n{description}\n\n"
@@ -206,7 +212,7 @@ def init_curated_collection(
                 "type": "Whero Wiki Log",
                 "title": f"{title} Log",
                 "whero_maintenance": True,
-                "whero_scope_required": True,
+                "whero_view_required": True,
             }
             log_body = (
                 f"\n# {title} Log\n\n## {date.today().isoformat()}\n\n"
@@ -377,7 +383,7 @@ def _validate_local_links(
         )
         if kind == "external":
             continue
-        if kind in ("invalid", "cross-boundary"):
+        if kind in ("invalid", "cross-boundary", "root-absolute"):
             diagnostics.error(
                 "LOCAL_LINK_INVALID",
                 f"local Markdown target crosses its Wiki boundary: {destination}",
@@ -447,10 +453,10 @@ def _validate_framework_document(
             f"{path.name} must set whero_maintenance: true",
             path,
         )
-    if not frontmatter_is_true(fields, "whero_scope_required"):
+    if not is_view_required(fields):
         diagnostics.error(
-            "FRAMEWORK_SCOPE_REQUIRED",
-            f"{path.name} must set whero_scope_required: true",
+            "FRAMEWORK_VIEW_REQUIRED",
+            f"{path.name} must set whero_view_required: true",
             path,
         )
 
@@ -568,10 +574,10 @@ def _validate_concept(
             "curated concept must set whero_curated: true",
             concept,
         )
-    if frontmatter_is_true(fields, "whero_scope_required"):
+    if is_view_required(fields):
         diagnostics.error(
-            "CURATED_SCOPE_REQUIRED",
-            "curated concepts must not set whero_scope_required: true",
+            "CURATED_VIEW_REQUIRED",
+            "curated concepts must not set whero_view_required: true",
             concept,
         )
     mode = scalar_text(fields.get("curation_mode"))
@@ -647,18 +653,49 @@ def validate_wiki(
     mode: str = "auto",
     strict_stale: bool = False,
 ) -> Diagnostics:
-    if mode not in ("auto", "full", "available"):
+    if mode not in ("auto", "full", "view"):
         raise WheroToolError(f"unsupported validation mode: {mode}")
     candidate_root = raw_root.expanduser().resolve(strict=False)
-    available = mode == "available" or (
-        mode == "auto" and (candidate_root / STATUS_FILENAME).is_file()
+    available = mode == "view" or (
+        mode == "auto" and is_view_root(candidate_root)
     )
     root = validate_wiki_root(raw_root, allow_symlink_meta=available)
     diagnostics = Diagnostics(root)
     project_wiki = _is_project_wiki(root)
-    _, preserved, preserved_problems = discover_boundaries(root)
+    mounts, preserved, preserved_problems = discover_boundaries(root)
     for problem in preserved_problems:
-        diagnostics.error("PRESERVED_DECLARATION", problem)
+        code = (
+            "EXTERNAL_REFERENCE_DECLARATION"
+            if "external reference" in problem
+            or "whero_external_references" in problem
+            else "PRESERVED_DECLARATION"
+        )
+        diagnostics.error(code, problem)
+    for mount in mounts:
+        if mount.index is None:
+            continue
+        if not mount.root.exists():
+            reporter = diagnostics.notice if available else diagnostics.error
+            reporter(
+                "EXTERNAL_REFERENCE_UNAVAILABLE"
+                if available
+                else "EXTERNAL_REFERENCE_MISSING",
+                f"declared external reference is unavailable: {mount.path}",
+                mount.index,
+            )
+            continue
+        if mount.projection == "view":
+            try:
+                valid_view = is_view_root(mount.root)
+            except WheroToolError as exc:
+                diagnostics.error("EXTERNAL_REFERENCE_VIEW", str(exc), mount.index)
+                continue
+            if not valid_view:
+                diagnostics.error(
+                    "EXTERNAL_REFERENCE_VIEW",
+                    f"declared View path is not a Whero Wiki View: {mount.path}",
+                    mount.index,
+                )
     for entry in preserved:
         if not entry.root.exists():
             reporter = diagnostics.notice if available else diagnostics.error
@@ -726,12 +763,12 @@ def validate_wiki(
                     "curated root is not declared by a top-level index",
                     maintained,
                 )
-        if frontmatter_is_true(fields, "whero_scope_required") and not frontmatter_is_true(
+        if is_view_required(fields) and not frontmatter_is_true(
             fields, "whero_maintenance"
         ):
             diagnostics.error(
-                "SCOPE_REQUIRED_MAINTENANCE",
-                "scope-required file must set whero_maintenance: true",
+                "VIEW_REQUIRED_MAINTENANCE",
+                "View-required file must set whero_maintenance: true",
                 maintained,
             )
         if maintained.name == INDEX_FILENAME:
@@ -810,10 +847,11 @@ def validate_wiki(
             )
         if collection_fields and scalar_text(
             collection_fields.get("whero_curated_format_version")
-        ) != "0.1":
+        ) != CURATED_FORMAT_VERSION:
             diagnostics.error(
                 "CURATED_FORMAT_VERSION",
-                'collection index must set whero_curated_format_version: "0.1"',
+                "collection index must set whero_curated_format_version: "
+                f'"{CURATED_FORMAT_VERSION}"',
                 collection.collection_index,
             )
 

@@ -8,13 +8,24 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 from .errors import WheroToolError
-from .frontmatter import frontmatter_is_true, read_flat_frontmatter, read_frontmatter
-from .model import INDEX_FILENAME, LOG_FILENAME, STATUS_FILENAME, WIKI_META_FILENAME
+from .frontmatter import frontmatter_is_true, read_frontmatter
+from .model import (
+    INDEX_FILENAME,
+    LOG_FILENAME,
+    STATUS_FILENAME,
+    WIKI_META_FILENAME,
+    is_view_required,
+    is_view_root,
+    validate_wiki_root,
+)
 from .paths import parse_relative_path, path_from_root
 
 
 PRESERVED_FIELD = "whero_preserved_paths"
-PRESERVED_KEY_RE = re.compile(rf"^{PRESERVED_FIELD}\s*:")
+PRESERVED_PATTERNS_FIELD = "whero_preserved_patterns"
+PRESERVED_KEY_RE = re.compile(
+    rf"^(?:{PRESERVED_FIELD}|{PRESERVED_PATTERNS_FIELD})\s*:"
+)
 RESERVED_FRAMEWORK_NAMES = {
     INDEX_FILENAME,
     LOG_FILENAME,
@@ -48,31 +59,19 @@ def _declares_preserved(index: Path) -> bool:
     return False
 
 
-def _is_partial_root(root: Path) -> bool:
-    status = root / STATUS_FILENAME
-    if not status.is_file():
-        return False
+def _is_view_context(root: Path) -> bool:
     try:
-        return frontmatter_is_true(
-            read_flat_frontmatter(status),
-            "whero_partial_disclosure",
-        )
+        return is_view_root(root)
     except WheroToolError:
         return False
 
 
 def _valid_nested_wiki(path: Path) -> bool:
-    meta = path / WIKI_META_FILENAME
-    if not meta.is_file():
-        return False
     try:
-        fields = read_flat_frontmatter(meta)
+        validate_wiki_root(path, allow_symlink_meta=is_view_root(path))
     except WheroToolError:
         return False
-    return all(
-        frontmatter_is_true(fields, key)
-        for key in ("whero_wiki", "whero_maintenance", "whero_scope_required")
-    )
+    return True
 
 
 def path_is_within(relative: PurePosixPath, boundary: PurePosixPath) -> bool:
@@ -98,7 +97,7 @@ def discover_preserved_paths(
     entries: list[PreservedPath] = []
     problems: list[str] = []
     disclosed_directory_links: list[Path] = []
-    partial = _is_partial_root(root)
+    view_context = _is_view_context(root)
 
     def scan_index(current: Path, filenames: list[str]) -> None:
         index = current / INDEX_FILENAME
@@ -110,17 +109,22 @@ def discover_preserved_paths(
         except WheroToolError as exc:
             problems.append(str(exc))
             return
-        raw_paths = fields.get(PRESERVED_FIELD)
-        if not frontmatter_is_true(fields, "whero_maintenance") or not frontmatter_is_true(
-            fields, "whero_scope_required"
+        raw_paths = fields.get(PRESERVED_FIELD, [])
+        raw_patterns = fields.get(PRESERVED_PATTERNS_FIELD, [])
+        if not frontmatter_is_true(fields, "whero_maintenance") or not is_view_required(
+            fields
         ):
             problems.append(
-                f"{PRESERVED_FIELD} requires a maintained, scope-required index: {index}"
+                "preserved declarations require a maintained, View-required "
+                f"index: {index}"
             )
             return
         if not isinstance(raw_paths, list):
             problems.append(f"{PRESERVED_FIELD} must be a YAML list: {index}")
-            return
+            raw_paths = []
+        if not isinstance(raw_patterns, list):
+            problems.append(f"{PRESERVED_PATTERNS_FIELD} must be a YAML list: {index}")
+            raw_patterns = []
         for raw_path in raw_paths:
             if not isinstance(raw_path, str):
                 problems.append(f"{PRESERVED_FIELD} entries must be strings: {index}")
@@ -155,6 +159,38 @@ def discover_preserved_paths(
                 continue
             entries.append(PreservedPath(relative, path_from_root(root, relative), index))
 
+        try:
+            direct_children = sorted(current.iterdir(), key=lambda path: path.name)
+        except OSError as exc:
+            problems.append(f"cannot inspect preserved-pattern directory {current}: {exc}")
+            direct_children = []
+        for raw_pattern in raw_patterns:
+            if not isinstance(raw_pattern, str):
+                problems.append(
+                    f"{PRESERVED_PATTERNS_FIELD} entries must be strings: {index}"
+                )
+                continue
+            try:
+                pattern = re.compile(raw_pattern)
+            except re.error as exc:
+                problems.append(
+                    f"invalid preserved pattern {raw_pattern!r} in {index}: {exc}"
+                )
+                continue
+            for child_path in direct_children:
+                if not pattern.fullmatch(child_path.name):
+                    continue
+                if child_path.name in RESERVED_FRAMEWORK_NAMES:
+                    continue
+                relative = (
+                    relative_current / child_path.name
+                    if relative_current.parts
+                    else PurePosixPath(child_path.name)
+                )
+                if any(path_is_within(relative, mount) for mount in excluded_roots):
+                    continue
+                entries.append(PreservedPath(relative, child_path, index))
+
     for directory, dirnames, filenames in os.walk(root, followlinks=False):
         current = Path(directory)
         relative_current = PurePosixPath(*current.relative_to(root).parts)
@@ -172,7 +208,7 @@ def discover_preserved_paths(
                 path_is_within(child, boundary) for boundary in blocked_roots
             ):
                 continue
-            if child_path.is_symlink() and partial:
+            if child_path.is_symlink() and view_context:
                 disclosed_directory_links.append(child_path)
                 continue
             retained.append(name)
@@ -206,9 +242,6 @@ def discover_preserved_paths(
     for entry in sorted(entries, key=lambda item: (len(item.path.parts), str(item.path))):
         parent = preserved_for_path(entry.path, collapsed)
         if parent is not None:
-            problems.append(
-                f"preserved paths must not overlap: {entry.path} is inside {parent.path}"
-            )
             continue
         collapsed.append(entry)
     return collapsed, problems

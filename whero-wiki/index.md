@@ -3,13 +3,14 @@ type: Whero Wiki Index
 title: Whero Wiki Product Index
 description: Routes to the Whero Wiki specification, portable skill, implementation, and validation assets.
 whero_maintenance: true
-whero_scope_required: true
+whero_view_required: true
 whero_preserved_paths:
   - SKILL.md
   - agents
   - references
   - requirements.txt
   - scripts
+  - spec
   - tests
 ---
 
@@ -27,16 +28,18 @@ authorized specification, implementation, reference, or test work.
 
 ## Product Contracts
 
-- [References](references/) define curated knowledge, project knowledge,
-  preserved paths, links, mounts, disclosure behavior, and optional OKF
-  background.
+- [Protocol specification](spec/) contains the normative English v0.0.2 contract and
+  its synchronized Chinese translations under `spec/CN/`.
+- [References](references/) provide current operational workflows for curated
+  knowledge, project knowledge, links, external boundaries, Views, and
+  historical OKF background.
 
 ## Implementation And Validation
 
-- [Scripts](scripts/) implement maintenance, validation, link, provenance,
-  boundary, and partial-disclosure workflows.
+- [Scripts](scripts/) implement the active v0.0.2 maintenance, validation, link,
+  provenance, boundary, and View workflows.
 - [Tests](tests/) cover maintained knowledge, preserved boundaries, links,
-  mounts, provenance, project initialization, and disclosure behavior.
+  mounts, provenance, project initialization, and View behavior.
 - [Python requirements](requirements.txt) declare the portable runtime
   dependencies.
 

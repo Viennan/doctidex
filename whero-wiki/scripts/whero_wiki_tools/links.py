@@ -1,4 +1,4 @@
-"""Parse, resolve, inspect, and normalize Whero Wiki Markdown links."""
+"""Parse, resolve, and inspect Whero Wiki Markdown links."""
 
 from __future__ import annotations
 
@@ -16,13 +16,11 @@ from markdown_it import MarkdownIt
 from markdown_it.token import Token
 
 from .errors import WheroToolError
-from .frontmatter import frontmatter_is_true, read_flat_frontmatter
-from .model import STATUS_FILENAME
+from .model import is_view_root
 from .mounts import WikiMount, discover_mounts, mount_for_path, walk_owned_files
 from .paths import is_within, parse_relative_path, path_from_root, wiki_relative
 
 
-WHERO_SCHEME = "whero-wiki:/"
 MARKDOWN = MarkdownIt("commonmark")
 LOCAL_FILE_TLDS = {
     "c",
@@ -119,7 +117,7 @@ def _is_external(destination: str) -> bool:
     if destination.startswith("//"):
         return True
     parsed = urlsplit(destination)
-    if parsed.scheme and parsed.scheme != "whero-wiki":
+    if parsed.scheme:
         return True
     first = parsed.path.split("/", 1)[0]
     hostname = first.rsplit(":", 1)[0] if first.rsplit(":", 1)[-1].isdigit() else first
@@ -132,15 +130,9 @@ def _is_external(destination: str) -> bool:
     return hostname.rsplit(".", 1)[-1].lower() not in LOCAL_FILE_TLDS
 
 
-def _is_partial_root(root: Path) -> bool:
-    status = root / STATUS_FILENAME
-    if not status.is_file():
-        return False
+def _is_view_context(root: Path) -> bool:
     try:
-        return frontmatter_is_true(
-            read_flat_frontmatter(status),
-            "whero_partial_disclosure",
-        )
+        return is_view_root(root)
     except WheroToolError:
         return False
 
@@ -152,7 +144,7 @@ def _logical_path(path: Path) -> Path:
 def owning_wiki_root(document: Path, root: Path, mounts: list[WikiMount]) -> Path:
     relative = wiki_relative(_logical_path(document), _logical_path(root))
     mount = mount_for_path(relative, mounts)
-    if mount and mount.kind in ("whero-wiki", "partial-wiki"):
+    if mount and mount.content in ("whero-wiki", "view"):
         return _logical_path(mount.root)
     return _logical_path(root)
 
@@ -171,19 +163,7 @@ def resolve_markdown_destination(
     fragment = unquote(parsed.fragment)
     mounts = mounts or []
     owner = owning_wiki_root(document, wiki_root, mounts)
-    preserve_logical_path = _is_partial_root(owner)
-    if destination.startswith("whero-wiki:"):
-        if not destination.startswith(WHERO_SCHEME):
-            return None, fragment, "invalid"
-        path_text = parsed.path.lstrip("/")
-        target = _logical_path(owner / unquote(path_text))
-        if not is_within(target, owner):
-            return target, fragment, "cross-boundary"
-        return (
-            target if preserve_logical_path else target.resolve(strict=False),
-            fragment,
-            "whero-rooted",
-        )
+    preserve_logical_path = _is_view_context(owner)
     if not path_text:
         target = _logical_path(document)
         return (
@@ -269,7 +249,7 @@ def heading_anchors(path: Path) -> set[str]:
 
 
 def _parent_traversals(destination: str) -> int:
-    if destination.startswith(("/", "whero-wiki:")):
+    if destination.startswith("/"):
         return 0
     path_text = unquote(urlsplit(destination).path)
     count = 0
@@ -304,7 +284,7 @@ def inspect_document_links(
         )
         if kind == "external":
             status = "external"
-        elif kind in ("invalid", "cross-boundary"):
+        elif kind in ("invalid", "cross-boundary", "root-absolute"):
             status = "invalid"
         elif target is None or not target.exists():
             status = "unavailable" if available else "missing"
@@ -374,51 +354,13 @@ def inbound_links(
     available: bool = False,
 ) -> list[LinkReference]:
     target = path_from_root(root, parse_relative_path(target_text, label="target path"))
-    target = _logical_path(target) if _is_partial_root(root) else target.resolve(strict=False)
+    target = _logical_path(target) if _is_view_context(root) else target.resolve(strict=False)
     target_relative = target.relative_to(_logical_path(root)).as_posix()
     return [
         reference
         for reference in inspect_wiki_links(root, available=available)
         if reference.target == target_relative
     ]
-
-
-def normalization_suggestions(root: Path) -> list[dict[str, str]]:
-    suggestions: list[dict[str, str]] = []
-    for reference in inspect_wiki_links(root):
-        if (
-            reference.kind != "relative"
-            or reference.parent_traversals <= 3
-            or reference.status not in ("resolved", "anchor-missing")
-            or reference.target is None
-        ):
-            continue
-        owner = Path(reference.wiki_root)
-        target = _logical_path(root / reference.target)
-        if not is_within(target, owner):
-            continue
-        owner_relative = target.relative_to(owner).as_posix()
-        replacement = f"{WHERO_SCHEME}{owner_relative}"
-        if reference.anchor:
-            replacement += f"#{reference.anchor}"
-        suggestions.append(
-            {
-                "source": reference.source,
-                "destination": reference.destination,
-                "replacement": replacement,
-                "reason": "relative link traverses more than three parent directories",
-            }
-        )
-    return suggestions
-
-
-def render_suggestions(suggestions: list[dict[str, str]], output_format: str) -> str:
-    if output_format == "json":
-        return json.dumps(suggestions, indent=2)
-    return "\n".join(
-        f"SUGGEST {item['source']}: {item['destination']} -> {item['replacement']}"
-        for item in suggestions
-    )
 
 
 def render_link_references(references: list[LinkReference], output_format: str) -> str:

@@ -22,16 +22,30 @@ from .links import (
     inbound_links,
     inspect_document_links,
     inspect_wiki_links,
-    normalization_suggestions,
     render_link_references,
-    render_suggestions,
 )
-from .model import STATUS_FILENAME, validate_wiki_root
+from .model import is_view_root, validate_wiki_root
 from .mounts import discover_boundaries
 from .paths import parse_relative_path, path_from_root
 from .git import changed_paths, repository_root
 from .project import init_project_wiki
 from .provenance import affected_concepts
+from .restoration import (
+    apply_restoration,
+    apply_view_restoration,
+    plan_restoration,
+    plan_view_restoration,
+)
+from .view_selection import (
+    DEFAULT_COLLAPSE_THRESHOLD,
+    parse_collapse_threshold,
+    parse_view_name,
+)
+from .view_service import execute_view
+from .view_types import ViewRequest
+
+
+VALIDATION_MODES = ("auto", "full", "view")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -40,9 +54,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     commands = parser.add_subparsers(dest="command", required=True)
 
-    validate = commands.add_parser("validate", help="validate a full or partial Wiki")
+    validate = commands.add_parser("validate", help="validate a full Wiki or View")
     validate.add_argument("--wiki", required=True, type=Path)
-    validate.add_argument("--mode", choices=("auto", "full", "available"), default="auto")
+    validate.add_argument("--mode", choices=VALIDATION_MODES, default="auto")
     validate.add_argument("--strict-stale", action="store_true")
     validate.add_argument("--format", choices=("text", "json"), default="text")
 
@@ -58,7 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument("--file")
         command.add_argument(
             "--mode",
-            choices=("auto", "full", "available"),
+            choices=VALIDATION_MODES,
             default="auto",
         )
         command.add_argument("--format", choices=("text", "json"), default="text")
@@ -67,25 +81,82 @@ def build_parser() -> argparse.ArgumentParser:
     inbound.add_argument("--target", required=True)
     inbound.add_argument(
         "--mode",
-        choices=("auto", "full", "available"),
+        choices=VALIDATION_MODES,
         default="auto",
     )
     inbound.add_argument("--format", choices=("text", "json"), default="text")
-    normalize = link_commands.add_parser(
-        "normalize",
-        help="suggest whero-wiki:/ replacements for deep relative links",
-    )
-    normalize.add_argument("--wiki", required=True, type=Path)
-    normalize.add_argument("--dry-run", action="store_true", required=True)
-    normalize.add_argument("--format", choices=("text", "json"), default="text")
-
     mounts = commands.add_parser(
         "mounts",
         help="list preserved, nested Wiki, and submodule boundaries",
     )
     mounts.add_argument("--wiki", required=True, type=Path)
-    mounts.add_argument("--mode", choices=("auto", "full", "available"), default="auto")
+    mounts.add_argument("--mode", choices=VALIDATION_MODES, default="auto")
     mounts.add_argument("--format", choices=("text", "json"), default="text")
+
+    restore = commands.add_parser(
+        "restore",
+        help="plan or apply restoration of declared external references",
+    )
+    restore_target = restore.add_mutually_exclusive_group(required=True)
+    restore_target.add_argument("--wiki", type=Path, help="Wiki with declarations")
+    restore_target.add_argument("--view", type=Path, help="View root to rebuild")
+    restore.add_argument(
+        "--source",
+        type=Path,
+        help="reviewed relocated immediate Wiki or View source for --view",
+    )
+    restore.add_argument(
+        "--store",
+        type=Path,
+        help="repository store for a missing recorded Git source",
+    )
+    restore.add_argument(
+        "--apply",
+        action="store_true",
+        help="apply the reviewed plan (default: print the plan only)",
+    )
+    restore.add_argument("--format", choices=("text", "json"), default="text")
+
+    view = commands.add_parser("view", help="create or expand a Whero Wiki View")
+    view.add_argument(
+        "paths",
+        nargs="*",
+        help="absolute, working-directory-relative, or source-relative selections",
+    )
+    view.add_argument(
+        "--source",
+        type=Path,
+        help=(
+            "source Wiki or View root, or path inside it; required only when "
+            "inference is ambiguous"
+        ),
+    )
+    view.add_argument("--target", required=True, type=Path, help="parent for the View")
+    view.add_argument("--view-name", type=parse_view_name, help="View directory name")
+    view.add_argument(
+        "--include",
+        action="append",
+        default=[],
+        help="additional selection path; repeat as needed",
+    )
+    view.add_argument(
+        "--include-from",
+        action="append",
+        default=[],
+        type=Path,
+        help="selection list file; repeat as needed",
+    )
+    view.add_argument(
+        "--collapse-threshold",
+        default=DEFAULT_COLLAPSE_THRESHOLD,
+        type=parse_collapse_threshold,
+        help="adaptive collapse percentage; use 0 to disable (default: 80)",
+    )
+    view.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="validate and print the complete plan without writing",
+    )
 
     project = commands.add_parser("init-project-wiki", help="initialize a project repository as a Whero Wiki")
     project.add_argument("--root", required=True, type=Path)
@@ -117,7 +188,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="declare and create a top-level curated collection",
     )
     curated.add_argument("--wiki", required=True, type=Path)
-    curated.add_argument("--scope", required=True)
+    curated.add_argument("--section", required=True)
     curated.add_argument("--path", required=True)
     curated.add_argument("--title", required=True)
     curated.add_argument("--description", required=True)
@@ -162,6 +233,76 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
+        if args.command == "view":
+            result = execute_view(
+                ViewRequest(
+                    source=args.source,
+                    target=args.target,
+                    view_name=args.view_name,
+                    includes=tuple([*args.include, *args.paths]),
+                    include_files=tuple(args.include_from),
+                    collapse_threshold=args.collapse_threshold,
+                    dry_run=args.dry_run,
+                )
+            )
+            for message in result.messages:
+                print(message)
+            return 0
+        if args.command == "restore":
+            if args.view:
+                view_plan = plan_view_restoration(
+                    args.view,
+                    source=args.source,
+                    store=args.store,
+                )
+                if args.apply:
+                    result = apply_view_restoration(view_plan)
+                    rows = list(result.messages)
+                else:
+                    operation = (
+                        f"clone {view_plan.clone_url} to {view_plan.checkout}, then rebuild"
+                        if view_plan.clone_url
+                        else "validate the source and rebuild immediate-source links"
+                    )
+                    rows = [
+                        f"missing {view_plan.view_root}: {operation} from {view_plan.source}"
+                    ]
+                if args.format == "json":
+                    print(json.dumps({"view": str(view_plan.view_root), "plan": rows}, indent=2))
+                else:
+                    for row in rows:
+                        print(row)
+                return 0
+            assert args.wiki is not None
+            if args.source is not None:
+                raise WheroToolError("--source is valid only with --view")
+            plan = plan_restoration(args.wiki, store=args.store)
+            if args.apply:
+                messages = apply_restoration(plan)
+                if args.format == "json":
+                    print(json.dumps({"applied": list(messages)}, indent=2))
+                else:
+                    for message in messages:
+                        print(message)
+            else:
+                rows = [
+                    {
+                        "path": action.reference.path.as_posix(),
+                        "state": action.state,
+                        "operation": action.operation,
+                        "message": action.message,
+                    }
+                    for action in plan.actions
+                ]
+                if args.format == "json":
+                    print(json.dumps(rows, indent=2))
+                else:
+                    for row in rows:
+                        print(
+                            f"{row['state']} {row['path']}: "
+                            f"{row['operation']} - {row['message']}"
+                        )
+            return 0
         if args.command == "init-project-wiki":
             paths = init_project_wiki(
                 args.root,
@@ -198,8 +339,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "links":
             candidate = args.wiki.expanduser().resolve(strict=False)
             link_mode = getattr(args, "mode", "full")
-            available = link_mode == "available" or (
-                link_mode == "auto" and (candidate / STATUS_FILENAME).is_file()
+            available = link_mode == "view" or (
+                link_mode == "auto" and is_view_root(candidate)
             )
             root = validate_wiki_root(
                 args.wiki,
@@ -208,8 +349,6 @@ def main(argv: list[str] | None = None) -> int:
             if args.links_command == "inbound":
                 references = inbound_links(root, args.target, available=available)
                 output = render_link_references(references, args.format)
-            elif args.links_command == "normalize":
-                output = render_suggestions(normalization_suggestions(root), args.format)
             else:
                 if args.file:
                     relative = parse_relative_path(args.file, label="Markdown file")
@@ -235,8 +374,8 @@ def main(argv: list[str] | None = None) -> int:
             from dataclasses import asdict
 
             candidate = args.wiki.expanduser().resolve(strict=False)
-            available = args.mode == "available" or (
-                args.mode == "auto" and (candidate / STATUS_FILENAME).is_file()
+            available = args.mode == "view" or (
+                args.mode == "auto" and is_view_root(candidate)
             )
             root = validate_wiki_root(args.wiki, allow_symlink_meta=available)
             mounts_found, preserved, problems = discover_boundaries(root)
@@ -250,6 +389,7 @@ def main(argv: list[str] | None = None) -> int:
                                 **asdict(mount),
                                 "path": mount.path.as_posix(),
                                 "root": str(mount.root),
+                                "index": str(mount.index) if mount.index else None,
                             }
                             for mount in mounts_found
                         ]
@@ -309,7 +449,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "init-curated":
             path = init_curated_collection(
                 args.wiki,
-                args.scope,
+                args.section,
                 args.path,
                 args.title,
                 args.description,

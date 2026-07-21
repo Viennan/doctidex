@@ -1,0 +1,4 @@
+interface:
+  display_name: "Submit Whero Wiki Change"
+  short_description: "Prepare commits, push a branch, and draft PR text"
+  default_prompt: "Use $submit-whero-wiki-change to validate, review, commit, push, and draft the PR or MR text."

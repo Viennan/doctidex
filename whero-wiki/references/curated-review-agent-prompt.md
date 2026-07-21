@@ -16,7 +16,7 @@ your findings.
 Identify the Wiki from `whero-wiki-meta.md`. Read the nearest maintained indexes
 and, when present, the curated collection declaration. For a development-mode
 project Wiki, use the root index and its declared `docs/` (or replacement) areas.
-If only a partial disclosure is available, state that limitation and do not
+If only a View is available, state that limitation and do not
 assume undisclosed files are absent from the source Wiki.
 When an index declares source material preserved, read it when available but do
 not expect or require outer Wiki metadata, validation, or link repair inside it.
@@ -42,7 +42,7 @@ the latest real-world truth.
    frontmatter, body, nearest index entry, and all available
    `source_documents` or generalized `provenance` entries.
 3. Verify each recorded path and applicable SHA-256 or Git revision. Treat an
-   unavailable source in a partial disclosure as unverified coverage, not proof
+   unavailable source in a View as unverified coverage, not proof
    of an invalid concept.
 4. Reconstruct the important claims, constraints, parameter names, enums,
    defaults, state transitions, ordering, caveats, version limits, and negative

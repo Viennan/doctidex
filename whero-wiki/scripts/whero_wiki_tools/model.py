@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -12,19 +13,57 @@ from .paths import parse_relative_path, path_from_root
 
 
 WIKI_META_FILENAME = "whero-wiki-meta.md"
-STATUS_FILENAME = "partial-disclosure.md"
+STATUS_FILENAME = "whero-wiki-view.md"
 INDEX_FILENAME = "index.md"
 LOG_FILENAME = "log.md"
+FORMAT_VERSION = "0.0.2"
+CURATED_FORMAT_VERSION = "0.0.2"
+VIEW_REQUIRED_FIELD = "whero_view_required"
+VIEW_FIELD = "whero_view"
 
 
 @dataclass(frozen=True)
 class CuratedCollection:
-    scope_name: str
-    scope_root: Path
+    section_name: str
+    section_root: Path
     root: Path
     relative_root: PurePosixPath
     top_index: Path
     collection_index: Path
+
+
+def is_view_required(fields: dict[str, Any]) -> bool:
+    return frontmatter_is_true(fields, VIEW_REQUIRED_FIELD)
+
+
+def is_view_metadata(fields: dict[str, Any]) -> bool:
+    return frontmatter_is_true(fields, VIEW_FIELD)
+
+
+def view_status_path(root: Path) -> Path | None:
+    status = root / STATUS_FILENAME
+    return status if os.path.lexists(status) else None
+
+
+def is_view_root(root: Path) -> bool:
+    status = view_status_path(root)
+    if status is None:
+        return False
+    fields = read_frontmatter(status)
+    if not is_view_metadata(fields):
+        return False
+    if scalar_text(fields.get("type")) != "Whero Wiki View":
+        raise WheroToolError(f"invalid View type in {status}")
+    if scalar_text(fields.get("format_version")) != FORMAT_VERSION:
+        raise WheroToolError(f"invalid View format_version in {status}")
+    if not frontmatter_is_true(fields, "whero_maintenance") or not frontmatter_is_true(
+        fields, VIEW_REQUIRED_FIELD
+    ):
+        raise WheroToolError(f"invalid View framework flags in {status}")
+    for key in ("requested_selections", "effective_roots"):
+        if not isinstance(fields.get(key), list):
+            raise WheroToolError(f"View metadata requires {key}: {status}")
+    return True
 
 
 def validate_wiki_root(raw_root: Path, *, allow_symlink_meta: bool = False) -> Path:
@@ -40,8 +79,19 @@ def validate_wiki_root(raw_root: Path, *, allow_symlink_meta: bool = False) -> P
             f"source is not a Whero Wiki: missing regular {WIKI_META_FILENAME}"
         )
     fields = read_frontmatter(meta)
-    required = ("whero_wiki", "whero_maintenance", "whero_scope_required")
+    if scalar_text(fields.get("type")) != "Whero Wiki":
+        raise WheroToolError(
+            f"invalid {WIKI_META_FILENAME}: type must be 'Whero Wiki'"
+        )
+    version = scalar_text(fields.get("format_version"))
+    if version != FORMAT_VERSION:
+        raise WheroToolError(
+            f"invalid {WIKI_META_FILENAME}: unsupported format_version {version!r}"
+        )
+    required = ("whero_wiki", "whero_maintenance")
     missing = [key for key in required if not frontmatter_is_true(fields, key)]
+    if not is_view_required(fields):
+        missing.append(VIEW_REQUIRED_FIELD)
     if missing:
         raise WheroToolError(
             f"invalid {WIKI_META_FILENAME}: expected true for " + ", ".join(missing)
@@ -59,8 +109,10 @@ def require_framework_file(
     fields = read_frontmatter(path)
     if not frontmatter_is_true(fields, "whero_maintenance"):
         raise WheroToolError(f"framework file must set whero_maintenance: true: {path}")
-    if not frontmatter_is_true(fields, "whero_scope_required"):
-        raise WheroToolError(f"framework file must set whero_scope_required: true: {path}")
+    if not is_view_required(fields):
+        raise WheroToolError(
+            f"framework file must set {VIEW_REQUIRED_FIELD}: true: {path}"
+        )
     return fields
 
 
@@ -72,17 +124,17 @@ def discover_curated_collections(
     collections: list[CuratedCollection] = []
     problems: list[str] = []
     excluded_roots = excluded_roots or set()
-    for scope_root in sorted(
+    for section_root in sorted(
         (path for path in root.iterdir() if path.is_dir()),
         key=lambda path: path.name,
     ):
-        relative_scope = PurePosixPath(scope_root.name)
+        relative_section = PurePosixPath(section_root.name)
         if any(
-            relative_scope.parts[: len(excluded.parts)] == excluded.parts
+            relative_section.parts[: len(excluded.parts)] == excluded.parts
             for excluded in excluded_roots
         ):
             continue
-        top_index = scope_root / INDEX_FILENAME
+        top_index = section_root / INDEX_FILENAME
         if not top_index.is_file():
             continue
         try:
@@ -102,7 +154,7 @@ def discover_curated_collections(
         except WheroToolError as exc:
             problems.append(str(exc))
             continue
-        relative_root = PurePosixPath(scope_root.name, *curated_name.parts)
+        relative_root = PurePosixPath(section_root.name, *curated_name.parts)
         if any(
             relative_root.parts[: len(excluded.parts)] == excluded.parts
             for excluded in excluded_roots
@@ -112,8 +164,8 @@ def discover_curated_collections(
         collection_index = curated_root / INDEX_FILENAME
         collections.append(
             CuratedCollection(
-                scope_root.name,
-                scope_root,
+                section_root.name,
+                section_root,
                 curated_root,
                 relative_root,
                 top_index,

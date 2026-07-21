@@ -26,8 +26,8 @@ Two common layouts are valid:
 - Make the standalone analysis repository itself a Whero Wiki. Mount the
   codebase within it as a Git submodule, and keep the Wiki framework and curated
   knowledge elsewhere in the same repository, outside the source mount.
-- In an existing Whero Wiki, create a scope for the third-party project, mount
-  the source repository below that scope, and put curated concepts in sibling
+- In an existing Whero Wiki, create a section for the third-party project, mount
+  the source repository below that section, and put curated concepts in sibling
   directories owned by the containing Wiki.
 
 Use any concept-oriented organization that improves retrieval. `user`, `design`,
@@ -68,7 +68,7 @@ Project source directories, generated references, or legacy documentation may
 be declared preserved when Whero must never inject metadata, repair links, or
 create framework files within them. They remain readable and valid provenance
 targets. Do not preserve a knowledge area that Whero is expected to maintain,
-and do not use preserved boundaries when file-level partial disclosure inside
+and do not use preserved boundaries when a file-level View inside
 that area is required.
 
 ## Adapting an Existing Project
@@ -99,7 +99,7 @@ Create areas only when content exists:
 - `docs/design`: why, what, philosophy, constraints, tradeoffs, and user intent.
 - `docs/impl/<language>`: code maps, entry points, responsibilities, field semantics,
   and call relationships. Do not repeat design reasoning already captured.
-- `docs/references`: ordinary files, mounted full or partial Whero Wikis, and Git
+- `docs/references`: ordinary files, mounted Whero Wikis or Views, and Git
   submodules. Preserve each mounted Wiki's ownership boundary.
 
 Use concept documents throughout. Add an overview when it materially connects
@@ -129,7 +129,7 @@ schema or required type name. A requirement document should identify:
 
 Treat these documents as maintained knowledge: set `whero_maintenance: true`
 and, when using the curated concept model, `whero_curated: true`; do not set
-`whero_scope_required: true`. Organize by cohesive requirement or capability,
+`whero_view_required: true`. Organize by cohesive requirement or capability,
 not as one repository-wide chronological journal.
 
 Requirements preserve decision context that would otherwise be lost when
@@ -201,7 +201,7 @@ Use these fields and validation rules:
 | `user-authored` | `reference` | `reference` names an existing stable record with `whero_maintenance: true`; attribution alone is insufficient. |
 
 All paths are Wiki-root-relative POSIX paths and must remain inside the Wiki
-after symlink resolution. In an available partial view, undisclosed paths and
+after symlink resolution. In a View, unavailable paths and
 commits are notices rather than full-Wiki absence errors. Digest or recorded
 HEAD drift remains a review diagnostic unless strict stale validation is used.
 
