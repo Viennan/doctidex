@@ -9,6 +9,31 @@ The project is inspired by Google's Open Knowledge Format (OKF) and Karpathy's
 LLM Wiki. It remains at an early validation stage; its protocol and tooling
 should be treated as experimental and subject to change.
 
+## What You Can Use It For
+
+- **Build a source-preserving knowledge base.** Collect documentation, research,
+  standards, and other source snapshots without rewriting them, then add
+  maintained indexes and provenance-backed concepts for faster navigation,
+  comparison, querying, and citation.
+- **Create project knowledge and code maps.** Describe requirements, design
+  decisions, implementation entry points, component responsibilities, data
+  models, and call relationships alongside a codebase. Whero Wiki supports both
+  non-invasive analysis of third-party repositories and project Wikis maintained
+  as part of active development.
+- **Give development agents durable context.** Route an agent to the relevant
+  requirements, design rationale, implementation map, and source evidence so it
+  can plan changes with less repeated discovery. Git-aware provenance and
+  affected-concept queries help identify knowledge that may need review after
+  code changes.
+- **Prepare focused context for a task.** Create a structure-preserving View that
+  exposes only the files needed for a task while retaining navigation,
+  provenance, and ownership boundaries. Expand the View incrementally when the
+  agent encounters a genuine information gap.
+- **Maintain knowledge without erasing authority.** Keep curated summaries and
+  interpretations separate from collected sources, detect stale provenance,
+  validate links and framework structure, and preserve nested repositories or
+  externally owned material as explicit boundaries.
+
 ## Repository Structure
 
 - [`whero-wiki/`](whero-wiki/) is the canonical product bundle and is itself a

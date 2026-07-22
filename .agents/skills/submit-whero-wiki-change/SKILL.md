@@ -1,6 +1,12 @@
 ---
 name: submit-whero-wiki-change
-description: Prepare and submit Whero Wiki repository changes through a named development branch, validation, intentional staging, commit, push, and a copyable PR or MR title and body, with xhigh subagent review only when separately authorized. Use when starting work that will be submitted remotely, preparing commits, pushing a branch, or drafting a pull-request or merge-request description for this repository.
+description: >-
+  Prepare and submit Whero Wiki repository changes through a named development
+  branch, validation, intentional staging, commit, push, and a clean, readable
+  PR or MR document, with xhigh subagent review only when separately authorized.
+  Use when starting work that will be submitted remotely, preparing commits,
+  pushing a branch, or drafting a pull-request or merge-request description for
+  this repository.
 ---
 
 # Submit Whero Wiki Change
@@ -90,14 +96,14 @@ private URLs, and confidential context. Do not claim remote CI results that
 have not completed.
 
 Do not create the PR or MR. End the response with one standalone fenced
-Markdown block in this form so the user can copy it:
+Markdown block containing a clean, directly readable document. Render the
+proposed title as a Markdown heading followed immediately by the body. Do not
+add transport-oriented wrapper labels such as `PR/MR title:`, `PR/MR body:`,
+`title:`, or `body:`.
 
 ~~~markdown
 ```markdown
-PR/MR title:
-<concise title>
-
-PR/MR body:
+# <Concise title>
 
 ## Why
 <motivation and user impact>

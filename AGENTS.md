@@ -142,6 +142,37 @@ Use the layer affected by a change to determine the required synchronization:
   implementation must not establish an undocumented protocol merely because
   tests currently encode its behavior.
 
+## Product Versioning
+
+Every completed product change that adds, modifies, moves, or removes repository
+content under `whero-wiki/` must increment the active Whero Wiki version. Use a
+three-part `MAJOR.MINOR.PATCH` version and select the highest-impact change in
+the product change:
+
+- Increment `MAJOR` for an incompatible protocol or runtime change, including an
+  identity, metadata, state-transition, or CLI contract change that requires
+  consumers to migrate. Reset `MINOR` and `PATCH` to zero.
+- Increment `MINOR` for a backward-compatible protocol addition or a new
+  supported user-visible capability or workflow. Reset `PATCH` to zero.
+- Increment `PATCH` for backward-compatible corrections and refinements,
+  including fixes, internal refactors, tests, translations, references, Skill
+  guidance, and framework-document updates that do not add a supported
+  capability.
+
+Apply one version increment per coherent product change, regardless of the
+number of affected files or commits. The version update itself does not trigger
+an additional increment. Changes confined outside `whero-wiki/` do not change
+the product version.
+
+Until the protocol defines separate product and format versions, treat the
+three-part active version as the bundle's single version identity. Synchronize
+all active version declarations in the same product change, including runtime
+constants, Wiki and View metadata, English and Chinese protocol status and
+examples, `SKILL.md`, maintained references and templates, tests, the repository
+`README.md`, and root-level framework documents. Add a root `whero-wiki/log.md`
+entry that records the new version and why its component changed. Preserve
+historical documents that intentionally identify an older version.
+
 ## Minimal Self-Hosted Wiki Structure
 
 `whero-wiki/` is itself a Whero Wiki, but its Wiki framework must remain
