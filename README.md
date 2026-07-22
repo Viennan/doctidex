@@ -2,7 +2,7 @@
 
 Whero Wiki is an agent-oriented model for organizing, maintaining, querying,
 and selectively exposing source-preserving knowledge. This repository contains
-the v0.0.2 protocol, a portable Codex Skill, Python tooling, workflow references,
+the v0.0.2 protocol, a portable agent `Skill`, Python tooling, workflow references,
 and the conformance test suite.
 
 The project is inspired by Google's Open Knowledge Format (OKF) and Karpathy's
@@ -37,7 +37,7 @@ should be treated as experimental and subject to change.
 ## Repository Structure
 
 - [`whero-wiki/`](whero-wiki/) is the canonical product bundle and is itself a
-  minimally self-hosted Whero Wiki and also an agent `skill` ready to use.
+  minimally self-hosted Whero Wiki and also an agent `Skill` ready to use.
 - [`whero-wiki/spec/`](whero-wiki/spec/) contains the normative English protocol
   and synchronized Chinese translations under `spec/CN/`.
 - [`whero-wiki/SKILL.md`](whero-wiki/SKILL.md) is the concise user and agent
