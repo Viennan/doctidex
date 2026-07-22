@@ -37,7 +37,7 @@ should be treated as experimental and subject to change.
 ## Repository Structure
 
 - [`whero-wiki/`](whero-wiki/) is the canonical product bundle and is itself a
-  minimally self-hosted Whero Wiki.
+  minimally self-hosted Whero Wiki and also an agent `skill` ready to use.
 - [`whero-wiki/spec/`](whero-wiki/spec/) contains the normative English protocol
   and synchronized Chinese translations under `spec/CN/`.
 - [`whero-wiki/SKILL.md`](whero-wiki/SKILL.md) is the concise user and agent
