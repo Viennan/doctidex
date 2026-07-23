@@ -1,4 +1,0 @@
-interface:
-  display_name: "Whero Wiki"
-  short_description: "Build, curate, query, and view Whero Wikis"
-  default_prompt: "Use $whero-wiki to query, maintain, validate, or selectively expose a source-preserving Whero Wiki."

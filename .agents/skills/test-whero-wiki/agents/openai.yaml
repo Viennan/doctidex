@@ -1,4 +1,0 @@
-interface:
-  display_name: "Test Whero Wiki"
-  short_description: "Run isolated repository tests and validation"
-  default_prompt: "Use $test-whero-wiki to run the relevant isolated tests and validation for this change."
