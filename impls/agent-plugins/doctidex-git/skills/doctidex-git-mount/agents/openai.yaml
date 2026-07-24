@@ -1,0 +1,4 @@
+interface:
+  display_name: "Doctidex Git Mount"
+  short_description: "Manage lazy Git mounts for doctidex trees"
+  default_prompt: "Use $doctidex-git-mount to inspect or change Git mounts declared by this doctidex root."

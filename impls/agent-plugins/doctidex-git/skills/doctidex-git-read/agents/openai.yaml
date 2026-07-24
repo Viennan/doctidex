@@ -1,0 +1,4 @@
+interface:
+  display_name: "Doctidex Git Read"
+  short_description: "Navigate doctidex trees with native file tools"
+  default_prompt: "Use $doctidex-git-read to navigate this doctidex tree and restore required lazy mounts."
