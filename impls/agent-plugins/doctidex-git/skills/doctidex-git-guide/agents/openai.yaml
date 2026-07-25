@@ -1,0 +1,4 @@
+interface:
+  display_name: "Doctidex Git Guide"
+  short_description: "Learn the doctidex Git model and choose a workflow"
+  default_prompt: "Use $doctidex-git-guide to establish the doctidex Git model and route this task to the right workflow."

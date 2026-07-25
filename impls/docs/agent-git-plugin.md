@@ -10,6 +10,10 @@ Git 管理的目录中创建、读取、查询、维护和审阅 doctidex 目录
 经验，不作为字段、路径或行为约定的来源。若本文档与协议正文冲突，以协议正文
 为准。
 
+本文档描述目标 surface；当前 Python 代码、CLI 字段及已知限制见
+[`doctidex-git/`](doctidex-git/index.md)。两者有差异时，实现文档记录当前事实，本文档
+继续表达后续实现应满足的用户层设计。
+
 ## 1. 设计目标
 
 插件需要让 agent 在不阅读插件源码、不理解缓存或 worktree 布局、也不预先熟悉
@@ -345,10 +349,39 @@ Skills、CLI 人读输出和 `--json` 应使用一致的有限状态词：
 
 Skills 帮助 agent 理解用户意图、识别 doctidex 结构并组织工作流。CLI 是 Skills
 可以复用、agent 也可以按需直接使用的协议感知辅助面，不是文件访问的强制入口。
-每个 Skill 的公开说明都必须完整写明：适用意图、输入与前置条件、读写边界、是否
-触网、运行现场、成功结果、可恢复问题的下一步和必须向用户升级的条件。
+Guide 与专项 Skill 的公开说明合并后必须完整写明：适用意图、输入与前置条件、读写
+边界、是否触网、运行现场、成功结果、可恢复问题的下一步和必须向用户升级的条件。
 
-### 5.1 `doctidex-git-setup`
+Skills 形成显式且无环的阅读链条。`doctidex-git-guide` 集中建立用户心智模型、共享
+术语、路径参数类型、通用 CLI 语法、输出状态、安全基线和专项工作流路由。agent 在
+首次使用、概念不熟悉或任务跨越多个工作流时先加载 Guide；心智模型已经建立后，
+直接加载所需专项 Skill，不在每条命令前重复加载 Guide。专项 Skill 可以按条件引导
+回 Guide，也可以在职责边界处转交另一个专项 Skill。
+
+共享约定只在 Guide 中解释一次；专项 Skill 必须在工作流之前解释自身新增的术语，
+并为其引入的每条命令给出完整用户契约，包括准确调用形式、参数类型与限制、必填与
+可选项、省略或默认行为、根选择方式、读写与触网影响、适用时的 dry-run/apply 和
+批处理语义、agent 决策所需的返回字段，以及失败后的可执行动作。Guide 与一个相关
+专项 Skill 应足以让 agent 完成对应工作流，无需猜测参数或查阅实现文档。
+
+Skill 必须按已发布产品的使用环境编写。可以说明公共分发名、公共命令和通用安装
+方式，但不得引用本实现源码仓库的目录布局、editable 安装命令、测试入口或调试
+现场；这些内容属于实现仓库的 `AGENTS.md`。CLI 如何生成结果、必须维护何种内部
+状态等实现约束也不得写成 Skill 指令；Skill 只说明 agent 需要采取的动作、可观察
+结果和用户需要作出的决定。
+
+### 5.1 `doctidex-git-guide`
+
+用于第一次接触插件、需要确认术语或命令规律，或者任务跨越多个专项工作流的场景。
+它说明 doctidex 根、宿主根、内部路径、mount path、声明 revision、有效 commit、
+lazy mount、维护根等用户层概念，区分文件系统路径与 doctidex 内部路径，并解释
+`--json`、列表预算与分页、显式 dry-run/apply、命令触网类别和公共状态词。
+
+Guide 不执行领域工作，也不要求 agent 按固定顺序使用 CLI。它根据用户意图路由到
+Setup、Read、Mount、Maintain、Workspace、Validate 或 Review，并列出常见的跨
+Skill 链条。加载 Guide 后，agent 只需继续读取实际任务所需的专项 Skill。
+
+### 5.2 `doctidex-git-setup`
 
 用于“在这个 Git 管理的目录中创建 doctidex”或“检查并接管已有 doctidex 根”。
 
@@ -367,7 +400,7 @@ CLI 不得根据文件内容自动撰写这些文本。
 并再次校验。Setup Skill 只有在 agent 完成这一步后才报告目录树接管完成；它不创建
 公开的运行时目录，不提交 Git 变化，也不自动添加外部挂载。
 
-### 5.2 `doctidex-git-read`
+### 5.3 `doctidex-git-read`
 
 用于向 agent 提供 doctidex 目录树的推荐阅读方法、路径语义和 lazy mount 恢复
 指引。Read Skill 不需要重复实现 agent 已有工具已经擅长的通用文件读取、目录遍历
@@ -422,7 +455,7 @@ ignore 的全库搜索通常不会混入外部内容；需要搜索外部源时�
 普通阅读不会重新解析 branch 或 tag。Read Skill 的成功结果是 agent 获得足够的
 规则和方向来自主探索，而不是进入一套必须持续使用的读取会话。
 
-### 5.3 `doctidex-git-mount`
+### 5.4 `doctidex-git-mount`
 
 用于列出、添加、移除、恢复和显式同步 Git mount。
 
@@ -441,7 +474,7 @@ ignore 的全库搜索通常不会混入外部内容；需要搜索外部源时�
 成功后 agent 看到 mount path、URL、声明 revision、已知时的有效 commit、是否可读，
 以及根 `index.md` 是否发生变化。
 
-### 5.4 `doctidex-git-maintain`
+### 5.5 `doctidex-git-maintain`
 
 用于维护一个已经明确选定的 doctidex 根。
 
@@ -458,7 +491,7 @@ frontmatter 与无关用户改动，遵守最近负责的 index、atomic、exclu
 diff。若目标位于 mount path，该 Skill 不直接写入，而是转交 Workspace Skill
 打开源的独立维护根。
 
-### 5.5 `doctidex-git-workspace`
+### 5.6 `doctidex-git-workspace`
 
 用于维护挂载源，或协调一个任务涉及的多个 doctidex 根。
 
@@ -470,7 +503,7 @@ diff。若目标位于 mount path，该 Skill 不直接写入，而是转交 Wor
 revision 影响以及待用户执行的 commit、push 或 selector 更新。未提交变化的维护根
 会保留，除非用户明确处理；插件不会用清理来代替交付结果。
 
-### 5.6 `doctidex-git-validate`
+### 5.7 `doctidex-git-validate`
 
 用于只读检查目录树和插件公开状态。
 
@@ -494,7 +527,7 @@ revision 影响以及待用户执行的 commit、push 或 selector 更新。未�
 CLI 事实检查候选内容后，由 agent 给出最终的协议符合性判断。每条 finding 都包含
 所属结果域、协议路径或文件、用户层说明和可执行动作。
 
-### 5.7 `doctidex-git-review`
+### 5.8 `doctidex-git-review`
 
 用于只读审阅单根或多根任务结果。
 
@@ -748,7 +781,7 @@ revision 决策且不修改宿主。对已经 `ready` 的 mount 执行同步失�
 mount 默认按需恢复。声明结构有效但尚未执行 prepare 时，`mount_path` 可以没有可
 浏览的物理内容；该状态必须表达为 `not_prepared`，不得误报为源不存在、文件不
 存在或内部失败。agent 使用原生工具发现任务必须读取的 mount 路径不存在时，按
-Read Skill 中第 5.2 节的指引判断 mount 状态，并显式调用 Mount 工作流或
+Read Skill 中第 5.3 节的指引判断 mount 状态，并显式调用 Mount 工作流或
 `mount prepare`。
 
 prepare 成功后，插件必须在 agent 的工作环境中把符合协议的逻辑 `mount_path`
@@ -886,34 +919,37 @@ agent 无法通过只读检查或安全重试解决以下情况时，必须停�
 
 实现完成时，至少通过以下用户层场景验收：
 
-1. agent 只阅读 Skills 即可理解目录树，并能用自己的文件工具完成自由浏览、搜索
+1. agent 只阅读 Guide 与相关专项 Skill 即可理解当前任务所需的目录树概念、命令
+   参数、默认行为、根选择、读写与触网影响、关键返回字段和失败动作，不需要猜测
+   命令或查阅程序源码及实现文档。
+2. agent 只阅读 Skills 即可理解目录树，并能用自己的文件工具完成自由浏览、搜索
    和读取；插件可以提供 doctidex 感知的导航、范围和路径辅助，但不将其变成文件
    访问网关。只有 lazy mount 恢复需要调用专门工作流或 `mount prepare`。
-2. 同一 Git URL 的不同 revision 可以同时读取并共享已取得的 Git objects；解析到
+3. 同一 Git URL 的不同 revision 可以同时读取并共享已取得的 Git objects；解析到
    相同 commit 时可复用只读视图，但不向 agent 暴露复用机制。
-3. 普通读取不会移动 branch/tag 的有效 commit；显式同步展示新旧 commit。
-4. 每个受管理根的 `.gitignore` 都有效忽略 `/.doctidex/mounts/`，该路径下没有
+4. 普通读取不会移动 branch/tag 的有效 commit；显式同步展示新旧 commit。
+5. 每个受管理根的 `.gitignore` 都有效忽略 `/.doctidex/mounts/`，该路径下没有
    tracked 内容。
-5. 任意合法 Git mount 都挂载完整源树，且只出现在根声明的
+6. 任意合法 Git mount 都挂载完整源树，且只出现在根声明的
    `/.doctidex/mounts/...`。
-6. mount namespace 不可嵌套，源中的相关 link 按起始根唯一 mount 表解析。
-7. mount 声明默认保持 `not_prepared`；agent 遇到任务必须读取但不存在的 mount
+7. mount namespace 不可嵌套，源中的相关 link 按起始根唯一 mount 表解析。
+8. mount 声明默认保持 `not_prepared`；agent 遇到任务必须读取但不存在的 mount
    路径时，按 Read Skill 指引显式 prepare，而不会预先恢复所有 mount。
-8. prepare 完成或 mount 的物理呈现方式变化后，agent 仍能用自己的文件工具从同一
+9. prepare 完成或 mount 的物理呈现方式变化后，agent 仍能用自己的文件工具从同一
    工作目录路径正常浏览和读取。
-9. 维护挂载源会得到独立可写根，不影响只读挂载、当前用户工作区或其他 revision。
-10. 多根任务分别报告每个根的 diff、校验、revision 影响和待办 Git 动作。
-11. 离线、凭据缺失、revision 不存在、用户本地修改和协议错误均产生可执行诊断，
+10. 维护挂载源会得到独立可写根，不影响只读挂载、当前用户工作区或其他 revision。
+11. 多根任务分别报告每个根的 diff、校验、revision 影响和待办 Git 动作。
+12. 离线、凭据缺失、revision 不存在、用户本地修改和协议错误均产生可执行诊断，
    且默认输出不包含内部实现约定。
-12. 插件不自动提交、推送、重置、清理或丢弃任何用户结果。
-13. 所有 CLI 在不配置或调用任何 AI 模型的情况下工作；`index.md` 正文、索引描述、
+13. 插件不自动提交、推送、重置、清理或丢弃任何用户结果。
+14. 所有 CLI 在不配置或调用任何 AI 模型的情况下工作；`index.md` 正文、索引描述、
     `log.md` 记录、维护顺序和审阅结论均由 agent 生成或决定。
-14. 所有列表型 CLI 默认限制结果规模，按目录提供确定性折叠和计数摘要，并通过
+15. 所有列表型 CLI 默认限制结果规模，按目录提供确定性折叠和计数摘要，并通过
     limit、depth、PATH 和 cursor 支持逐步展开；任何默认调用都不会无界枚举路径。
-15. 所有过滤条件按固定版本 `regex` 库的 VERSION1 方言、路径规范化和 search 规则
+16. 所有过滤条件按固定版本 `regex` 库的 VERSION1 方言、路径规范化和 search 规则
     得到一致结果；
     非法或超出基线的 pattern 产生可定位、可执行且有界的诊断。
-16. `check` 分别报告协议结构、语义复核和插件就绪状态；语义候选由 agent 判断，
+17. `check` 分别报告协议结构、语义复核和插件就绪状态；语义候选由 agent 判断，
     `.gitignore` 等插件要求不会被误报为 doctidex 协议错误。
 
 这些验收项约束的是插件公开行为。满足它们所采用的 Git object 复用、隔离 checkout、
