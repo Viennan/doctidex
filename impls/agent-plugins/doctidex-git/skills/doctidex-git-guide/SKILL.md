@@ -31,7 +31,9 @@ Ask the user for access if installation requires unavailable network access or p
 - **Responsible index**: the nearest applicable `index.md` for a local path. Use it as a
   recommended navigation and maintenance entry, not as a file-access gate.
 - **Applicable log**: the nearest `log.md` that can provide change background. It is optional.
-- **Host root**: the root from which the current CLI operation and mount namespace are selected.
+- **Command context**: the doctidex root selected from the current working directory unless a
+  command documents another selection rule.
+- **Host root**: the command-context root whose mount namespace is used for host and mounted paths.
 - **Source root**: a complete external doctidex tree referenced by a mount.
 - **Mount path**: a logical read-only path below `/.doctidex/mounts/` in the host root.
 - **Declared revision**: exactly one Git commit, tag, or branch named in a mount declaration.
@@ -53,17 +55,30 @@ Do not interchange these argument types:
 |---|---|---|
 | `PATH` | A filesystem file or directory path. Relative values use the current working directory. | `docs/api.md`, `/work/project/docs` |
 | `INTERNAL_PATH` | A `/`-prefixed path relative to a doctidex link root, not the filesystem root. | `/.doctidex/mounts/design/index.md` |
+| `LINK_DOCUMENT` | An existing, accessible filesystem file that contains the link being resolved. | `/work/project/.doctidex/mounts/design/guide.md` |
 | `MOUNT_PATH` | An exact normalized strict child of `/.doctidex/mounts`; no `.` or `..`. | `/.doctidex/mounts/design` |
 | `MAINTENANCE_ROOT` | The filesystem path returned by `maintenance open`; pass it back unchanged. | `/path/returned/by/maintenance-open` |
 
-Mount and maintenance commands do not accept a host-root option. Run them with the current working
-directory inside one unambiguous host root; prefer the exact root directory. Use
-`doctidex-git context PATH --json` first when the root is uncertain.
+There is no generic `--root` option. The current working directory supplies useful default context:
+
+- all `mount` commands and `maintenance scope/open` select the host from the current directory;
+  run them from the exact host root when nested roots may exist;
+- `resolve` without `--from` uses the root selected from the current directory;
+- an explicit `MAINTENANCE_ROOT` lets `maintenance status/handoff/close` recover its owning host
+  even when the current directory is elsewhere; omitting it uses the current host;
+- `inspect PATH` preserves an already selected host context when PATH is inside that host, so one
+  result can show both host mount facts and source facts. A target outside that host selects its own
+  root.
+
+Use `doctidex-git context PATH --json` when the intended root is uncertain. Staying in a host root
+is efficient for a short task that follows mounted links. For substantial, multi-step work confined
+to one root, changing the current directory to that exact root usually simplifies repeated
+arguments and root selection.
 
 For `context`, `inspect`, `init`, and `check`, omitting the optional filesystem `PATH` uses the
 current working directory. For `changes`, omission selects the root from the current directory and
-runs Git status for that root; an explicit path changes the Git status target but not the selected
-root reported in the result. Prefer explicit paths in multi-root work.
+runs Git status for that root; an explicit path selects from and runs Git status at that path.
+Prefer explicit paths in multi-root work.
 
 ## Common CLI Grammar
 

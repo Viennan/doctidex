@@ -22,8 +22,11 @@ If the common path, root, CLI, and output model is not already established, load
 - **Handoff**: a read-only summary of changes, validation, semantic candidates, and remaining Git
   decisions for one maintenance root.
 
-All maintenance commands select their host root from the current working directory. Run them from
-the exact host root; a `PATH` passed to `scope` classifies work but does not select a different host.
+`maintenance scope` and `maintenance open` select their host root from the current working
+directory. Run them from the exact host root; a `PATH` passed to `scope` classifies work but does
+not select a different host. After `open`, pass the returned exact `MAINTENANCE_ROOT` to
+`status`, `handoff`, and `close`; those explicit calls work from another current directory. When
+the path is omitted, these commands again select the host from the current directory.
 
 ## Command Contract
 
@@ -31,8 +34,8 @@ the exact host root; a `PATH` passed to `scope` classifies work but does not sel
 |---|---|---|
 | `doctidex-git maintenance scope [PATH ...] --json` | PATH values are filesystem targets in the current host. Omit them to scope the host root. | Deduplicates the host and each mount into `items`; does not open writable roots. |
 | `doctidex-git maintenance open MOUNT_PATH --json` | Pass the exact declared mount path, not a file below it. Mount must already have an effective commit. | Returns one `maintenance_root`, `writable_root`, base commit, boundaries, and next actions. |
-| `doctidex-git maintenance status [MAINTENANCE_ROOT] --json` | Omit the path to list all open contexts for this host; pass an exact returned path to filter one. | No match returns an empty list, not an error. `changes` are Git status entries, not a diff. |
-| `doctidex-git maintenance handoff [MAINTENANCE_ROOT] --json` | Omit only when exactly one context is open; otherwise pass an exact path. | Returns one root's changes and three validation domains; does not commit or push. |
+| `doctidex-git maintenance status [MAINTENANCE_ROOT] --json` | Omit the path to list all open contexts for the current host; pass an exact returned path to select its owning host and filter one. | No match within a selected host returns an empty list, not an error. `changes` are Git status entries, not a diff. |
+| `doctidex-git maintenance handoff [MAINTENANCE_ROOT] --json` | Pass the exact returned path from any cwd. Omit only from its host when exactly one context is open. | Returns one root's changes and three validation domains; does not commit or push. |
 | `doctidex-git maintenance close [MAINTENANCE_ROOT] --json` | Use the same exact-selection rule as handoff. No dry-run flag. | Removes only a Git-clean context; any change blocks close and preserves the root. |
 
 If open reports `maintenance_source_not_prepared`, load `$doctidex-git-mount`, prepare that exact
@@ -46,6 +49,9 @@ mount, and retry. Open itself does not fetch or synchronize.
 4. For each `mounted_source`, ensure `base_commit` is non-null and open its exact `mount_path`.
 5. Work only under each returned `maintenance_root`, starting from that source's own `index.md`.
    Never modify the host `read_only_path`.
+   For substantial, multi-step work on that one source, `cd` to its maintenance root so native
+   tools and commands with optional paths naturally use the intended root. Keep passing the exact
+   root in multi-root orchestration when that makes scope clearer.
 6. Load `$doctidex-git-maintain` and `$doctidex-git-validate` as needed for each root.
 7. Run handoff with the exact maintenance path and inspect the native Git diff.
 8. Report each root's base commit, changes, validation, target branch hint, and required

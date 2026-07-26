@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from whero.doctidex.protocol.document import DoctidexDocument
+
 
 def run(command: list[str], cwd: Path, env: dict[str, str], expected: int = 0) -> dict:
     process = subprocess.run(
@@ -127,6 +129,35 @@ def test_lazy_mount_sync_reuse_and_maintenance(tmp_path: Path, environment: dict
     nested = host / ".doctidex" / "mounts" / "design" / "guide" / ".doctidex" / "mounts" / "design-copy" / "content.md"
     assert nested.read_text(encoding="utf-8") == "version one\n"
 
+    source_document = host / ".doctidex" / "mounts" / "design" / "content.md"
+    resolved_source = run(
+        ["resolve", "/guide/notes.md", "--from", str(source_document)],
+        host,
+        environment,
+    )
+    assert resolved_source["root"] == str(host)
+    assert resolved_source["link_document"] == str(source_document)
+    assert resolved_source["link_root"] == str(host / ".doctidex" / "mounts" / "design")
+    assert resolved_source["link_root_kind"] == "mounted_source"
+    assert resolved_source["working_path"] == str(host / ".doctidex" / "mounts" / "design" / "guide" / "notes.md")
+    assert resolved_source["mount"]["mount_path"] == "/.doctidex/mounts/design"
+
+    resolved_namespace = run(
+        ["resolve", "/.doctidex/mounts/design-copy/content.md", "--from", str(source_document)],
+        host,
+        environment,
+    )
+    assert resolved_namespace["link_root"] == str(host)
+    assert resolved_namespace["link_root_kind"] == "host_root"
+    assert resolved_namespace["working_path"] == str(
+        host / ".doctidex" / "mounts" / "design-copy" / "content.md"
+    )
+
+    inspected = run(["inspect", str(source_document)], host, environment)
+    assert inspected["root"] == str(host)
+    assert inspected["path_context"]["source"] == "mount"
+    assert inspected["source_context"]["host_root"] == str(host / ".doctidex" / "mounts" / "design")
+
     (source / "content.md").write_text("version two\n", encoding="utf-8")
     second_commit = commit_all(source, "second")
     preview = run(["mount", "sync", "/.doctidex/mounts/design", "--dry-run"], host, environment)
@@ -140,11 +171,64 @@ def test_lazy_mount_sync_reuse_and_maintenance(tmp_path: Path, environment: dict
 
     opened = run(["maintenance", "open", "/.doctidex/mounts/design"], host, environment)
     maintenance = Path(opened["maintenance_root"])
+    status = run(["maintenance", "status", str(maintenance)], tmp_path, environment)
+    assert status["items"][0]["maintenance_root"] == str(maintenance)
     (maintenance / "content.md").write_text("maintenance change\n", encoding="utf-8")
+    handoff = run(["maintenance", "handoff", str(maintenance)], tmp_path, environment)
+    assert handoff["maintenance_root"] == str(maintenance)
     assert mounted.read_text(encoding="utf-8") == "version two\n"
     blocked = run(["maintenance", "close", str(maintenance)], host, environment, expected=2)
     assert blocked["status"] == "blocked"
     assert maintenance.exists()
+
+    clean_opened = run(["maintenance", "open", "/.doctidex/mounts/design-copy"], host, environment)
+    clean_maintenance = Path(clean_opened["maintenance_root"])
+    closed = run(["maintenance", "close", str(clean_maintenance)], tmp_path, environment)
+    assert closed["maintenance_root"] == str(clean_maintenance)
+    assert not clean_maintenance.exists()
+
+
+def test_resolve_rejects_missing_link_source(tmp_path: Path, environment: dict[str, str]) -> None:
+    host = tmp_path / "host"
+    make_host(host, environment)
+    result = run(["resolve", "/guide.md", "--from", str(host / "missing.md")], host, environment, expected=2)
+    assert result["findings"][0]["code"] == "link_source_invalid"
+
+
+def test_resolve_preserves_nested_root_ambiguity(tmp_path: Path, environment: dict[str, str]) -> None:
+    host = tmp_path / "host"
+    make_host(host, environment)
+    nested = host / "nested"
+    nested.mkdir()
+    document = DoctidexDocument.new_root(nested / "index.md")
+    document.write()
+    (nested / "source.md").write_text("[Target](/target.md)\n", encoding="utf-8")
+
+    ambiguous = run(
+        ["resolve", "/target.md", "--from", str(nested / "source.md")],
+        host,
+        environment,
+        expected=2,
+    )
+    assert ambiguous["findings"][0]["code"] == "root_ambiguous"
+
+    outside = tmp_path / "outside"
+    make_host(outside, environment)
+    unrelated = run(
+        ["resolve", "/target.md", "--from", str(nested / "source.md")],
+        outside,
+        environment,
+        expected=2,
+    )
+    assert unrelated["findings"][0]["code"] == "root_ambiguous"
+
+    selected = run(
+        ["resolve", "/target.md", "--from", str(nested / "source.md")],
+        nested,
+        environment,
+    )
+    assert selected["link_root"] == str(nested)
+    assert selected["working_path"] == str(nested / "target.md")
 
 
 def test_check_separates_protocol_and_plugin_status(tmp_path: Path, environment: dict[str, str]) -> None:

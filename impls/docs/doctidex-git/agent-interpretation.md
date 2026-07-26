@@ -52,6 +52,13 @@ doctidex-git context PATH --json
 `context.mode` 只是路径提示，不是访问权限。实际 mount 来源和边界以 `inspect` 的
 PathContext 为准。
 
+cwd 是默认命令上下文，不是浏览边界。mount、maintenance scope/open 由 cwd 选择
+宿主；inspect 的目标仍在当前已选宿主内时保留该宿主上下文；resolve 可以通过
+`--from LINK_DOCUMENT` 从 link 来源确定实际 link root。对于跨 mount 的短暂读取，
+无需为每个 link 来回切换 cwd。对于明确限制在一个根内的较大、多步骤工作，进入精确
+根可让省略路径的命令和原生工具自然使用同一上下文。嵌套根仍应精确选择，不要用
+PATH 或 `--from` 猜测消除 `root_ambiguous`。
+
 ## 4. 自由读取与结构辅助
 
 普通文件读取不需要先调用 CLI。建议在以下场景调用 `inspect`：
@@ -74,15 +81,24 @@ PathContext 为准。
 
 ## 5. 内部路径与 mount 路径
 
-`resolve` 接受 doctidex 绝对内部路径，不接受任意文件系统绝对路径。返回的：
+`resolve INTERNAL_PATH [--from LINK_DOCUMENT]` 接受 doctidex 绝对内部路径，不接受
+任意文件系统绝对路径作为 INTERNAL_PATH。LINK_DOCUMENT 是包含该 link 的现有文件
+系统文件，已知其可访问路径时可以传入；它不是 root 参数，也不要求 CLI 在文档中
+查找该 link。返回的：
 
 - `internal_path`：已处理 `.`、`..` 和不可嵌套 namespace；
-- `link_root`：当前所选宿主根；
+- `root`：命令选择的上下文根；
+- `link_document`：实际传入的来源文件，未传时字段缺失；
+- `link_root/link_root_kind`：本次路径基准及其为 host root 或 mounted source；
 - `working_path`：交给原生文件工具的路径；
 - `crosses_mount/mount`：是否需要 lazy mount。
 
-当文档路径含 mounted source 内的第二个 `/.doctidex/mounts` 时，不要按物理目录层层
-拼接猜测；先用 `resolve` 得到规范路径。
+普通本地文档的规范化 `/...` 可由已知根直接推断，不需要每次 resolve。从宿主 cwd
+读取 mounted source 文档时，可将该文档路径传给 `--from`：普通 `/...` 以 source
+root 解析；`/.doctidex/mounts/...` 回到宿主 namespace。当 mounted source 内出现这
+种 namespace 回边时，不要按物理目录层层拼接猜测；使用 `--from` 得到规范路径。
+相对 link 仍从文档所在目录按普通文件系统规则处理，anchor 不作为 INTERNAL_PATH
+传入。
 
 ## 6. Lazy mount 决策
 
@@ -125,12 +141,16 @@ mount。失败时先看 `result`：有旧 commit 时应继续使用保留结果�
 4. 只在返回的 `maintenance_root/writable_root` 下编辑；
 5. 使用 source 自己的根 index 和过滤边界；
 6. 在该路径运行 check/changes；
-7. `maintenance handoff MAINTENANCE_ROOT`；
+7. `maintenance handoff MAINTENANCE_ROOT`；显式路径可从任意 cwd 使用；
 8. 将 commit/push/merge/selector 更新作为独立用户授权动作；
 9. Git 状态 clean 后才 close。
 
 `target_branch` 只是建议交付到哪个 branch；maintenance root 实际为 detached HEAD。
 不要把它误解为已在目标 branch 上提交。
+
+当一个维护根内的工作量较大或步骤较多，建议进入该维护根再使用原生编辑、搜索、Git
+及省略可选路径的 doctidex 命令。多根协调时仍记录并显式传递各个 MAINTENANCE_ROOT，
+避免当前目录掩盖正在处理的独立结果。
 
 ## 9. 多根与批量结果
 
@@ -219,7 +239,7 @@ agent 应：
 
 ```text
 原生工具报告路径不存在
-  -> resolve 内部路径
+  -> resolve 内部路径；来自 mounted 文档时传 --from LINK_DOCUMENT
   -> mount.state == not_prepared
   -> mount prepare 精确 mount
   -> 原生工具重试 working_path

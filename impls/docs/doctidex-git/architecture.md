@@ -75,7 +75,7 @@ argv
 |---|---|
 | `runner.py` | 非交互执行 Git，把凭据、网络、revision 和其他 Git 失败转换为 `DoctidexError`。 |
 | `context.py` | Git worktree 根发现、porcelain status 解析、根 `.gitignore`/tracked 状态检查和 ignore 写入。 |
-| `state.py` | XDG cache 路径、稳定 hash、POSIX 文件锁、原子 JSON 状态和异常诊断文件。 |
+| `state.py` | XDG cache 路径、稳定 hash、POSIX 文件锁、原子 JSON 状态、维护根所属宿主查找和异常诊断文件。 |
 | `repository.py` | 每个 source URL 的 bare repository、selector 解析、按 commit 复用的只读 revision view、可写 maintenance worktree。 |
 | `projection.py` | 构建宿主相关只读 projection，并在逻辑 mount path 上呈现。 |
 | `mounts.py` | Git mount 扩展校验以及 list/add/remove/prepare/sync 服务。 |
@@ -86,7 +86,7 @@ argv
 
 | 模块 | 代码职责 |
 |---|---|
-| `main.py` | 参数模型、根选择、命令 dispatch、批量 mount、online check、输出预算、退出码和异常边界。 |
+| `main.py` | 参数模型、cwd/PATH/LINK_DOCUMENT/MAINTENANCE_ROOT 上下文选择、命令 dispatch、批量 mount、online check、输出预算、退出码和异常边界。 |
 | `render.py` | JSON pretty print 与有序的人读 key/value 输出。 |
 
 ## 4. 主要数据对象
@@ -149,6 +149,9 @@ state store，返回路径是本次任务允许写入的 `maintenance_root`。
 
 `status` 读取 Git porcelain 状态；`handoff` 加载维护根自己的 `index.md`、执行协议
 校验并加入 Git change 语义候选；`close` 只移除 Git 状态完全 clean 的 worktree。
+open 同时在 record 中保存所属宿主。CLI 收到显式 maintenance root 时可先定位该宿主
+state，因此 status/handoff/close 不依赖进程仍处于原宿主 cwd；省略路径时仍从 cwd
+建立宿主上下文。
 
 ## 7. 写入和并发边界
 

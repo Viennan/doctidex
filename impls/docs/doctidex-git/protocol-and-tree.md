@@ -129,6 +129,18 @@ frontmatter，因此不能假设字节完全不变。
 | `root` | 所选根的文件系统路径。 |
 | `index` | 已加载的根 `DoctidexDocument`。 |
 
+CLI 在这个基础选择器外增加了操作上下文规则：
+
+- `inspect` 优先保留 cwd 已明确选择且包含目标的 RootContext；目标位于外部时再由
+  PATH 选择，因此 mount 文件可以同时保留宿主和 source 两种观察结果；
+- `resolve` 默认使用 cwd RootContext；`--from` 指向宿主 mount 内容时保留宿主
+  context，并把普通绝对内部路径的 link root 改为 mount source root；
+- `--from` 位于普通嵌套根时不会自动选择最近根。除非 cwd 已精确选中该根，否则返回
+  `root_ambiguous`；
+- maintenance status/handoff/close 可由显式维护根记录反查所属 RootContext。
+
+这些是 Git CLI 的实现选择，不改变 `discover_roots`/`require_root` 的协议层行为。
+
 ## 4. 路径上下文
 
 `inspect_path(context, path)` 生成 `PathContext`。其公开字段也由 `inspect` 返回：

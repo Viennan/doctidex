@@ -66,6 +66,7 @@ class MaintenanceService:
         def update(data: dict[str, Any]) -> None:
             data["maintenance"][identifier] = {
                 "path": str(path),
+                "host_root": str(self.root),
                 "mount_path": mount.mount_path,
                 "url": mount.url,
                 "base_commit": effective,

@@ -39,6 +39,7 @@ def file_lock(path: Path) -> Iterator[None]:
 
 class StateStore:
     def __init__(self, root: Path) -> None:
+        self.root = root.absolute()
         identity = str(root.absolute())
         self.directory = state_home() / "roots" / stable_key(identity)
         self.path = self.directory / "state.json"
@@ -51,6 +52,7 @@ class StateStore:
     def update(self, callback: Any) -> dict[str, Any]:
         with self.locked():
             data = self._read_unlocked()
+            data["root"] = str(self.root)
             callback(data)
             self._write_unlocked(data)
             return data
@@ -90,6 +92,29 @@ class StateStore:
 
 def source_directory(url: str) -> Path:
     return state_home() / "sources" / stable_key(url)
+
+
+def maintenance_host(maintenance_root: Path) -> Path | None:
+    target = str(maintenance_root.absolute())
+    roots = state_home() / "roots"
+    if not roots.is_dir():
+        return None
+    for path in sorted(roots.glob("*/state.json")):
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(value, dict):
+            continue
+        maintenance = value.get("maintenance")
+        if not isinstance(maintenance, dict):
+            continue
+        for item in maintenance.values():
+            if not isinstance(item, dict) or item.get("path") != target:
+                continue
+            host_root = item.get("host_root") or value.get("root")
+            return Path(host_root) if isinstance(host_root, str) and host_root else None
+    return None
 
 
 def write_diagnostic(error: BaseException) -> str:

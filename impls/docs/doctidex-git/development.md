@@ -59,8 +59,11 @@ repositories，不访问远端。
 - init 和根 Git ignore；
 - 两个同 source/branch mount 的 lazy prepare；
 - nested namespace 通过原生文件系统读取；
+- `resolve --from` 对 mounted source 普通 link 与宿主 namespace 回边的选择；
+- 普通嵌套根的 resolve 歧义与 cwd 精确选择；
+- inspect 从宿主 cwd 保留 mount/source 双重上下文；
 - sync dry-run/apply 与不同 mount 保留不同有效 commit；
-- 独立 maintenance root 与有变化时禁止 close；
+- 独立 maintenance root、显式路径跨 cwd status/handoff/close 与有变化时禁止 close；
 - protocol structure 与 plugin readiness 分离。
 
 当前测试没有完整覆盖所有 CLI 字段、所有错误 code、远端认证/网络、并发、fallback

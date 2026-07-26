@@ -73,7 +73,7 @@ Need from user: <requires_user or none>
 |---|---|---|
 | `status` | string | 操作级状态：`ok`、`warning`、`blocked`。它不是协议符合性字段。 |
 | `operation` | string | 产生 payload 的稳定操作名，例如 `mount_prepare`、`maintenance_handoff`。 |
-| `root` | string/null | 所选宿主 doctidex 根。顶层异常由 main 转换时通常为 `null`；batch 子结果可能有 root。 |
+| `root` | string/null | 当前命令选中的 doctidex 根；mount 操作中它是宿主根。resolve 使用 `--from` 时可能与 `link_root` 不同。顶层异常由 main 转换时通常为 `null`；batch 子结果可能有 root。 |
 | `result` | string | 对已完成或仍保留结果的简短说明，不是完整诊断。 |
 | `changed` | array 或 boolean | 多数命令为实际改变的文件路径数组；batch/prepare/close 常为空数组。`mount_sync` 特例为 old/new commit 是否不同的 boolean。必须按 operation 解读。 |
 | `planned_changes` | array[string] | dry-run 与 apply 共同展示计划涉及的文件；当前只由 `init` 返回。 |
@@ -337,14 +337,20 @@ Cursor 内部目前是 urlsafe base64 编码的 `{"offset": N}`，但调用方�
 |---|---|---|
 | `status` | string | `ok`。 |
 | `operation` | string | `resolve`。 |
-| `root` | string | 所选宿主根。 |
+| `root` | string | 选中的命令上下文根；使用 mounted LINK_DOCUMENT 时通常是原宿主根。 |
 | `input` | string | 用户原始 INTERNAL_PATH。 |
 | `internal_path` | string | 规范化后路径。 |
-| `link_root` | string | 当前实现固定为宿主 root 文件系统路径。 |
-| `working_path` | string | 原生文件工具可尝试访问的宿主路径。 |
-| `crosses_mount` | boolean | 是否命中声明 mount。 |
-| `mount` | object/null | 命中的 Mount item。 |
+| `link_document` | string，可选 | 传给 `--from` 的现有文件的绝对可访问路径；省略 `--from` 时字段缺失。 |
+| `link_root` | string | 本次解析实际使用的文件系统 link root。它可以是命令 root，也可以是宿主 mount 下的 source root。 |
+| `link_root_kind` | string | `host_root` 表示命令/宿主根语义；`mounted_source` 表示普通绝对 link 从 `link_document` 所属挂载源根解析。 |
+| `working_path` | string | 原生文件工具可尝试访问的路径；mounted source 结果仍位于宿主可访问 mount path 下。 |
+| `crosses_mount` | boolean | 本次解析是否依赖一个宿主 mount；既包括目标命中宿主 mount，也包括从 mounted source 解析普通绝对 link。 |
+| `mount` | object/null | 与本次解析相关的 Mount item；未涉及 mount 时为 null。 |
 | `result` | string | 普通 resolved，或提示 mount 尚未准备。 |
+
+`--from` 只提供 link 来源，不解析文档内容。源文档中的普通 `/...` 会产生
+`link_root_kind: mounted_source`；源文档中的 `/.doctidex/mounts/...` 按 namespace
+回边产生 `host_root`。因此 agent 不应假设 `root == link_root`。
 
 ## 19. Mount 命令字段
 
@@ -585,6 +591,7 @@ Online `remote[]`：
 | `frontmatter_not_mapping` | YAML 顶层不是 mapping。 |
 | `root_not_found` | PATH 不在任何可识别 doctidex 根内。 |
 | `root_ambiguous` | 命中多个根且没有精确选择。 |
+| `link_source_invalid` | `resolve --from` 没有指向一个现有文件。 |
 | `git_worktree_required` | init 目标不在 Git worktree。 |
 | `internal_path_not_absolute` | 内部路径不以 `/` 开头。 |
 | `internal_path_escape` | `..` 越过 link root。 |

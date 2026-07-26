@@ -140,8 +140,15 @@ link 给出相关内容，过滤配置表达索引、排除、保护和原子边
 ### 2.3 内部路径不是操作系统绝对路径
 
 `/guide/index.md` 和 `/.doctidex/mounts/api/index.md` 中开头的 `/` 均表示相对于
-当前 doctidex 根的绝对内部路径，不表示主机文件系统的 `/`。CLI 接受这类路径时，
-会先按当前操作根解析，再访问对应内容。
+link 所在文档的链接根的绝对内部路径，不表示主机文件系统的 `/`。CLI 默认利用当前
+工作目录选择命令上下文，使单根内的常见操作无需反复传根。需要从宿主工作目录解释
+挂载文档中的 link 时，`resolve` 接受可选的 link 来源文件路径，并由这个 agent 已知
+且可访问的文件位置确定链接根；不要求 agent 先切换目录，也不要求其直接指定一个
+本来就需要推断的链接根。
+
+当前工作目录只是默认上下文，不是文件访问限制。短暂跨根阅读可保留宿主工作目录并
+传入目标或 link 来源；当一项较大、步骤较多的工作集中在单一明确根时，agent 可以
+进入该根开展工作，以简化后续参数和根选择。
 
 ### 2.4 挂载是只读入口，源根是维护入口
 
@@ -373,9 +380,10 @@ Skill 必须按已发布产品的使用环境编写。可以说明公共分发�
 ### 5.1 `doctidex-git-guide`
 
 用于第一次接触插件、需要确认术语或命令规律，或者任务跨越多个专项工作流的场景。
-它说明 doctidex 根、宿主根、内部路径、mount path、声明 revision、有效 commit、
-lazy mount、维护根等用户层概念，区分文件系统路径与 doctidex 内部路径，并解释
-`--json`、列表预算与分页、显式 dry-run/apply、命令触网类别和公共状态词。
+它说明 doctidex 根、命令上下文、宿主根、内部路径、link 来源文件、mount path、
+声明 revision、有效 commit、lazy mount、维护根等用户层概念，区分文件系统路径与
+doctidex 内部路径，并解释 cwd 默认上下文、`--json`、列表预算与分页、显式
+dry-run/apply、命令触网类别和公共状态词。
 
 Guide 不执行领域工作，也不要求 agent 按固定顺序使用 CLI。它根据用户意图路由到
 Setup、Read、Mount、Maintain、Workspace、Validate 或 Review，并列出常见的跨
@@ -436,6 +444,12 @@ Read Skill 可以按需使用以下协议感知辅助信息，但不得把它们
 这些辅助信息由 CLI 按明确规则提取；哪些入口与当前任务相关、应先读什么以及如何
 解释内容，仍由 agent 判断。
 
+Read Skill 应优先减少不必要的上下文切换和工具调用：同一根内规范化的普通路径可按
+规则直接推断；从宿主浏览已挂载文档时，可以把包含 link 的可访问文件路径传给
+`resolve`，由其区分源根普通绝对 link 与回到宿主 mount 命名空间的 link。单根内持续
+探索时，也可以进入该根后复用 cwd 默认上下文。`resolve` 是消歧和 mount 状态辅助，
+不是每个 link 都必须经过的访问网关。
+
 mount 采用被动的 lazy 恢复指引。agent 使用自己的工具阅读 mount 引入的外部
 doctidex 目录树时，如果任务必须读取的文件或路径不存在，应先判断该路径是否属于
 根 `index.md` 中声明的 mount：
@@ -483,6 +497,10 @@ frontmatter 与无关用户改动，遵守最近负责的 index、atomic、exclu
 和 mount 边界，按实际变化更新必要的 `index.md`；存在适用的 `log.md` 时更新其
 负责范围内的重要变化。
 
+少量、局部操作可以保留当前工作目录并传明确路径。若工作被拆分到某一个 doctidex
+根且工作量较大、步骤较多，Skill 应推荐 agent 进入该根开展维护，使原生工具和省略
+可选路径的 CLI 自然使用该根，减少重复参数；多根协调时仍保留明确的逐根路径。
+
 内容修改、index 正文和 log 记录均由 agent 判断并撰写。CLI 可以报告待核对索引
 候选、适用 log、文件变化和格式问题，但不得自动生成描述、摘要或变更记录，也不得
 把候选直接定性为索引或 log 缺口。
@@ -502,6 +520,10 @@ diff。若目标位于 mount path，该 Skill 不直接写入，而是转交 Wor
 每个根分别调用 Maintain 与 Validate。成功后 agent 得到逐根 diff、校验结果、
 revision 影响以及待用户执行的 commit、push 或 selector 更新。未提交变化的维护根
 会保留，除非用户明确处理；插件不会用清理来代替交付结果。
+
+`maintenance scope` 和 `open` 由 cwd 选择宿主。`open` 返回的精确维护根路径同时
+携带后续选择所需的用户上下文；agent 可以从任意 cwd 将它传给 `status`、`handoff`
+或 `close`。在一个维护根内进行多步骤工作时，进入该维护根仍是推荐的简化方式。
 
 ### 5.7 `doctidex-git-validate`
 
@@ -553,7 +575,7 @@ shell、编辑器、搜索器或 agent 运行环境已有的文件工具。所�
 ```text
 doctidex-git context [PATH]
 doctidex-git inspect [PATH]
-doctidex-git resolve INTERNAL_PATH
+doctidex-git resolve INTERNAL_PATH [--from LINK_DOCUMENT]
 doctidex-git init [PATH] [--dry-run | --apply]
 
 doctidex-git mount list
@@ -601,9 +623,13 @@ doctidex-git changes [PATH]
 根据这些事实决定使用自己的工具继续读取或搜索哪些路径。link 和待核对候选过多时，
 `inspect` 按负责 index 和目录折叠，并返回总数、当前页和继续展开入口。
 
-`resolve INTERNAL_PATH` 面向“这个 doctidex 路径实际指向哪里”的判断，至少输出：
+`resolve INTERNAL_PATH [--from LINK_DOCUMENT]` 面向“这个 doctidex 路径实际指向
+哪里”的判断。省略 `--from` 时使用 cwd 选中的链接根；传入时该参数必须是包含 link
+的可访问文件，而不是要求 agent 另行指定链接根。命令至少输出：
 
-- 规范化后的内部路径、链接根和对应工作目录路径；
+- 原始输入、规范化后的内部路径、实际链接根、链接根种类和对应工作目录路径；
+- 使用 `--from` 时的 link 来源文件；该参数只选择解析语义，不承诺验证文档中确实
+  存在该 link；
 - 路径是否跨入 mount，以及 mount path、来源和有效 commit；
 - mount 的 `not_prepared`、`ready` 或受阻状态；
 - `not_prepared` 时精确的 prepare 命令，`ready` 时可交给原生文件工具的路径。
@@ -673,8 +699,8 @@ Git 变化保持原样。
 
 1. Read Skill 发现根并用入口或最近负责的 `index.md` 提供优先探索路径。
 2. 需要结构化辅助时，agent 可以调用 `inspect` 获取负责 index/log、范围上下文、
-   已有 link 和待核对索引候选，或调用 `resolve` 解释 link 与 mount 状态；这些调用是
-   可选的。
+   已有 link 和待核对索引候选，或调用 `resolve` 解释 link 与 mount 状态；若 link
+   来自已挂载文档，可直接传该文档的可访问路径，不必离开宿主 cwd。这些调用是可选的。
 3. agent 自主选择其原生搜索、目录浏览和文件读取工具。
 4. 索引没有覆盖当前问题、线索不足或 agent 判断全局搜索更合适时，可以直接扩大
    搜索范围，不需要得到 Read Skill 或 CLI 的许可。
@@ -730,6 +756,7 @@ revision 决策且不修改宿主。对已经 `ready` 的 mount 执行同步失�
    边界。
 2. agent 可以用 index 缩小范围，也可以使用原生工具自由搜索和读取现场；写入只
    发生在当前根允许的内容中。
+   若该根内工作量较大或步骤较多，agent 可以先进入该根以简化后续命令参数。
 3. agent 更新需要跟进的 index；已有适用 log 时记录重要变化。
 4. `check` 与 `changes` 展示协议检查和最终 diff。
 
@@ -742,7 +769,8 @@ revision 决策且不修改宿主。对已经 `ready` 的 mount 执行同步失�
 1. 直接写 `/.doctidex/mounts/design/...` 会得到只读边界提示和
    `maintenance open` 下一步。
 2. Workspace Skill 打开独立维护根，显示源、基准 commit、可写范围和维护路径。
-3. Maintain Skill 从该源自己的 `index.md` 开始维护并独立校验。
+3. Maintain Skill 从该源自己的 `index.md` 开始维护并独立校验；多步骤维护可进入
+   该维护根执行，后续 handoff 仍显式传回维护根路径。
 4. `maintenance handoff` 输出源根 diff、Git 状态和校验事实，agent 据此撰写交付
    摘要并判断需要向用户说明的 Git 动作。
 

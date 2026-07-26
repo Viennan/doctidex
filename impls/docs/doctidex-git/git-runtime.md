@@ -43,6 +43,7 @@ Hash 由字符串的 UTF-8 字节做 SHA-256。source identity 当前使用未�
 ```json
 {
   "version": 1,
+  "root": "/work/host",
   "mounts": {
     "/.doctidex/mounts/design": {
       "url": "https://example.com/design.git",
@@ -54,6 +55,7 @@ Hash 由字符串的 UTF-8 字节做 SHA-256。source identity 当前使用未�
   "maintenance": {
     "1720000000-a1b2c3d4": {
       "path": "/cache/.../maintenance/1720000000-a1b2c3d4",
+      "host_root": "/work/host",
       "mount_path": "/.doctidex/mounts/design",
       "url": "https://example.com/design.git",
       "base_commit": "0123456789abcdef0123456789abcdef01234567",
@@ -68,6 +70,7 @@ Hash 由字符串的 UTF-8 字节做 SHA-256。source identity 当前使用未�
 | 字段 | 含义 |
 |---|---|
 | `version` | 内部 state schema 版本，当前固定补全为 `1`。没有迁移逻辑。 |
+| `root` | 最近一次 state 更新时保存的宿主绝对路径；只读旧 state 时可能缺失。 |
 | `mounts` | 以逻辑 `mount_path` 为 key 的有效读取状态。 |
 | `maintenance` | 以内部随机 identifier 为 key 的开放维护上下文。 |
 
@@ -89,6 +92,7 @@ Hash 由字符串的 UTF-8 字节做 SHA-256。source identity 当前使用未�
 | 字段 | 含义 |
 |---|---|
 | `path` | 独立可写 worktree 的绝对路径。 |
+| `host_root` | 创建该记录的宿主根，用于由显式 maintenance root 恢复宿主上下文。 |
 | `mount_path` | 它来自哪个宿主 mount。 |
 | `url` | 原始 source URL，用于 status、handoff 和 close。 |
 | `base_commit` | open 时 mount 的有效 commit。 |
@@ -339,8 +343,9 @@ hex。内部执行 detached worktree add，写入 maintenance record，并返回
 ### 9.3 Status
 
 不传 maintenance root 时返回宿主 state 登记的全部上下文；传入时按绝对路径精确
-过滤。目录不存在时 changes 为空并显示 `ready`，当前不会单独报告“登记存在但路径
-丢失”。
+过滤。每条新 record 保存 `host_root`，state 顶层也在写入时保存 root；CLI 可扫描
+登记，用显式路径定位所属宿主 state，所以调用不要求保留 open 时的 cwd。目录不存在
+时 changes 为空并显示 `ready`，当前不会单独报告“登记存在但路径丢失”。
 
 ### 9.4 Handoff
 
@@ -353,6 +358,9 @@ handoff 必须选中恰好一个 record。它要求维护根直接含可解析 `
 5. 返回独立的协议、语义、插件就绪和 Git 结果。
 
 它不 commit、push、merge 或更新宿主 selector。
+
+显式 maintenance root 与 status 使用同一所属宿主定位；省略参数时则只检查 cwd 所选
+宿主的 records。
 
 ### 9.5 Close
 

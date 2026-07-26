@@ -14,6 +14,8 @@ If the common path, root, CLI, and output model is not already established, load
   recommended local map.
 - **Applicable log**: the nearest optional `log.md` for change background.
 - **Link root**: the doctidex root used by a `/`-prefixed link; it is not the filesystem root.
+- **Link document**: the existing accessible file containing a link. Its location can establish
+  the link root without changing the current working directory.
 - **Working path**: the filesystem location used by native tools; it can often be inferred directly
   and is also returned by `resolve`.
 - **Normalized internal path**: a `/`-prefixed doctidex path with no unresolved `.` or `..`
@@ -50,12 +52,29 @@ mounts or access a remote.
 ### Resolve a doctidex path
 
 ```bash
-doctidex-git resolve INTERNAL_PATH --json
+doctidex-git resolve INTERNAL_PATH [--from LINK_DOCUMENT] --json
 ```
 
-Run from the intended host root. `INTERNAL_PATH` must begin with `/`; pass
-`/.doctidex/mounts/...` for external trees. Read `internal_path`, `working_path`, `crosses_mount`,
-and `mount`. Resolve never reads the target file or prepares a mount.
+`INTERNAL_PATH` is the `/`-prefixed path portion of the link, without an anchor. With no `--from`,
+run from the intended exact link root. Use `--from` when the accessible file containing the link is
+in a different doctidex tree from the current command context, especially when its filesystem path
+begins with the host's `.doctidex/mounts/` path. `LINK_DOCUMENT` may be absolute or relative to the
+current directory, must name an existing file, and is used only to select link semantics; resolve
+does not verify that the document contains `INTERNAL_PATH`.
+
+For a document in prepared mounted content, `--from` interprets an ordinary `/guide.md` from that
+mounted source root. A `/.doctidex/mounts/...` link in the same document resets to the original host
+mount namespace. This lets an agent remain in the host repository while resolving source links:
+
+```bash
+doctidex-git resolve /guide.md \
+  --from .doctidex/mounts/design/index.md --json
+```
+
+Read `root` as the selected command/host context, `link_root` and `link_root_kind` as the base used
+for this link, and `working_path` as the path for native file tools. `crosses_mount` and `mount`
+report the relevant host mount and readable state. Resolve never reads the target file, prepares a
+mount, or accesses a remote.
 
 Treat `resolve` as a disambiguation and mount-state helper, not a required step before file access.
 When the link root and normalized internal path are already known, derive the working path by
@@ -69,12 +88,22 @@ working path:  /work/docs/guides/setup.md
 host root:     /work/docs
 internal path: /.doctidex/mounts/design/api.md
 working path:  /work/docs/.doctidex/mounts/design/api.md
+
+mounted source root: /work/docs/.doctidex/mounts/design
+source internal path: /guides/setup.md
+working path:         /work/docs/.doctidex/mounts/design/guides/setup.md
 ```
 
 Likewise, resolve a simple relative Markdown link from the containing document's directory using
 normal filesystem path rules. Use native tools directly when the input is already a filesystem
 path. After establishing one root or ready mount mapping, reuse it for sibling and descendant paths
 until the selected root or mount state changes; do not call `resolve` for every file.
+
+The accessible source root of a known mount is the host filesystem path corresponding to its exact
+`MOUNT_PATH`, such as `/work/docs/.doctidex/mounts/design`. Once that mapping is known, ordinary
+normalized `/...` links from documents in that source can be appended there directly. Use
+`--from` when the origin or namespace-reset semantics are uncertain, not merely because a path is
+mounted.
 
 Prefer `resolve` when any of these applies:
 
@@ -86,8 +115,21 @@ Prefer `resolve` when any of these applies:
 - a directly inferred must-read path is absent and the absence must be distinguished from a lazy
   mount.
 
-Establish the intended root before calling `resolve`. Do not use it for relative links, external
-URLs, anchors, target-existence checks, or reading file content.
+For a local document in the already selected root, an ordinary normalized `/...` path can usually
+be inferred without resolve. For a mounted document reached from the host, prefer `--from` over
+changing directories merely for one resolution. If a sustained investigation stays within one
+unambiguous root, changing to that exact root makes no-`--from` calls and other defaulted commands
+more concise. A document inside nested ordinary roots remains `root_ambiguous` until the current
+directory selects the exact owning root.
+
+Do not use resolve for relative links, external URLs, anchors, target-existence checks, or reading
+file content.
+
+If `link_source_invalid`, correct `LINK_DOCUMENT` to the existing file that supplied the link; if
+that file is absent because its mount is lazy, prepare the exact mount before retrying. If
+`root_ambiguous`, change to the exact root that owns the document and retry, or ask the user when
+ownership is unclear. For `internal_path_not_absolute` or `internal_path_escape`, correct the path
+itself; changing `--from` cannot make a relative or escaping internal path valid.
 
 ### Check declared mounts
 
@@ -105,9 +147,10 @@ index when it helps narrow the task; read an applicable log when change history 
 global search whenever indexes are insufficient. No CLI call is required before ordinary access.
 
 Resolve relative links from the containing document directory. Resolve `/`-prefixed paths from the
-document's link root. The mount namespace does not nest: a later `.doctidex/mounts` inside mounted
-content refers back to the host root where traversal began. This exceptional case is a recommended
-use of `resolve`; ordinary normalized local paths can be inferred as described above.
+document's link root. The mount namespace does not nest: a later `/.doctidex/mounts` link inside
+mounted content refers back to the host root where traversal began. Pass the mounted document with
+`--from` for this exceptional case; ordinary normalized local paths can be inferred as described
+above.
 
 ## Restore a Required Mount
 

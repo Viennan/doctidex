@@ -15,7 +15,8 @@ from whero.doctidex.git.maintenance import MaintenanceService
 from whero.doctidex.git.mounts import GitMountService
 from whero.doctidex.git.repository import RevisionSelector, SourceRepository
 from whero.doctidex.git.setup import initialize
-from whero.doctidex.git.state import write_diagnostic
+from whero.doctidex.git.state import maintenance_host, write_diagnostic
+from whero.doctidex.protocol.constants import MOUNT_NAMESPACE
 from whero.doctidex.protocol.document import DoctidexDocument
 from whero.doctidex.protocol.paths import internal_to_filesystem, mount_for_path, normalize_internal_path
 from whero.doctidex.protocol.tree import RootContext, discover_roots, inspect_path, require_root
@@ -102,19 +103,29 @@ def _dispatch(args: argparse.Namespace, options: dict[str, Any]) -> dict[str, An
     if args.command == "init":
         return initialize(Path(args.path or cwd), apply=args.apply)
 
-    context = require_root(cwd if not getattr(args, "path", None) else Path(args.path), operation=args.command)
     if args.command == "inspect":
         target = Path(args.path).absolute() if args.path else cwd
+        context = _context_for_target(cwd, target, operation="inspect")
         return _inspect(context, target)
     if args.command == "resolve":
-        return _resolve(context, args.internal_path)
+        link_document = Path(args.link_document).absolute() if args.link_document else None
+        context = (
+            _context_for_link_document(cwd, link_document)
+            if link_document
+            else require_root(cwd, operation="resolve")
+        )
+        return _resolve(context, args.internal_path, link_document=link_document)
     if args.command == "mount":
+        context = require_root(cwd, operation="mount")
         return _mount(context, args)
     if args.command == "maintenance":
+        context = _maintenance_context(cwd, args)
         return _maintenance(context, args)
     if args.command == "check":
+        context = require_root(Path(args.path) if args.path else cwd, operation="check")
         return _check(context, online=args.online)
     if args.command == "changes":
+        context = require_root(Path(args.path) if args.path else cwd, operation="changes")
         target = Path(args.path).absolute() if args.path else context.root
         changes = git_status(target)
         return {
@@ -156,19 +167,43 @@ def _inspect(context: RootContext, target: Path) -> dict[str, Any]:
     return result
 
 
-def _resolve(context: RootContext, value: str) -> dict[str, Any]:
+def _resolve(context: RootContext, value: str, *, link_document: Path | None = None) -> dict[str, Any]:
     normalized = normalize_internal_path(value)
     mounts = GitMountService(context).list()
-    matched = mount_for_path(normalized, [item["mount_path"] for item in mounts])
-    mount = next((item for item in mounts if item["mount_path"] == matched), None)
-    working_path = internal_to_filesystem(context.root, normalized)
-    return {
+    link_root = context.root
+    link_root_kind = "host_root"
+    mount = None
+
+    if link_document is not None:
+        if not link_document.is_file():
+            raise DoctidexError(
+                "The link source must be an existing file.",
+                operation="resolve",
+                affected=[str(link_document)],
+                actions=["Pass the accessible file that contains the internal link."],
+                code="link_source_invalid",
+            )
+        origin = inspect_path(context, link_document)
+        if origin.source == "mount" and origin.mount_path:
+            origin_mount = next(item for item in mounts if item["mount_path"] == origin.mount_path)
+            if not _uses_host_mount_namespace(normalized):
+                link_root = internal_to_filesystem(context.root, origin.mount_path)
+                link_root_kind = "mounted_source"
+                mount = origin_mount
+
+    if link_root == context.root:
+        matched = mount_for_path(normalized, [item["mount_path"] for item in mounts])
+        mount = next((item for item in mounts if item["mount_path"] == matched), None)
+
+    working_path = internal_to_filesystem(link_root, normalized)
+    result = {
         "status": "ok",
         "operation": "resolve",
         "root": str(context.root),
         "input": value,
         "internal_path": normalized,
-        "link_root": str(context.root),
+        "link_root": str(link_root),
+        "link_root_kind": link_root_kind,
         "working_path": str(working_path),
         "crosses_mount": mount is not None,
         "mount": mount,
@@ -176,6 +211,82 @@ def _resolve(context: RootContext, value: str) -> dict[str, Any]:
         if not mount or mount["readable"]
         else "Mount is not prepared; use the listed action before native file access.",
     }
+    if link_document is not None:
+        result["link_document"] = str(link_document)
+    return result
+
+
+def _uses_host_mount_namespace(value: str) -> bool:
+    namespace = str(MOUNT_NAMESPACE)
+    return value == namespace or value.startswith(namespace + "/")
+
+
+def _context_for_target(cwd: Path, target: Path, *, operation: str) -> RootContext:
+    try:
+        current = require_root(cwd, operation=operation)
+    except DoctidexError as exc:
+        if exc.code not in {"root_not_found", "root_ambiguous"}:
+            raise
+        return require_root(target, operation=operation)
+    if _is_within(target, current.root):
+        return current
+    return require_root(target, operation=operation)
+
+
+def _context_for_link_document(cwd: Path, document: Path) -> RootContext:
+    try:
+        current = require_root(cwd, operation="resolve")
+    except DoctidexError as exc:
+        if exc.code != "root_not_found":
+            raise
+        roots = discover_roots(document)
+        if len(roots) > 1:
+            _raise_ambiguous_link_roots(roots)
+        return require_root(document, operation="resolve")
+    if not _is_within(document, current.root):
+        roots = discover_roots(document)
+        if len(roots) > 1:
+            _raise_ambiguous_link_roots(roots)
+        return require_root(document, operation="resolve")
+    origin = inspect_path(current, document)
+    if origin.source == "mount":
+        mount_root = internal_to_filesystem(current.root, origin.mount_path or "")
+        source_roots = [root for root in discover_roots(document) if _is_within(root.root, mount_root)]
+        if source_roots and source_roots[0].root != mount_root:
+            _raise_ambiguous_link_roots(source_roots)
+        return current
+    roots = discover_roots(document)
+    if roots and roots[0].root == current.root:
+        return current
+    _raise_ambiguous_link_roots(roots)
+
+
+def _raise_ambiguous_link_roots(roots: list[RootContext]) -> None:
+    raise DoctidexError(
+        "More than one doctidex root could provide the link root.",
+        operation="resolve",
+        affected=[str(root.root) for root in roots],
+        actions=["Run the command from the exact doctidex root that owns the link document."],
+        requires_user="doctidex_root",
+        code="root_ambiguous",
+    )
+
+
+def _is_within(path: Path, root: Path) -> bool:
+    try:
+        path.absolute().relative_to(root.absolute())
+    except ValueError:
+        return False
+    return True
+
+
+def _maintenance_context(cwd: Path, args: argparse.Namespace) -> RootContext:
+    value = getattr(args, "maintenance_root", None)
+    if value:
+        owner = maintenance_host(Path(value))
+        if owner is not None:
+            return require_root(owner, operation=f"maintenance_{args.maintenance_command}")
+    return require_root(cwd, operation=f"maintenance_{args.maintenance_command}")
 
 
 def _mount(context: RootContext, args: argparse.Namespace) -> dict[str, Any]:
@@ -301,60 +412,83 @@ def _check(context: RootContext, *, online: bool) -> dict[str, Any]:
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="doctidex-git")
+    parser = argparse.ArgumentParser(
+        prog="doctidex-git",
+        description="Inspect and maintain doctidex directory trees in Git workspaces.",
+    )
+    parser.add_argument("--json", action="store_true", help="return structured JSON")
+    parser.add_argument("--limit", metavar="N", help="limit each returned collection (1..1000, default: 100)")
+    parser.add_argument("--cursor", metavar="TOKEN", help="continue bounded output from an opaque cursor")
+    parser.add_argument("--depth", metavar="N", help="reserved depth limit (0..32; currently no effect)")
     commands = parser.add_subparsers(dest="command", required=True)
-    context = commands.add_parser("context")
-    context.add_argument("path", nargs="?")
-    inspect = commands.add_parser("inspect")
-    inspect.add_argument("path", nargs="?")
-    resolve = commands.add_parser("resolve")
-    resolve.add_argument("internal_path")
-    init = commands.add_parser("init")
-    init.add_argument("path", nargs="?")
+    context = commands.add_parser("context", help="discover Git and doctidex context for a path")
+    context.add_argument("path", nargs="?", metavar="PATH", help="filesystem path (default: current directory)")
+    inspect = commands.add_parser("inspect", help="inspect doctidex scope and navigation facts for a path")
+    inspect.add_argument("path", nargs="?", metavar="PATH", help="filesystem target (default: current directory)")
+    resolve = commands.add_parser("resolve", help="resolve an absolute internal path for native file tools")
+    resolve.add_argument("internal_path", metavar="INTERNAL_PATH", help="/ prefixed doctidex internal path")
+    resolve.add_argument(
+        "--from",
+        dest="link_document",
+        metavar="LINK_DOCUMENT",
+        help="existing file containing the link; selects link semantics without reading it",
+    )
+    init = commands.add_parser("init", help="create or adopt a doctidex root")
+    init.add_argument("path", nargs="?", metavar="PATH", help="filesystem target (default: current directory)")
     _write_mode(init)
 
-    mount = commands.add_parser("mount")
+    mount = commands.add_parser("mount", help="manage Git mounts in the current host root")
     mounts = mount.add_subparsers(dest="mount_command", required=True)
-    mounts.add_parser("list")
-    add = mounts.add_parser("add")
-    add.add_argument("--url", required=True)
+    mounts.add_parser("list", help="list declared Git mounts and local readable state")
+    add = mounts.add_parser("add", help="add a complete Git source declaration")
+    add.add_argument("--url", required=True, help="Git repository URL or local repository path")
     selectors = add.add_mutually_exclusive_group(required=True)
-    selectors.add_argument("--commit")
-    selectors.add_argument("--tag")
-    selectors.add_argument("--branch")
-    add.add_argument("--mount-path", required=True)
+    selectors.add_argument("--commit", help="fixed Git commit selector")
+    selectors.add_argument("--tag", help="Git tag selector updated only by explicit sync")
+    selectors.add_argument("--branch", help="Git branch selector updated only by explicit sync")
+    add.add_argument("--mount-path", required=True, metavar="MOUNT_PATH", help="exact /.doctidex/mounts child")
     _write_mode(add)
-    remove = mounts.add_parser("remove")
-    remove.add_argument("mount_path")
+    remove = mounts.add_parser("remove", help="remove one exact mount declaration")
+    remove.add_argument("mount_path", metavar="MOUNT_PATH", help="exact declared mount path")
     _write_mode(remove)
-    prepare = mounts.add_parser("prepare")
-    prepare.add_argument("mount_path", nargs="?")
-    sync = mounts.add_parser("sync")
-    sync.add_argument("mount_path", nargs="?")
+    prepare = mounts.add_parser("prepare", help="make lazy mount content readable without changing its selector")
+    prepare.add_argument("mount_path", nargs="?", metavar="MOUNT_PATH", help="exact mount; omit to prepare all")
+    sync = mounts.add_parser("sync", help="check or apply an explicit effective-commit update")
+    sync.add_argument("mount_path", nargs="?", metavar="MOUNT_PATH", help="exact mount; omit to sync all")
     _write_mode(sync)
 
-    maintenance = commands.add_parser("maintenance")
+    maintenance = commands.add_parser("maintenance", help="coordinate writable mounted-source roots")
     maintenance_commands = maintenance.add_subparsers(dest="maintenance_command", required=True)
-    scope = maintenance_commands.add_parser("scope")
-    scope.add_argument("paths", nargs="*")
-    open_command = maintenance_commands.add_parser("open")
-    open_command.add_argument("mount_path")
+    scope = maintenance_commands.add_parser("scope", help="classify task paths into independent roots")
+    scope.add_argument("paths", nargs="*", metavar="PATH", help="filesystem task targets; omit for host root")
+    open_command = maintenance_commands.add_parser("open", help="open an isolated writable mounted-source root")
+    open_command.add_argument("mount_path", metavar="MOUNT_PATH", help="exact declared mount path")
     for name in ("status", "handoff", "close"):
-        command = maintenance_commands.add_parser(name)
-        command.add_argument("maintenance_root", nargs="?")
+        descriptions = {
+            "status": "show open maintenance contexts and Git changes",
+            "handoff": "report validation and delivery facts for one maintenance root",
+            "close": "close one Git-clean maintenance root",
+        }
+        command = maintenance_commands.add_parser(name, help=descriptions[name])
+        command.add_argument(
+            "maintenance_root",
+            nargs="?",
+            metavar="MAINTENANCE_ROOT",
+            help="exact path returned by maintenance open",
+        )
 
-    check = commands.add_parser("check")
-    check.add_argument("path", nargs="?")
-    check.add_argument("--online", action="store_true")
-    changes = commands.add_parser("changes")
-    changes.add_argument("path", nargs="?")
+    check = commands.add_parser("check", help="validate protocol, semantic candidates, and plugin readiness")
+    check.add_argument("path", nargs="?", metavar="PATH", help="root or contained path (default: current directory)")
+    check.add_argument("--online", action="store_true", help="fetch and compare remote Git selectors without applying")
+    changes = commands.add_parser("changes", help="return objective Git porcelain status entries")
+    changes.add_argument("path", nargs="?", metavar="PATH", help="Git directory (default: selected doctidex root)")
     return parser
 
 
 def _write_mode(parser: argparse.ArgumentParser) -> None:
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--dry-run", action="store_true")
-    group.add_argument("--apply", action="store_true")
+    group.add_argument("--dry-run", action="store_true", help="preview without applying the public change")
+    group.add_argument("--apply", action="store_true", help="apply the planned public change")
 
 
 def _argument_selector(args: argparse.Namespace) -> RevisionSelector:

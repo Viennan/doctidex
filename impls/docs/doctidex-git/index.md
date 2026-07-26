@@ -32,13 +32,15 @@
 | 术语 | 当前实现中的含义 |
 |---|---|
 | doctidex 根 | 某个目录，其 `index.md` 可被解析且包含 `doctidex.root: true`。 |
-| 宿主根（host root） | 当前 CLI 操作所选中的 doctidex 根；它拥有本次解析使用的唯一 mount 表。 |
+| 命令上下文（command context） | 默认从 cwd 选出的 doctidex 根；部分命令会由显式 PATH、LINK_DOCUMENT 或 MAINTENANCE_ROOT 补充选择。 |
+| 宿主根（host root） | 为一次宿主/mount 操作提供唯一 mount 表的 doctidex 根。它通常是命令上下文，但 resolve 的实际 link root 可以不同。 |
 | 源目录树（source tree） | 由 Git mount 引入的完整外部 doctidex 根。当前实现不支持只挂载仓库子目录。 |
 | 根索引 | doctidex 根直接包含的 `index.md`。只有它可以声明 `doctidex.mounts`。 |
 | 负责索引（responsible index） | 对某个未排除路径负责的最近祖先 `index.md`。进入具有有效 `index.md` 的子目录后，责任转移到该文件。 |
 | 适用 log（applicable log） | 从目标目录向宿主根查找时遇到的最近 `log.md`；不存在时为 `null`。 |
 | 内部路径 | 以 doctidex 根为基准的逻辑路径。以 `/` 开头不表示文件系统根。 |
-| 链接根（link root） | 解析绝对内部路径时使用的 doctidex 根。CLI `resolve` 当前返回所选宿主根。 |
+| link 来源文件（link document） | `resolve --from` 接受的现有文件；其可访问位置用于确定 link 语义，不要求 CLI 搜索文档内容。 |
+| 链接根（link root） | 解析绝对内部路径时使用的 doctidex 根。它可以是宿主根，也可以是 link 来源所在的已挂载 source 根。 |
 | mount namespace | `/.doctidex/mounts`。同一次宿主解析中只有一个；后续再次出现该前缀会回到起始宿主的 namespace。 |
 | mount 声明 | 根 `index.md` 中 `doctidex.mounts[]` 的一个映射，基础字段为 `type`、`url`、`mount_path`。 |
 | Git revision selector | Git 扩展的 `revision` 中唯一的 `commit`、`tag` 或 `branch` 键和值。 |
