@@ -1,7 +1,8 @@
-# CLI 命令参考
+# CLI 用户接口
 
 本篇描述 `doctidex-git` 0.1.0 当前接受的命令和副作用。返回字段的逐字段说明见
-[CLI 输出字段参考](cli-output.md)。
+[CLI 结果契约](cli-schema.md)。Python 参考实现如何完成参数分发和渲染见
+[CLI 与 rendering](../../details/python/cli-and-rendering.md)。
 
 ## 1. 命令总览
 
@@ -30,13 +31,13 @@ doctidex-git changes [PATH]
 
 ## 2. 全局选项
 
-CLI 在 argparse 之前从 argv 任意位置提取：
+以下全局选项可以出现在子命令之前或之后：
 
 | 选项 | 默认值 | 当前行为 |
 |---|---:|---|
 | `--json` | false | 输出 indent 2、Unicode 不转义、key 排序的 JSON。否则输出人读 key/value。 |
 | `--limit N` | 100 | 每个列表最多返回 N 项；最小 1，最大 1000。该限制分别作用于每个列表，不是整个 payload 的总项目数。 |
-| `--cursor TOKEN` | 无 | 解码一个顶层列表 offset。相同 offset 会应用到 payload 中每个顶层列表；嵌套列表总从 0 开始。 |
+| `--cursor TOKEN` | 无 | 继续读取上一结果给出的下一页；必须原样使用 `next_cursor`，不能自行构造。当前同一页位置会作用于结果中的每个顶层列表。 |
 | `--depth N` | 4 | 解析并限制到 0..32，但当前版本没有将其用于遍历或输出裁剪，因此目前没有可观察效果。 |
 
 全局选项可以放在子命令之前或之后，例如以下两种形式等价：
@@ -47,7 +48,7 @@ doctidex-git mount list --json
 ```
 
 无效 `--cursor` 会成为结构化 `cursor_invalid` blocked 结果。`--limit`/`--depth` 的非整数
-值在统一异常边界之前解析，当前可能直接产生 Python 参数错误而不是 JSON 结果。
+值属于命令行语法错误，不保证产生 JSON 结果。
 
 ## 3. 根与路径选择
 
@@ -77,14 +78,12 @@ cwd 继续传给 status/handoff/close。
 ## 4. 写模式
 
 `init`、`mount add`、`mount remove`、`mount sync` 接受互斥的 `--dry-run`/`--apply`。
-当前 dispatch 只读取 `args.apply`：
-
 - 有 `--apply` 才进行公开写操作；
 - `--dry-run` 和两个 flag 都不写的行为相同；
 - CLI 不要求必须显式给出其中一个。
 
 不能根据命令名推断是否联网。尤其 `mount sync --dry-run` 为获得 new commit，可能
-fetch 远端；它只是不会切换 mount presentation。
+访问远端；它只是不会切换当前可读快照。
 
 ## 5. `context`
 
@@ -92,9 +91,9 @@ fetch 远端；它只是不会切换 mount presentation。
 doctidex-git context [PATH] [--json]
 ```
 
-用途：发现 PATH 所在 Git worktree 和 doctidex root，不要求已有根。
+用途：发现 PATH 所在 Git 工作目录和 doctidex root，不要求已有根。
 
-无根时返回 `status: warning`、可选 Git worktree、`root: null` 和 init 下一步，退出码
+无根时返回 `status: warning`、可选 Git 工作目录、`root: null` 和 init 下一步，退出码
 仍为 0。找到一个根时返回根、根 index 和 mode。
 
 `mode` 当前通过 PATH 字符串是否包含 `/.doctidex/mounts/` 判断：
@@ -115,7 +114,7 @@ doctidex-git init [PATH] [--dry-run | --apply] [--json]
 用途：在 Git working tree 内创建或接管一个 doctidex 根。
 
 根选择：如果 requested PATH 向上只发现一个已有 doctidex 根，使用该根；没有时以
-requested 目录为新根；发现多个时 blocked。目标必须处于 Git worktree。
+requested 目录为新根；发现多个时 blocked。目标必须处于 Git 工作目录。
 
 计划内容：
 
@@ -126,7 +125,7 @@ requested 目录为新根；发现多个时 blocked。目标必须处于 Git wor
 - 确保根 `.gitignore` 有精确行 `/.doctidex/mounts/`；
 - 把根当前直接子项列为语义候选，跳过 `index.md`、`.git`、`.doctidex`。
 
-注意：existing `doctidex.excludes` 不是列表时，当前实现会替换为新列表，而不是保留
+注意：existing `doctidex.excludes` 不是列表时，当前行为会替换为新列表，而不是保留
 原非法值。apply 会写整个 frontmatter 和 `.gitignore`；不会生成 index 正文、commit
 或访问网络。
 
@@ -192,7 +191,7 @@ doctidex-git mount list [--json]
 用途：列出根 index 中所有 `type: git` 声明及其本地有效状态。
 
 每项包含 mount path、清理后的 source URL、声明 selector、有效 commit、state、
-readable 和下一步。list 不 fetch；`ready` 只表示 state 中有 commit 且逻辑路径当前
+readable 和下一步。list 不访问远端；`ready` 只表示已有有效 commit 且逻辑路径当前
 存在，不表示 branch/tag 与远端最新值相同。
 
 副作用：无写入、无网络。
@@ -212,7 +211,7 @@ doctidex-git mount add --url URL \
 namespace 下没有 tracked 内容。apply 只修改根 index，返回 `mount_state: not_prepared`。
 
 副作用：dry-run 无写入；apply 写根 `index.md`。两者都不访问网络、不解析 selector、
-不创建 presentation。
+不创建可读路径。
 
 ## 11. `mount remove`
 
@@ -223,11 +222,10 @@ doctidex-git mount remove MOUNT_PATH [--dry-run | --apply] [--json]
 用途：删除一个精确 Git mount 声明。
 
 命令先扫描宿主 Markdown 中可解析的 link。仍有引用时返回
-`mount_still_referenced`。dry-run 只说明是否可移除；apply 修改根 index、移除已登记
-presentation 并删除 mount state record。
+`mount_still_referenced`。dry-run 只说明是否可移除；apply 修改根 index，并移除该声明
+当前受管理的可读路径和有效选择记录。
 
-副作用：不访问网络。apply 不清理 shared bare repository、revision views 或 projection
-cache。
+副作用：不访问网络。apply 不承诺回收可被其他 mount 复用的本地 Git 数据。
 
 ## 12. `mount prepare`
 
@@ -240,9 +238,9 @@ doctidex-git mount prepare [MOUNT_PATH] [--json]
 指定路径时只处理该 mount；省略时处理所有 Git mounts。只有一个目标时直接返回单项
 schema；零个或多个目标时返回 batch schema。
 
-有匹配 state/effective commit 且本地对象可用时可完全离线。首次准备或本地缺 object
-时会 clone/fetch。成功会写内部 bare repository/worktree/projection/state，并创建宿主
-mount presentation，但不修改 tracked 文件、根 index 或 Git index。
+已有 effective commit 且所需 Git 数据在本地时可完全离线。首次准备或本地数据不足时
+可能访问 source。成功会建立宿主 mount 的可读路径并保存有效选择，但不修改 tracked
+文件、根 index 或 Git index。
 
 ## 13. `mount sync`
 
@@ -253,8 +251,8 @@ doctidex-git mount sync [MOUNT_PATH] [--dry-run | --apply] [--json]
 用途：显式检查 selector 当前解析到的 commit，并可切换有效读取结果。
 
 不指定路径时顺序处理所有 Git mounts。branch/tag 通常 fetch；commit 在已有 effective
-commit 时不重新解析。dry-run 返回 old/new commit 和布尔 `changed`，但不切换
-presentation。apply 在 commit 不同时切换该 mount；其他指向旧 commit 的 mount 不变。
+commit 时不重新解析。dry-run 返回 old/new commit 和布尔 `changed`，但不切换当前
+可读快照。apply 在 commit 不同时切换该 mount；其他指向旧 commit 的 mount 不变。
 
 注意：该命令的 `changed` 是“commit 是否不同”的布尔值，不是其他命令常用的路径
 数组。单 mount 结果与 batch 结果 shape 也不同。
@@ -279,13 +277,13 @@ doctidex-git maintenance scope [PATH ...] [--json]
 doctidex-git maintenance open MOUNT_PATH [--json]
 ```
 
-用途：从 mount 有效 commit 创建独立可写 worktree。
+用途：从 mount 有效 commit 创建独立可写维护根。
 
 mount 尚无 effective commit 时返回 `maintenance_source_not_prepared` 和 prepare 命令。
 成功返回 `maintenance_root`、base commit、可写边界、目标 branch 提示和下一步。
 
-副作用：写内部 maintenance worktree 和宿主 state；不访问远端，不切换用户当前
-worktree，不改变宿主 mount。
+副作用：创建并登记 maintenance root；不访问远端，不切换调用者 cwd，不改变宿主
+mount。
 
 ## 16. `maintenance status`
 
@@ -293,7 +291,7 @@ worktree，不改变宿主 mount。
 doctidex-git maintenance status [MAINTENANCE_ROOT] [--json]
 ```
 
-用途：列出 state 中开放的 maintenance contexts 及 Git changes。
+用途：列出当前开放的 maintenance contexts 及 Git changes。
 
 不传路径时列出全部；传入时按绝对路径过滤。没有匹配也返回 ok/空 items，而不是
 blocked。每项 state 为 `ready` 或 `has_changes`。显式路径会查找登记该路径的宿主，
@@ -321,13 +319,13 @@ doctidex-git maintenance handoff [MAINTENANCE_ROOT] [--json]
 doctidex-git maintenance close [MAINTENANCE_ROOT] [--json]
 ```
 
-用途：移除一个已经 clean 的 maintenance worktree。
+用途：移除一个已经 clean 的 maintenance root。
 
 有任何 porcelain change 时返回 `maintenance_has_changes`，保留路径并要求先 handoff
-和决定 Git 动作。clean 时删除 worktree 和 state record。显式维护根与 handoff 使用
+和决定 Git 动作。clean 时关闭并移除该维护现场。显式维护根与 handoff 使用
 相同的跨 cwd 选择规则；省略时使用当前宿主且必须恰好选中一个登记。
 
-副作用：只删除已登记且 Git 状态 clean 的内部 maintenance context；无网络。
+副作用：只关闭已登记且 Git 状态 clean 的 maintenance context；无网络。
 
 ## 19. `check`
 
@@ -338,8 +336,8 @@ doctidex-git check [PATH] [--online] [--json]
 用途：把协议结构、语义候选和插件就绪状态分开检查。
 
 默认离线。`--online` 对每个 Git mount 使用 refresh 解析 selector，返回当前 effective
-commit、remote commit 和 update_available。online check 不切换 presentation 或
-effective commit，但会 fetch 并更新内部 bare repository refs。
+commit、remote commit 和 update_available。online check 不切换可读快照或
+effective commit，但会访问 source 并刷新本地 Git 信息。
 
 check 还读取宿主 Git changes，为非 `index.md`/`log.md` change 添加
 `git_change_review` 候选。任何语义候选、协议 fail 或插件 blocked 都令顶层 status 为
@@ -362,7 +360,7 @@ index/staged 状态，第二个表示 worktree 状态；`??` 表示 untracked。
 
 ## 21. 参数与异常边界
 
-未知命令、缺少必需参数、互斥 selector 冲突等由 argparse 直接处理，通常退出 2 并写
-stderr，不保证 `--json`。进入 dispatch 后的预期问题使用统一 blocked schema。Ctrl-C
-在 dispatch 中返回 `interrupted` 和退出 130；未预期异常返回 `unexpected_failure`、
+未知命令、缺少必需参数、互斥 selector 冲突等命令行语法错误通常退出 2 并写
+stderr，不保证 `--json`。命令开始执行后的预期问题使用统一 blocked schema。执行期间
+Ctrl-C 返回 `interrupted` 和退出 130；未预期异常返回 `unexpected_failure`、
 诊断 ID 和退出 2。

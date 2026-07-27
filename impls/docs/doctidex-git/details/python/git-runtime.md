@@ -1,8 +1,13 @@
-# Git、Mount 与维护运行时
+# Python Git、Mount 与维护运行时
 
 本篇解释 `whero.doctidex.git` 的内部对象和生命周期。CLI 使用者通常只需要
 `mount_path`、声明 revision、有效 commit、可读状态和 maintenance root；实现维护者
 需要理解这些公开概念如何映射到 bare repository、worktree、projection 和 state。
+
+本篇是物理布局、state schema 和跨模块时序的权威说明。单个模块的调用契约分别见
+[Git Context 与 State](git-context-and-state.md)、
+[Source、Mount 与可读呈现](sources-mounts-and-projection.md)和
+[Maintenance 实现](maintenance.md)，这里不重复代码示例。
 
 ## 1. 运行时目录
 

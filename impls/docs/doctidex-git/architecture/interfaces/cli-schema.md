@@ -1,23 +1,18 @@
-# CLI 输出字段参考
+# CLI 结果与字段契约
 
-本篇以当前返回 dict 为准，解释 CLI 的 JSON、人读格式和所有字段。字段不是每次都
-出现；每个命令的精确字段集合在后半部分列出。
+本篇定义 CLI 的 JSON、人读格式和全部公共字段。字段不是每次都出现；每个命令的精确
+字段集合在后半部分列出。序列化、预算和渲染如何实现见
+[Python CLI 与 rendering](../../details/python/cli-and-rendering.md)。
 
 ## 1. JSON 格式
 
-`--json` 使用：
-
-```python
-json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
-```
-
-因此：
+`--json` 输出一个 JSON object，并遵循：
 
 - 输出是一个 JSON object；
 - key 按字典序排列，不按本文表格顺序；
 - Unicode 保持原字符；
 - 缩进为 2；
-- `None` 变为 `null`，布尔值保持 JSON boolean；
+- 未知或不适用的显式值使用 `null`，布尔值保持 JSON boolean；
 - 空数组和空 object 仍保留，除非某段代码本身不添加该字段。
 
 Agent 需要稳定读取字段时应使用 `--json`。人读输出适合快速查看，但 blocked 时只
@@ -38,7 +33,7 @@ items, collection, next_actions
 ```
 
 剩余字段按 key 排序输出，但 `details` 永远省略。label 把下划线替换为空格并仅将首
-字符大写。dict/list 被压成一行 JSON，bool 显示为 `yes`/`no`。
+字符大写。object/array 被压成一行 JSON，boolean 显示为 `yes`/`no`。
 
 blocked payload 使用固定格式：
 
@@ -61,8 +56,8 @@ Need from user: <requires_user or none>
 |---:|---|
 | `0` | payload 不 blocked，且 `protocol_structure` 不是 `fail`。`status: warning` 通常仍为 0。 |
 | `1` | payload 顶层 `protocol_structure: fail`。当前主要是 `check`。 |
-| `2` | payload 顶层 `status: blocked`，或预期 `DoctidexError`。argparse 参数错误通常也为 2，但不是结构化 payload。 |
-| `130` | dispatch 期间捕获 `KeyboardInterrupt`。 |
+| `2` | payload 顶层 `status: blocked`。命令行语法错误通常也为 2，但不保证结构化 payload。 |
+| `130` | 执行期间被调用者中断。 |
 
 不要仅凭退出码把 warning 当作完全通过：`plugin_readiness: blocked` 或
 `semantic_review: required` 当前可以退出 0。
@@ -73,7 +68,7 @@ Need from user: <requires_user or none>
 |---|---|---|
 | `status` | string | 操作级状态：`ok`、`warning`、`blocked`。它不是协议符合性字段。 |
 | `operation` | string | 产生 payload 的稳定操作名，例如 `mount_prepare`、`maintenance_handoff`。 |
-| `root` | string/null | 当前命令选中的 doctidex 根；mount 操作中它是宿主根。resolve 使用 `--from` 时可能与 `link_root` 不同。顶层异常由 main 转换时通常为 `null`；batch 子结果可能有 root。 |
+| `root` | string/null | 当前命令选中的 doctidex 根；mount 操作中它是宿主根。resolve 使用 `--from` 时可能与 `link_root` 不同。无法建立根上下文的失败通常为 `null`；batch 子结果可能有 root。 |
 | `result` | string | 对已完成或仍保留结果的简短说明，不是完整诊断。 |
 | `changed` | array 或 boolean | 多数命令为实际改变的文件路径数组；batch/prepare/close 常为空数组。`mount_sync` 特例为 old/new commit 是否不同的 boolean。必须按 operation 解读。 |
 | `planned_changes` | array[string] | dry-run 与 apply 共同展示计划涉及的文件；当前只由 `init` 返回。 |
@@ -96,7 +91,7 @@ Need from user: <requires_user or none>
 | `protocol_structure` | `pass`/`fail` | 当前确定性协议检查是否有 error。 |
 | `semantic_review` | `clear`/`required` | 是否存在需 agent 阅读判断的候选。`required` 不等于内容错误。 |
 | `plugin_readiness` | `ready`/`blocked`/`not_applicable` | Git mount 使用前置是否满足。它不改变协议结构结论。 |
-| `mount_state` 或 mount item `state` | `ready`/`not_prepared` | 当前逻辑 mount 是否有有效 commit 且 presentation 存在。 |
+| `mount_state` 或 mount item `state` | `ready`/`not_prepared` | 当前逻辑 mount 是否有有效 commit 且可读路径存在。 |
 | maintenance item `state` | `ready`/`has_changes` | maintenance root 的 Git porcelain 是否为空。 |
 | `mode` | `host_read`/`mount_read` | `context` 对输入路径的字符串级读取模式提示。 |
 | `source`（PathContext） | `local`/`mount` | 路径来自宿主本地内容还是声明 mount。 |
@@ -117,8 +112,8 @@ Finding object 当前使用以下字段：
 | `path` | string，可选 | finding 对应文件、内部路径或配置位置。通用 error 可能只在顶层 `affected` 给路径。 |
 | `index` | string，可选 | 语义候选由哪个 `index.md` 负责。`init` 产生的候选当前没有该字段。 |
 
-协议 validation 的 error finding 通常同时有 `domain/path`；`DoctidexError.as_result()`
-产生的 finding 只有 severity/code/message/actions，受影响对象位于顶层 `affected`。
+协议结构 finding 通常同时有 `domain/path`；通用 blocked finding 可能只有
+severity/code/message/actions，受影响对象位于顶层 `affected`。
 
 ## 7. Semantic candidate
 
@@ -148,7 +143,7 @@ Finding object 当前使用以下字段：
 
 ## 8. Revision selector
 
-`declared_revision` 和 state 中的 `selector` 都使用：
+`declared_revision` 使用：
 
 | 字段 | 类型 | 含义 |
 |---|---|---|
@@ -166,13 +161,13 @@ Finding object 当前使用以下字段：
 | `mount_path` | string | 根声明的规范化逻辑路径。 |
 | `source` | string | 清理 userinfo 后的 Git URL 或本地路径。 |
 | `declared_revision` | object | `{kind, value}` selector。 |
-| `effective_commit` | string/null | state 中 URL/selector 匹配的 40 位 commit；首次 prepare 前通常为 null。 |
+| `effective_commit` | string/null | 当前 source 与 selector 对应的 40 位读取 commit；首次 prepare 前通常为 null。 |
 | `state` | string | `ready` 或 `not_prepared`。 |
 | `readable` | boolean | effective commit 存在且逻辑 destination 当前存在/是 symlink 时为 true。 |
 | `next_action` | string/null | ready 时 null；否则是精确 `doctidex-git mount prepare ...` 命令。 |
 
-`effective_commit` 非 null 但 presentation 丢失时仍返回 `not_prepared/readable: false`，
-prepare 会尝试复用 commit 恢复路径。
+`effective_commit` 非 null 但可读路径丢失时仍返回 `not_prepared/readable: false`，
+prepare 会尝试复用该 commit 恢复读取。
 
 ## 10. PathContext
 
@@ -221,34 +216,31 @@ prepare 会尝试复用 commit 恢复路径。
 
 ## 13. Output collection
 
-预算器遍历 payload 中每个 list。某个列表被截断或顶层 cursor offset 非 0 时，在
-`collection` 中以字段路径为 key 添加：
+某个列表被截断或当前请求从后续页开始时，`collection` 以字段路径为 key 给出：
 
 | 字段 | 类型 | 含义 |
 |---|---|---|
 | `total` | integer | 预算前列表长度。 |
 | `returned` | integer | 当前页实际返回数。 |
-| `collapsed_directories` | integer | 列表 dict 元素中 `path`/`internal_path` 的不同父目录数。 |
+| `collapsed_directories` | integer | 列表 object 中 `path`/`internal_path` 所涉及的不同父目录数。 |
 | `groups` | object | 最多 limit 个按父目录名排序的 `parent -> count` 摘要；无可分组路径时为空。 |
 | `truncated` | boolean | 当前页之后是否还有项目。 |
 | `next_cursor` | string/null | 仅顶层列表且还有后续项时给出 opaque cursor；嵌套列表永远 null。 |
 
 字段路径示例：`items`、`findings`、`semantic_candidates`、`items[].findings`、
-`findings[].actions`。同一个 cursor offset 当前会应用到所有顶层列表，因此包含多个
-顶层列表的 payload 不能把 cursor 理解为只属于某一个 collection key。
-
-Cursor 内部目前是 urlsafe base64 编码的 `{"offset": N}`，但调用方应视为 opaque，
-只回传 `next_cursor`，不要自行构造。
+`findings[].actions`。同一个 cursor 当前会推进所有顶层列表，因此包含多个顶层列表的
+payload 不能把它理解为只属于某一个 collection key。Cursor 是 opaque token；调用方
+只能原样回传 `next_cursor`，不能解析或自行构造。
 
 ## 14. Blocked error payload
 
-所有预期 `DoctidexError` 转为：
+所有预期的操作失败使用：
 
 | 字段 | 类型 | 含义 |
 |---|---|---|
 | `status` | string | 固定 `blocked`。 |
 | `operation` | string | 被阻止的操作。 |
-| `root` | string/null | 转换者提供的根；main 顶层当前不提供，因此通常 null。 |
+| `root` | string/null | 已能明确选择根时为该根；在建立上下文前失败时通常为 null。 |
 | `affected` | array[string] | 受影响对象。 |
 | `changed` | array | 固定空数组；若异常前已产生其他独立结果，batch items/result 另行说明。 |
 | `result` | string | 明确哪些结果仍保留；默认 `No changes were made.`。 |
@@ -405,9 +397,9 @@ Cursor 内部目前是 urlsafe base64 编码的 `{"offset": N}`，但调用方�
 | `source` | 清理后的 URL。 |
 | `declared_revision` | selector。 |
 | `effective_commit` | 已准备的完整 commit。 |
-| `mount_state` | `ready`。内部 helper 支持其他值，但当前 prepare 成功只传 ready。 |
+| `mount_state` | 固定 `ready`；未完成时使用 blocked 结果。 |
 | `readable` | true。 |
-| `changed` | 空数组；它不表示没有内部 state/presentation 变化。 |
+| `changed` | 空数组；prepare 不改变用户维护的公开文件，但会使 mount 可读。 |
 | `result` | 外部目录树可读。 |
 
 ### 19.5 单项 `mount_sync`
@@ -475,7 +467,7 @@ Cursor 内部目前是 urlsafe base64 编码的 `{"offset": N}`，但调用方�
 | `status` | `ok`。 |
 | `operation` | `maintenance_open`。 |
 | `root` | 宿主根。 |
-| `maintenance_root` | 新 worktree 绝对路径。 |
+| `maintenance_root` | 新 maintenance root 的绝对路径。 |
 | `mount_path` | 来源 mount。 |
 | `source` | 清理后的 URL。 |
 | `base_commit` | open 的有效 commit。 |
@@ -483,7 +475,7 @@ Cursor 内部目前是 urlsafe base64 编码的 `{"offset": N}`，但调用方�
 | `writable_root` | 当前与 maintenance_root 相同。 |
 | `boundaries` | `{writable: <path>, host_mount: "read_only"}`。`writable` 是允许写入根；`host_mount` 是宿主路径边界状态。 |
 | `next_actions` | 使用源 index 维护、check、handoff 三个提示。 |
-| `changed` | 空数组；不表示内部 worktree/state 未创建。 |
+| `changed` | 空数组；open 不改变用户维护的公开文件，但会创建维护现场。 |
 | `result` | 独立维护根已就绪。 |
 
 ### 20.3 `maintenance_status`
@@ -552,7 +544,7 @@ result 明确保留的 maintenance path。
 | `findings` | 协议 findings，加 Git 扩展/readiness findings。 |
 | `semantic_candidates` | 协议 candidates 加 Git change candidates。 |
 | `remote` | offline 时空数组；online 时每个 Git mount 一项。 |
-| `result` | 声明检查未改变文件或 mount state；online 仍可能更新内部 bare refs。 |
+| `result` | 检查未改变文件或 mount 的 effective commit；online 仍可能刷新本地 Git 信息。 |
 
 Online `remote[]`：
 
@@ -563,8 +555,8 @@ Online `remote[]`：
 | `remote_commit` | refresh 后 selector 解析结果。 |
 | `update_available` | 只有 effective commit 非 null 且与 remote 不同时为 true；首次未 prepare 时即使 remote 已解析也为 false。 |
 
-`check` 不透传 protocol validation 的 `mount_count`，也不返回内部 readiness 的
-`ignored`、`ignore_file`、`tracked` 列表；blocked finding 提供用户层动作。
+`check` 不返回 `mount_count`，也不展开 readiness 的检查过程；blocked finding 提供
+用户层动作。
 
 ## 22. `changes` 字段
 
@@ -637,7 +629,7 @@ Online `remote[]`：
 | `plugin_not_ready` | mount 写操作前根 ignore/tracked 状态不安全。 |
 | `git_mount_not_ready` | check 对同一 readiness 问题生成的 finding code。 |
 | `mount_path_occupied` | 逻辑路径含未识别内容或无法安全替换。 |
-| `mount_unreadable` | symlink 和 fallback presentation 都失败。 |
+| `mount_unreadable` | 插件无法让 mount path 成为普通文件工具可读的目录。 |
 | `source_root_missing` | source checkout 根没有 index.md。 |
 | `source_root_invalid` | source index 不是 doctidex root。 |
 
@@ -650,7 +642,7 @@ Online `remote[]`：
 | `git_revision_unavailable` | Git 报告 ref/object 无法解析。 |
 | `git_revision_not_commit` | rev-parse 结果不是预期完整 commit。 |
 | `git_failed` | 未分类 Git 失败。 |
-| `revision_view_unavailable` | 已有 commit worktree 与预期不一致。 |
+| `revision_view_unavailable` | 本地已有 commit 读取现场不可复用。 |
 
 ### 23.5 Maintenance、候选和运行时
 
@@ -663,4 +655,4 @@ Online `remote[]`：
 | `git_change_review` | Git change 的 index/log 跟进候选。 |
 | `interrupted` | 操作被 Ctrl-C 中断。 |
 | `unexpected_failure` | 未预期异常；使用 details.diagnostic_id 报告。 |
-| `doctidex_error` | `DoctidexError` 默认 code；当前显式路径通常使用更具体 code。 |
+| `doctidex_error` | 没有更具体分类时的通用 doctidex 操作失败。 |

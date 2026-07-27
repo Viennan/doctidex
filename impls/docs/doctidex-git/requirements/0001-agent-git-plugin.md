@@ -1,18 +1,26 @@
-# doctidex Git Agent Plugin 方案
+# 初始需求：doctidex Git Agent Plugin
 
-状态：Draft，非规范性实现方案
+状态：Initial requirement baseline，历史记录，非规范性
+
+来源：原 `impls/docs/agent-git-plugin.md`
+
+本文档保留 `doctidex-git` 首个完整用户 surface 需求与方案基线。第 1 至 4 节记录问题、
+设计目标、心智模型和信息边界；第 5 至 7 节记录拟定的 Skills、CLI 与工作流；第 8 至
+10 节记录实现约束和失败处理；第 11 节记录当时的验收标准。正文主体按原方案保留，
+不把后续实现事实回写成原始要求。
 
 本文档设计 `impls/agent-plugins/doctidex-git/` 对用户和 agent 暴露的操作界面。它面向在
 Git 管理的目录中创建、读取、查询、维护和审阅 doctidex 目录树的场景。
 
-本文档以 [`spec/overview.md`](../../spec/overview.md) 为唯一协议依据。旧的
+本文档以 [`spec/overview.md`](../../../../spec/overview.md) 为唯一协议依据。旧的
 `spec/reference-implementations/git-agent-scaffold.md` 只提供能力目标和 Git 协作
 经验，不作为字段、路径或行为约定的来源。若本文档与协议正文冲突，以协议正文
 为准。
 
-本文档描述目标 surface；当前 Python 代码、CLI 字段及已知限制见
-[`doctidex-git/`](doctidex-git/index.md)。两者有差异时，实现文档记录当前事实，本文档
-继续表达后续实现应满足的用户层设计。
+本文档形成时用于描述目标 surface。当前语言无关设计以
+[Architecture](../architecture/index.md) 为准；当前 Python 代码、CLI 字段及已知限制见
+[Python Details](../details/python/index.md)。当前设计或实现与本记录不同时，不修改本记录
+来掩盖演进结果。
 
 ## 1. 设计目标
 

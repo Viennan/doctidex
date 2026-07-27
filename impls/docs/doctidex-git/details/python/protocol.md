@@ -1,7 +1,23 @@
-# 协议解析与目录树判断
+# Python 协议解析与目录树判断
 
 本篇说明 `whero.doctidex.protocol` 当前如何读取 Markdown、规范化路径、匹配过滤条件、
 计算路径上下文并生成协议与语义结果。它描述代码行为，不扩展协议要求。
+
+模块职责：`constants` 保存共享名称；`document` 负责文档 round-trip；`paths` 负责路径
+代数；`regex` 封装固定方言；`mounts` 解析基础声明；`tree` 建立根和路径上下文；
+`validation` 聚合全树结果。依赖沿后述顺序由基础解析指向聚合校验，不依赖 Git。
+
+## 模块入口与常量
+
+`protocol.__init__` 便捷导出 `DoctidexDocument`、`MarkdownLink`、`markdown_links` 和
+`normalize_internal_path`。这些 imports 当前仍属于参考实现接口，不承诺跨版本稳定。
+
+| `constants.py` 名称 | 值 | 使用位置 |
+|---|---|---|
+| `MOUNT_NAMESPACE` | `PurePosixPath("/.doctidex/mounts")` | 内部路径与 mount path 校验。 |
+| `MOUNT_EXCLUDE` | `.doctidex/mounts` | 根 excludes 与 mount PathContext。 |
+| `INDEX_NAME` | `index.md` | 根发现、连续性、遍历。 |
+| `LOG_NAME` | `log.md` | 最近 log 与连续性。 |
 
 ## 1. `DoctidexDocument`
 
@@ -196,19 +212,25 @@ atomic 只对目录参与 `inspect_path` 匹配；文件本身不会得到 atomi
 `VERSION1 | UNICODE`。编译失败保存错误消息与可用时的字符位置。该方言是当前 Git
 实现约定，不是协议当前规定的统一方言。
 
+| 对象/属性 | 含义 |
+|---|---|
+| `DoctidexPattern._compiled` | 成功编译的第三方 regex pattern；只由 `search(value)` 使用。 |
+| `RegexCompileError.message` | 底层编译错误文本。 |
+| `RegexCompileError.position` | 可用时为零基字符位置，否则 `None`。 |
+
 ## 6. 基础 mount 解析
 
-`read_mounts(root_document)` 只负责基础字段：
+`read_mounts(root_document)` 生成 `MountDeclaration`，只负责基础字段：
 
-| 字段 | 要求 |
+| 属性 | 要求或含义 |
 |---|---|
 | `type` | 非空字符串；基础层不限制具体值。 |
 | `url` | 非空字符串；基础层不解释其传输语义。 |
 | `mount_path` | 非空、规范化且位于 namespace 下的绝对内部路径。 |
+| `raw` | 原始 `CommentedMap`，供扩展层读取额外字段和 round-trip 删除。 |
 
-`MountDeclaration.raw` 保留原始 `CommentedMap`，供 Git 层读取 `revision` 或 round-trip
-删除。非根 index 只要包含非空 mounts 就报错。所有 mount path 必须互不重复且不互为
-祖先/后代。
+非根 index 只要包含非空 mounts 就报错。所有 mount path 必须互不重复且不互为祖先或
+后代。
 
 Git 层只消费 `type: git`，并额外验证 URL、禁止 `src_path`、要求唯一 revision
 selector；详见 [Git 运行时](git-runtime.md)。
@@ -284,5 +306,26 @@ CLI `check` 和 `maintenance handoff` 还会为非 index/log 的 Git change 添�
 - 路径/根选择异常：`internal_path_not_absolute`、`internal_path_escape`、
   `filesystem_path_outside_root`、`root_not_found`、`root_ambiguous`。
 
-每个 code 的通用字段结构和 agent 处理方式见 [CLI 输出字段参考](cli-output.md) 与
-[Agent 解读指南](agent-interpretation.md)。
+每个 code 的公共字段结构和 agent 处理方式见
+[CLI 结果契约](../../architecture/interfaces/cli-schema.md)与
+[用户工作流](../../architecture/workflows.md#10-校验审阅与交付)。
+
+## 10. 模块调用与边界
+
+典型 Git-independent 调用先选择根，再检查单路径或整树：
+
+```python
+from pathlib import Path
+
+from whero.doctidex.protocol.tree import inspect_path, require_root
+from whero.doctidex.protocol.validation import validate_protocol
+
+context = require_root(Path("/workspace/docs/guide.md"), operation="inspect")
+path_context = inspect_path(context, Path("/workspace/docs/guide.md"))
+validation = validate_protocol(context)
+```
+
+除 `DoctidexDocument.write()` 外，协议模块不主动写文件或访问网络。遍历读取期间若目录树
+被并发修改，结果只代表逐项观察到的混合时刻；模块没有全树锁或 snapshot。调用者需要
+一致快照时应由上层 Git 场景提供。解析和路径错误使用 `DoctidexError`，regex 编译错误
+先使用 `RegexCompileError`，再由 validation 转成 finding。
