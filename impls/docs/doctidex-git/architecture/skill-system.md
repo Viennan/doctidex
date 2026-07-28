@@ -12,7 +12,7 @@ agent 不读源码、不读 implementation docs、也不靠命令试错即可完
 | Read | 渐进导航、link/path 辅助和 lazy mount 恢复 | 原生工具可读路径和来源上下文。 |
 | Mount | 声明、列出、准备、移除和显式同步 Git mounts | 声明与 effective commit 状态。 |
 | Maintain | 在一个明确根中维护内容、index 和 log | 单根 diff、语义决定和验证。 |
-| Workspace | 打开 mounted source 维护根并协调多根任务 | 逐根边界、基准和 handoff。 |
+| Workspace | 复用同 revision scope、按需打开 mounted source 维护根并协调多根任务 | 兼容 scope 分组、逐 scope 边界和 handoff。 |
 | Validate | 分离结构、语义候选和插件就绪检查 | 三个独立结果域。 |
 | Review | 只读审阅单根或多根结果 | findings、语义结论和用户 Git 动作。 |
 
@@ -48,8 +48,9 @@ Skill 不能要求 agent 通过 `--help` 试错、阅读 Python 代码或查看�
 ## 4. 用户信息边界
 
 Skill 可以说明逻辑 root、mount、revision、effective commit、working path、maintenance
-root、状态和动作。不得说明 source key、缓存布局、worktree 管理命令、锁、projection
-或内部 schema。实现技术变化不应迫使 Skill 用户改变心智模型。
+root、root relation、maintenance reuse、状态和动作。不得说明 source key、缓存布局、
+worktree 管理命令、锁、projection 或仓库比较算法。实现技术变化不应迫使 Skill 用户
+改变心智模型。
 
 “维护根路径”是用户完成工作所需的信息，因此可以公开；“它在内部如何创建和登记”
 不属于 Skill。

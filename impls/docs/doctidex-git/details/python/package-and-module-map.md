@@ -47,6 +47,7 @@ flowchart LR
 | `git.__init__` | 便捷导出 `GitMountService`；`__all__` 只含该名称。 | [Source 与 Mount](sources-mounts-and-projection.md#4-gitmounts) |
 | `git.runner` | 非交互 Git 子进程与错误分类。 | [Context 与 State](git-context-and-state.md#2-gitrunner) |
 | `git.context` | worktree/status/ignore readiness。 | [Context 与 State](git-context-and-state.md#3-gitcontext) |
+| `git.relations` | root 自引用与同 revision maintenance scope 的保守关系判断。 | [Repository Relation](repository-relations.md) |
 | `git.state` | 内部路径、JSON state、锁、反查和诊断。 | [Context 与 State](git-context-and-state.md#4-gitstate) |
 | `git.repository` | 共享 source、selector、revision/maintenance worktree。 | [Source 与 Mount](sources-mounts-and-projection.md#2-gitrepository) |
 | `git.projection` | 宿主相关只读镜像和 mount path 发布。 | [Source 与 Mount](sources-mounts-and-projection.md#3-gitprojection) |

@@ -176,7 +176,10 @@ INTERNAL_PATH 只接受 link 的路径部分，不包含 anchor。调用方已�
 的 link root 时，可以直接按规则推导文件系统路径，无需为每个 link 调用 resolve。
 
 返回输入、可选 link document、规范化路径、命令 root、实际 link root 及其种类、
-文件系统路径、是否跨 mount 和完整 mount 状态。mount 未准备时命令本身仍
+文件系统路径、是否跨 mount 和完整 mount 状态。涉及 mount 时还返回
+`root_relation` 与 `maintenance_reuse`：前者只在可可靠确认时标明当前根自引用及 commit
+是否相同；后者说明后续写入是否可复用 host 或已开放 maintenance scope。两者都不改变
+`working_path`，自引用读取仍位于 `/.doctidex/mounts/...`。mount 未准备时命令本身仍
 `status: ok`，通过 `result` 和 mount 的 `next_action` 提示 prepare；resolve 不自动
 恢复 mount。
 
@@ -263,11 +266,30 @@ commit 时不重新解析。dry-run 返回 old/new commit 和布尔 `changed`，
 doctidex-git maintenance scope [PATH ...] [--json]
 ```
 
-用途：把一个任务涉及的路径归并为宿主根和挂载源等独立维护单位。
+用途：观察本次输入路径所属的宿主根和挂载源，并给出同 revision scope 复用事实。
 
 没有 PATH 时使用宿主根。每个 mount 和宿主根各只返回一次。mounted source 返回
-只读路径、base commit 和 `maintenance open` 动作；host root 返回直接可写路径和
-当前 HEAD。
+只读路径、declared revision、base commit、`target_branch`、`root_relation` 与
+`maintenance_reuse`；host root 返回直接可写路径、当前 HEAD、当前 branch 提示和指向
+自身的复用建议。同一 `source`、相同 `base_commit` 的 items 是合并候选，最终是否兼容
+仍由 agent 根据写入权限和交付目标决定。
+
+一个 item 只表示该次调用观察到的对象，不表示它尚未或已经分配到写入范围。
+scope 不记录 agent 的计划；当新路径进入任务、已有 maintenance root 变化或需要复核边界时，
+可以再次运行它。每次结果都是当时的客观事实，由 agent 自己制定或调整最终写入范围。
+
+`maintenance_reuse.status: recommended` 时，`write_action` 为 null，直接使用返回的
+`write_path`；`selection_required` 时先运行 status 选择已有维护根；`not_available` 时
+`write_action` 才是 open 命令。自引用 source 与当前 HEAD 相同时优先复用 host root。
+比较 scope item 的 `target_branch` 与 `maintenance_reuse.target_branch`：两者都已知且
+不同时 CLI 不会推荐该根；任一侧为 null 时仍需结合用户交付意图判断。选择已有根时以
+scope item 的 `source/base_commit` 对齐 status item，并比较 status item 的
+`target_branch`；无法唯一决定时请求用户选择。`delivery_target_conflict` 默认要求保持
+独立；用户明确选择共同集成结果时，自引用可重新 scope `.` 取得 host write path，开放根
+可运行 status 并按 source/base commit 查找，再选择有授权且符合共同交付意图的根。将具体 mounted
+文件映射到写入根时，从目标路径移除 `read_only_path` 前缀并把其 source-relative suffix
+接到所选写入根，不能从前缀下表达的目标不得猜测映射。选定写入根后，该根就是
+本次执行边界；通过其 mount 发现的其他源目标必须重新进入 scope 决策。
 
 副作用：无写入、无网络。输入 PATH 不改变 cwd 所选择的宿主根。
 
@@ -280,7 +302,10 @@ doctidex-git maintenance open MOUNT_PATH [--json]
 用途：从 mount 有效 commit 创建独立可写维护根。
 
 mount 尚无 effective commit 时返回 `maintenance_source_not_prepared` 和 prepare 命令。
-成功返回 `maintenance_root`、base commit、可写边界、目标 branch 提示和下一步。
+成功返回 `maintenance_root`、base commit、可写边界、目标 branch 提示、
+`root_relation` 和调用前的 `maintenance_reuse`。open 是显式隔离动作：即使调用前已有
+兼容 scope，它仍创建新根，但返回 `status: warning` 和先合并 scope 的提示；调用者应
+确认隔离是有意的，并关闭未使用的 clean 现场。
 
 副作用：创建并登记 maintenance root；不访问远端，不切换调用者 cwd，不改变宿主
 mount。

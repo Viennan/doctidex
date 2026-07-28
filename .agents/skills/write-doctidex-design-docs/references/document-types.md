@@ -68,7 +68,8 @@ interface authority.
 Include:
 
 - stable ID, title, date/status, and provenance;
-- original user request without retrospective normalization;
+- user-reviewed requirement intent, clarified and completed with agent assistance rather than
+  copied verbatim from raw input;
 - scenario and design intent;
 - constraints and rejected alternatives when known;
 - accepted or rejected outcome;
@@ -76,8 +77,15 @@ Include:
 - links to resulting Architecture and Details;
 - superseding or follow-up records.
 
-If only source material is known, preserve it and label unknown decision/outcome fields rather than
-inventing them.
+Before drafting the requirement statement, inspect relevant current Architecture, Details,
+implementation, tests, and public surfaces. Check explicit and implicit assumptions against actual
+behavior. If an assumption differs, explain the concrete difference and design impact to the user;
+use the corrected or intentionally changed premise only after review.
+
+Keep provenance for the source request, but do not treat its exact wording as the requirement
+authority. If only source material is known, draft a clearly proposed interpretation and label
+unknown decision/outcome fields rather than inventing them or attributing unreviewed additions to
+the user.
 
 For a new proposal, create the Requirement first and keep proposed alternatives and target-design
 reasoning in that record until a decision is accepted. A hypothetical task or forward-test scenario
@@ -87,8 +95,8 @@ without that authorization, propose content in the response and create no docume
 “forward-test this example” is not.
 
 When the proposal receives its first decision, update the same record's status, decision, outcome,
-and impact sections without changing the preserved original request. A later change, reversal, or
-supersession gets a new Requirement record linked to the original.
+and impact sections without changing the reviewed requirement intent. A later change, reversal, or
+supersession gets a new Requirement record linked to the earlier decision.
 
 ## Details
 

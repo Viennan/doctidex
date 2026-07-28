@@ -40,7 +40,7 @@ parser 自身的 `SystemExit` 不在统一结果边界内。
 | `_context_for_link_document(cwd, document)` | resolve `--from` 确定宿主与 mounted source link root，保留普通嵌套根歧义。 |
 | `_maintenance_context(cwd, args)` | 有精确 maintenance root 时先反查宿主，否则从 cwd 选根。 |
 | `_inspect(context, target)` | 组合 host PathContext、mount item、source PathContext、links 和候选。 |
-| `_resolve(context, value, link_document)` | 计算规范内部路径、link root、working path 和 mount 状态。 |
+| `_resolve(context, value, link_document)` | 计算规范内部路径、link root、working path 和 mount 状态；涉及 mount 时通过 MaintenanceService 补 relation/reuse facts。 |
 | `_mount/_maintenance` | 把子命令转交相应 service，并包装 list/status/scope。 |
 | `_check(context, online)` | 合并协议、Git extension、readiness、remote 与 Git-change candidates。 |
 
@@ -99,6 +99,9 @@ dataclass 的全部属性：
 
 renderer 不重算状态或字段。新增字段应先在 producer 和公共 schema 中定义，再决定其
 人读优先级。
+
+`root_relation` 和 `maintenance_reuse` 位于 human preferred keys 的 maintenance 字段
+之后、changed 之前；object 被压成单行 JSON。稳定分支处理仍应使用 `--json`。
 
 ```python
 from whero.doctidex.cli.main import main

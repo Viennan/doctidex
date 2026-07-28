@@ -1,4 +1,4 @@
 interface:
   display_name: "Doctidex Git Workspace"
-  short_description: "Coordinate isolated maintenance across doctidex roots"
-  default_prompt: "Use $doctidex-git-workspace to coordinate maintenance across the host and mounted source roots."
+  short_description: "Coordinate multi-root doctidex workspace tasks"
+  default_prompt: "Use $doctidex-git-workspace to plan and orchestrate multi-root maintenance with explicit per-scope boundaries and results."

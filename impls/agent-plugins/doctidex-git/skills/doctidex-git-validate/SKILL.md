@@ -65,7 +65,8 @@ needed.
 
 A protocol pass does not prove that every link target exists. Current validation checks
 machine-parsed Markdown path boundaries, but not target existence, anchors, or non-standard link
-extensions. Use native file tools for those task-specific checks.
+extensions. Atomic content is opaque to recursive protocol conformance, so check does not validate
+links inside an atomic unit. Use native file tools and task-specific requirements for those checks.
 
 ## Output and Failure
 

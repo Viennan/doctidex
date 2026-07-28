@@ -1,3 +1,9 @@
+---
+type: index
+doctidex:
+  type: index
+---
+
 # Architecture 导航
 
 Architecture 描述 `doctidex-git` 当前是什么样子。它以 user surface 为起点，随后解释

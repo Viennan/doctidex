@@ -13,7 +13,7 @@
 | Source Manager | source identity、Git object 获取、selector 解析、revision snapshot、maintenance checkout | host mount declaration 和用户输出。 |
 | Mount Coordinator | Git extension 校验、declaration 生命周期、effective commit、prepare/sync | 直接修改 mounted source 内容。 |
 | Presentation Adapter | 把 revision snapshot 作为只读逻辑 mount path 提供给原生工具 | 定义 public path 语义或要求用户选择呈现技术。 |
-| Maintenance Coordinator | scope、open、status、handoff、close 和 owning host 关联 | commit、push、merge、跨根原子回滚。 |
+| Maintenance Coordinator | root relation、scope 复用建议、open、status、handoff、close 和 owning host 关联 | 判断任务交付兼容性、commit、push、merge、跨 scope 原子回滚。 |
 | Validation Engine | protocol findings、semantic candidates、plugin readiness | 生成 index/log 内容或最终审阅结论。 |
 | Runtime State | 保存 effective selection 和开放 maintenance contexts | 成为用户配置、协议内容或公共查询 API。 |
 
@@ -112,8 +112,11 @@ resolve 不读取目标文件、不验证 link 是否存在于 source document�
 
 ```mermaid
 flowchart LR
-    S[scope independent roots] --> O[open mounted source]
-    O --> E[edit maintenance root with native tools]
+    S[observe host and mounted items] --> R{compatible write scope?}
+    R -->|yes| E[edit selected write root with native tools]
+    R -->|no| O[open mounted source]
+    O --> E
+    E -->|new mounted target| S
     E --> H[handoff facts and validation]
     H --> G{Git status clean?}
     G -->|no| K[keep result and decide delivery]
@@ -123,13 +126,23 @@ flowchart LR
 
 ### 6.1 Scope
 
-scope 把 task paths 去重为 host root 和 mounted sources，返回 base commit、read/write
-边界和 open action。它不创建 context、不判断依赖顺序。
+scope 把本次 task paths 去重为 host root 和 mounted source 观察项，返回 selector、
+base commit、target branch、read/write 边界、root relation、maintenance reuse 和必要的
+open action。item 不记录待分配或已分配状态；agent 用这些事实创建、复核或调整自己的
+写入范围计划。
+
+scope 可以在同一维护工作中重复运行，每次只反映调用时的现场，不持久化或覆盖 agent
+计划。相同 source/base commit 形成合并候选；scope 排除两侧都已知且不同的 branch，
+但不创建 context，也不判断权限、未知 branch 的完整交付意图或依赖顺序。agent 选定
+写入根后只能在该根边界内执行；发现其他 mounted source 时回到 scope 判断，而不是沿
+mount 直接扩大当前范围。
 
 ### 6.2 Open
 
 open 要求 mount 已有 effective commit。它创建与只读 presentation 隔离的 writable
 source root，记录 owning host、base commit 和 target branch hint。host 当前读路径不变。
+若调用前已有兼容 scope，显式 open 仍创建隔离现场并返回 warning；这保留用户主动隔离
+能力，同时让默认工作流在 open 前优先复用。
 
 ### 6.3 Status and Handoff
 

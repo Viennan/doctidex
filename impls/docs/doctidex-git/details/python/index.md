@@ -1,3 +1,9 @@
+---
+type: index
+doctidex:
+  type: index
+---
+
 # Python 参考实现导航
 
 本目录面向维护 `whero-doctidex` Python 包的人和 agent。它提供稳定的代码阅读地图，
@@ -8,6 +14,7 @@
 | 包结构、依赖和模块关系 | [包与模块地图](package-and-module-map.md) | `whero.doctidex` 全包 |
 | Markdown、路径、目录树与校验 | [协议实现](protocol.md) | `protocol/` |
 | Git context、内部 state 和命令边界 | [Git context 与 state](git-context-and-state.md) | `git/context.py`、`git/state.py`、`git/runner.py` |
+| 根自引用与 scope 复用关系 | [Repository relation](repository-relations.md) | `git/relations.py` |
 | source、revision、mount 和可读呈现 | [Source 与 mount](sources-mounts-and-projection.md) | `git/repository.py`、`git/mounts.py`、`git/projection.py`、`git/setup.py` |
 | 独立维护根与多根结果 | [Maintenance](maintenance.md) | `git/maintenance.py` |
 | 参数分发、预算、结果和渲染 | [CLI 与 rendering](cli-and-rendering.md) | `cli/main.py`、`cli/render.py`、`errors.py` |

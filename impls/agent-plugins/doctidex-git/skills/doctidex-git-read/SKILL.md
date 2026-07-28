@@ -76,6 +76,14 @@ for this link, and `working_path` as the path for native file tools. `crosses_mo
 report the relevant host mount and readable state. Resolve never reads the target file, prepares a
 mount, or accesses a remote.
 
+When resolution involves a mount, also read `root_relation` and `maintenance_reuse` if later work
+may modify what you read. A confirmed self-reference still returns a read-only path below the
+host's `.doctidex/mounts/`, whether `revision` is `same_commit` or `different_commit`; never replace
+that reading path with the current writable root. If modification is required, load
+`$doctidex-git-workspace`: `same_commit` normally lets compatible changes reuse the host root,
+while `different_commit` requires a separate source scope. When `root_relation.source` is
+`unknown`, do not guess from matching content or commit text.
+
 Treat `resolve` as a disambiguation and mount-state helper, not a required step before file access.
 When the link root and normalized internal path are already known, derive the working path by
 appending the internal path without its leading `/` to the filesystem link root:

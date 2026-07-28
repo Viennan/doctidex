@@ -188,6 +188,358 @@ def test_lazy_mount_sync_reuse_and_maintenance(tmp_path: Path, environment: dict
     assert not clean_maintenance.exists()
 
 
+def test_self_reference_same_commit_recommends_host_scope(tmp_path: Path, environment: dict[str, str]) -> None:
+    host = tmp_path / "host"
+    make_host(host, environment)
+    head = git(host, "rev-parse", "HEAD")
+    run(
+        [
+            "mount",
+            "add",
+            "--url",
+            str(host),
+            "--commit",
+            head,
+            "--mount-path",
+            "/.doctidex/mounts/self",
+            "--apply",
+        ],
+        host,
+        environment,
+    )
+    run(["mount", "prepare", "/.doctidex/mounts/self"], host, environment)
+
+    resolved = run(["resolve", "/.doctidex/mounts/self/index.md"], host, environment)
+    assert resolved["working_path"] == str(host / ".doctidex" / "mounts" / "self" / "index.md")
+    assert resolved["root_relation"] == {
+        "source": "same_repository",
+        "revision": "same_commit",
+    }
+    assert resolved["maintenance_reuse"] == {
+        "status": "recommended",
+        "scope_kind": "host_root",
+        "write_path": str(host),
+        "target_branch": "main",
+        "candidate_count": 1,
+        "reason": "current_root_same_commit",
+    }
+
+    scoped = run(
+        ["maintenance", "scope", ".", ".doctidex/mounts/self/index.md"],
+        host,
+        environment,
+    )
+    host_item = next(item for item in scoped["items"] if item["kind"] == "host_root")
+    mount_item = next(item for item in scoped["items"] if item["kind"] == "mounted_source")
+    assert host_item["write_path"] == str(host)
+    assert mount_item["maintenance_reuse"]["scope_kind"] == "host_root"
+    assert mount_item["maintenance_reuse"]["write_path"] == str(host)
+    assert mount_item["write_action"] is None
+
+    opened = run(["maintenance", "open", "/.doctidex/mounts/self"], host, environment)
+    assert opened["status"] == "warning"
+    assert opened["root_relation"]["revision"] == "same_commit"
+    assert opened["maintenance_reuse"]["write_path"] == str(host)
+    assert Path(opened["maintenance_root"]) != host
+    run(["maintenance", "close", opened["maintenance_root"]], host, environment)
+
+
+def test_self_reference_same_commit_respects_target_branch(
+    tmp_path: Path, environment: dict[str, str]
+) -> None:
+    host = tmp_path / "host"
+    make_host(host, environment)
+    git(host, "branch", "feature")
+    run(
+        [
+            "mount",
+            "add",
+            "--url",
+            str(host),
+            "--branch",
+            "feature",
+            "--mount-path",
+            "/.doctidex/mounts/self-feature",
+            "--apply",
+        ],
+        host,
+        environment,
+    )
+    run(["mount", "prepare", "/.doctidex/mounts/self-feature"], host, environment)
+
+    resolved = run(["resolve", "/.doctidex/mounts/self-feature/index.md"], host, environment)
+    assert resolved["root_relation"] == {
+        "source": "same_repository",
+        "revision": "same_commit",
+    }
+    assert resolved["maintenance_reuse"] == {
+        "status": "not_available",
+        "scope_kind": None,
+        "write_path": None,
+        "target_branch": None,
+        "candidate_count": 0,
+        "reason": "delivery_target_conflict",
+    }
+
+    item = run(
+        ["maintenance", "scope", ".doctidex/mounts/self-feature/index.md"],
+        host,
+        environment,
+    )["items"][0]
+    assert item["declared_revision"] == {"kind": "branch", "value": "feature"}
+    assert item["target_branch"] == "feature"
+    assert item["write_action"] == "doctidex-git maintenance open /.doctidex/mounts/self-feature"
+
+
+def test_self_reference_different_commit_keeps_independent_scope(
+    tmp_path: Path, environment: dict[str, str]
+) -> None:
+    host = tmp_path / "host"
+    make_host(host, environment)
+    old_commit = git(host, "rev-parse", "HEAD")
+    (host / "current.md").write_text("current\n", encoding="utf-8")
+    commit_all(host, "advance host")
+    run(
+        [
+            "mount",
+            "add",
+            "--url",
+            str(host),
+            "--commit",
+            old_commit,
+            "--mount-path",
+            "/.doctidex/mounts/old-self",
+            "--apply",
+        ],
+        host,
+        environment,
+    )
+    run(["mount", "prepare", "/.doctidex/mounts/old-self"], host, environment)
+
+    resolved = run(["resolve", "/.doctidex/mounts/old-self/index.md"], host, environment)
+    assert resolved["root_relation"] == {
+        "source": "same_repository",
+        "revision": "different_commit",
+    }
+    assert resolved["maintenance_reuse"]["status"] == "not_available"
+    assert resolved["maintenance_reuse"]["reason"] == "current_root_different_commit"
+
+    scoped = run(
+        ["maintenance", "scope", ".doctidex/mounts/old-self/index.md"],
+        host,
+        environment,
+    )
+    item = scoped["items"][0]
+    assert item["root_relation"]["revision"] == "different_commit"
+    assert item["write_action"] == "doctidex-git maintenance open /.doctidex/mounts/old-self"
+
+
+def test_nested_root_does_not_claim_repository_root_self_reference(
+    tmp_path: Path, environment: dict[str, str]
+) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    git(repository, "init", "-b", "main")
+    nested = repository / "docs"
+    nested.mkdir()
+    (nested / "index.md").write_text(
+        """---
+type: index
+doctidex:
+  type: index
+  root: true
+  excludes:
+    - path: .doctidex/mounts
+---
+""",
+        encoding="utf-8",
+    )
+    (nested / ".gitignore").write_text("/.doctidex/mounts/\n", encoding="utf-8")
+    head = commit_all(repository, "nested root")
+    (nested / "index.md").write_text(
+        f"""---
+type: index
+doctidex:
+  type: index
+  root: true
+  excludes:
+    - path: .doctidex/mounts
+  mounts:
+    - type: git
+      url: {repository}
+      revision:
+        commit: {head}
+      mount_path: /.doctidex/mounts/repository
+---
+""",
+        encoding="utf-8",
+    )
+
+    scoped = run(["maintenance", "scope", ".doctidex/mounts/repository/index.md"], nested, environment)
+    assert scoped["items"][0]["root_relation"] == {"source": "unknown", "revision": "unknown"}
+
+
+def test_scp_remote_is_not_misread_as_an_equivalent_local_source(
+    tmp_path: Path, environment: dict[str, str]
+) -> None:
+    host = tmp_path / "host"
+    make_host(host, environment)
+    local_source = host / "git@example.com:repo.git"
+    source_commit = make_source(local_source)
+    git(host, "remote", "add", "origin", "git@example.com:repo.git")
+    run(
+        [
+            "mount",
+            "add",
+            "--url",
+            "./git@example.com:repo.git",
+            "--commit",
+            source_commit,
+            "--mount-path",
+            "/.doctidex/mounts/local-lookalike",
+            "--apply",
+        ],
+        host,
+        environment,
+    )
+
+    item = run(
+        ["maintenance", "scope", ".doctidex/mounts/local-lookalike/index.md"],
+        host,
+        environment,
+    )["items"][0]
+    assert item["root_relation"] == {"source": "unknown", "revision": "unknown"}
+
+
+def test_same_source_commit_reuses_open_maintenance_scope(tmp_path: Path, environment: dict[str, str]) -> None:
+    source = tmp_path / "source"
+    host = tmp_path / "host"
+    source_commit = make_source(source)
+    make_host(host, environment)
+    for name in ("one", "two"):
+        run(
+            [
+                "mount",
+                "add",
+                "--url",
+                str(source),
+                "--commit",
+                source_commit,
+                "--mount-path",
+                f"/.doctidex/mounts/{name}",
+                "--apply",
+            ],
+            host,
+            environment,
+        )
+        run(["mount", "prepare", f"/.doctidex/mounts/{name}"], host, environment)
+
+    initial = run(
+        [
+            "maintenance",
+            "scope",
+            ".doctidex/mounts/one/index.md",
+            ".doctidex/mounts/two/index.md",
+        ],
+        host,
+        environment,
+    )
+    assert {item["source"] for item in initial["items"]} == {str(source)}
+    assert {item["base_commit"] for item in initial["items"]} == {source_commit}
+    assert all(item["maintenance_reuse"]["status"] == "not_available" for item in initial["items"])
+
+    opened = run(["maintenance", "open", "/.doctidex/mounts/one"], host, environment)
+    maintenance_root = opened["maintenance_root"]
+    scoped = run(
+        [
+            "maintenance",
+            "scope",
+            ".doctidex/mounts/one/index.md",
+            ".doctidex/mounts/two/index.md",
+        ],
+        host,
+        environment,
+    )
+    assert all(item["maintenance_reuse"]["status"] == "recommended" for item in scoped["items"])
+    assert all(item["maintenance_reuse"]["write_path"] == maintenance_root for item in scoped["items"])
+    assert all(item["write_action"] is None for item in scoped["items"])
+
+    second_opened = run(["maintenance", "open", "/.doctidex/mounts/two"], host, environment)
+    assert second_opened["status"] == "warning"
+    assert second_opened["maintenance_reuse"]["write_path"] == maintenance_root
+    selection = run(
+        ["maintenance", "scope", ".doctidex/mounts/two/index.md"],
+        host,
+        environment,
+    )["items"][0]
+    assert selection["maintenance_reuse"] == {
+        "status": "selection_required",
+        "scope_kind": "maintenance_root",
+        "write_path": None,
+        "target_branch": None,
+        "candidate_count": 2,
+        "reason": "multiple_existing_scopes",
+    }
+    assert selection["write_action"] == "doctidex-git maintenance status --json"
+
+    run(["maintenance", "close", maintenance_root], host, environment)
+    run(["maintenance", "close", second_opened["maintenance_root"]], host, environment)
+
+
+def test_same_commit_branch_mounts_do_not_reuse_conflicting_delivery_targets(
+    tmp_path: Path, environment: dict[str, str]
+) -> None:
+    source = tmp_path / "source"
+    host = tmp_path / "host"
+    source_commit = make_source(source)
+    git(source, "branch", "feature")
+    make_host(host, environment)
+    for name, branch in (("main-source", "main"), ("feature-source", "feature")):
+        run(
+            [
+                "mount",
+                "add",
+                "--url",
+                str(source),
+                "--branch",
+                branch,
+                "--mount-path",
+                f"/.doctidex/mounts/{name}",
+                "--apply",
+            ],
+            host,
+            environment,
+        )
+        run(["mount", "prepare", f"/.doctidex/mounts/{name}"], host, environment)
+
+    opened = run(["maintenance", "open", "/.doctidex/mounts/main-source"], host, environment)
+    feature = run(
+        ["maintenance", "scope", ".doctidex/mounts/feature-source/index.md"],
+        host,
+        environment,
+    )["items"][0]
+    assert feature["base_commit"] == source_commit
+    assert feature["target_branch"] == "feature"
+    assert feature["maintenance_reuse"] == {
+        "status": "not_available",
+        "scope_kind": None,
+        "write_path": None,
+        "target_branch": None,
+        "candidate_count": 0,
+        "reason": "delivery_target_conflict",
+    }
+    assert feature["write_action"] == "doctidex-git maintenance open /.doctidex/mounts/feature-source"
+
+    main = run(
+        ["maintenance", "scope", ".doctidex/mounts/main-source/index.md"],
+        host,
+        environment,
+    )["items"][0]
+    assert main["maintenance_reuse"]["write_path"] == opened["maintenance_root"]
+    assert main["maintenance_reuse"]["target_branch"] == "main"
+    run(["maintenance", "close", opened["maintenance_root"]], host, environment)
+
+
 def test_resolve_rejects_missing_link_source(tmp_path: Path, environment: dict[str, str]) -> None:
     host = tmp_path / "host"
     make_host(host, environment)

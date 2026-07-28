@@ -28,7 +28,9 @@
 
 - 根 `.gitignore` 检查在 Git 返回相对 source path 时按进程 cwd 解析；从宿主子目录运行
   可能误判正确根规则。
-- source identity 是原始 URL 文本，没有 canonicalization；等价 URL 可能重复 clone。
+- source cache identity 仍是原始 URL 文本，等价 URL 可能重复 clone。root relation 只
+  额外识别 Git common directory、精确 remote URL 和可解析的相同本地路径；镜像、fork、
+  等价但文本不同的 remote URL 会保守返回 unknown。
 - HTTP(S) userinfo 被拒绝；其他 Git URL 的校验和公开清理有限。
 - Git 错误分类依赖英文 stderr substring，本地化输出可能落入 `git_failed`。
 - online check 和批量 sync 按 mount 顺序解析，同源 mount 可能重复 fetch。

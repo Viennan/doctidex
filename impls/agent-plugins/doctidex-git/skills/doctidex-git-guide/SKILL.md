@@ -41,6 +41,13 @@ Ask the user for access if installation requires unavailable network access or p
   selects it; later ordinary reading or prepare does not move it, and only explicit sync can select
   a different commit.
 - **Maintenance root**: an independent writable source root returned for changing mounted content.
+- **Root relation**: a conservative CLI fact about whether a mount source is the current root's
+  repository and, when known, whether their commits match. `unknown` is not proof of difference.
+- **Maintenance reuse**: a bounded recommendation to use an existing host or maintenance scope
+  for the same source commit before opening another writable root.
+- **Compatible scope**: a reusable scope that covers the same source commit, is within the user's
+  write authorization, and can deliver one coherent Git result to the task's intended branch or
+  integration target. Matching source and commit identifies a candidate, not automatic authority.
 - **Semantic candidate**: an item that requires reading and agent judgment; it is not a confirmed
   defect.
 
@@ -162,6 +169,14 @@ The field `changed` is operation-specific: init/add/remove use a path list, moun
 boolean commit comparison, and lifecycle commands may return an empty list despite changing mount
 or maintenance state. Use `operation` before interpreting it.
 
+When present, read `root_relation` before deciding that a mount points back to the current root.
+Read `maintenance_reuse` before opening another writable root: `recommended` gives one reusable
+`write_path`, `selection_required` means choose an existing context, and `not_available` means no
+compatible scope is currently known. Compare a scope item's `target_branch` with the reuse object's
+`target_branch`; when both are known and differ, the CLI does not recommend that root. A null value
+is an unknown hint, not proof of compatibility. Confirm write authority and delivery intent before
+merging work, and ask the user when those facts do not establish a coherent result.
+
 ## Choose a Specialized Skill
 
 | User intent | Load next | Main result |
@@ -170,7 +185,7 @@ or maintenance state. Use `operation` before interpreting it.
 | Navigate, search, resolve links, or recover a required lazy mount | `$doctidex-git-read` | Reading context and a native-tool-readable path. |
 | Add, remove, prepare, list, or synchronize Git mounts | `$doctidex-git-mount` | Mount declarations and explicit readable commit state. |
 | Edit one local doctidex root | `$doctidex-git-maintain` | Content changes with index/log decisions and validation. |
-| Change a mounted source or coordinate multiple roots | `$doctidex-git-workspace` | Independent writable roots and per-root handoff. |
+| Change a mounted source or coordinate multiple roots | `$doctidex-git-workspace` | Reused or independent write scopes and per-scope handoff. |
 | Check conformance, filters, links, or plugin readiness | `$doctidex-git-validate` | Separated structure, semantic, and readiness results. |
 | Review results without modifying them | `$doctidex-git-review` | Findings and per-root delivery decisions. |
 
@@ -181,7 +196,8 @@ Review, and Setup -> Validate.
 ## Safety Baseline
 
 - Preserve unrelated user changes.
-- Do not write through a host mount path; use a maintenance root.
+- Do not write through a host mount path; use the selected host root or maintenance root from the
+  maintenance workflow.
 - Do not modify protected content without explicit user direction.
 - Do not automatically commit, push, merge, reset, clean, switch the user's branch, remove tracked
   content, or discard a maintenance result.

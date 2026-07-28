@@ -1,3 +1,9 @@
+---
+type: index
+doctidex:
+  type: index
+---
+
 # 实现细节导航
 
 Details 解释 Architecture 中的抽象如何由具体实现落实。当前只有

@@ -23,6 +23,23 @@ to the exact protocol rule and the design or execution path that can expose the 
 Report the exact protocol section and affected behavior. Do not report a different implementation
 choice as a violation when the protocol leaves it open.
 
+Apply these adjudication boundaries:
+
+- Protocol mount and maintenance semantics do not prescribe a CLI, source-identity algorithm,
+  revision-comparison method, writable-root construction, scope command, reuse policy, replanning
+  procedure, or agent scheduling strategy. Review those choices against the implementation's
+  accepted Requirements and current Architecture. Report them under this lens only when their
+  observable result violates an actual protocol boundary, such as writing through a mount path.
+- Treat `protected` as the default authority boundary for ordinary tree-scoped maintenance, not as
+  irreversible storage. Explicit user direction may authorize an exact protected target or a
+  protection-configuration change. Report silent, inferred, or over-broad writes, but do not report
+  the existence of this explicit override path as a protocol violation.
+- `atomic_entries` defines how the responsible index organizes a directory. It does not create a
+  separate content or link root and does not require links inside the unit to remain below the
+  atomic directory. Evaluate a link against the document's actual doctidex link root and applicable
+  mount rules; leaving the atomic directory alone is not an escape, while crossing that actual link
+  root remains subject to the general protocol rule.
+
 ## Agent-Facing Skill Surface
 
 Authority: the `Agent-Facing Skill Design` section of `AGENTS.md`, the changed Skills and metadata,

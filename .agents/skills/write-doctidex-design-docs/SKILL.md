@@ -44,8 +44,8 @@ Place each fact in exactly one primary layer:
 
 - Put current language-neutral problems, user workflows, public interfaces, models, constraints,
   and failure semantics in `architecture/`.
-- Put an original request, its intent, considered/accepted outcome, implementation impact, and
-  status in `requirements/`.
+- Put the user-reviewed requirement intent, considered/accepted outcome, implementation impact,
+  provenance, and status in `requirements/`.
 - Put language/runtime-specific modules, files, classes, functions, storage, algorithms, tests,
   limitations, and code examples in `details/<variant>/`.
 
@@ -71,10 +71,17 @@ boundary, and non-atomic boundary. Familiar fields may be concise but cannot be 
 
 ## Preserve Historical Requirements
 
-Keep source wording and provenance visible. Separate original request, interpretation/design intent,
-decision, final outcome, implementation impact, and later supersession. Never rewrite an older
-record to make it agree with current Architecture. Add a new record or explicit cross-link for a
-later change. Do not reconstruct unrecorded history from current code.
+Before formulating a Requirement, inspect the relevant current Architecture, Details, code, tests,
+and public surfaces. Test both explicit statements and implicit premises against actual behavior. If
+a premise differs, explain the concrete difference and design impact to the user before using it as
+the Requirement basis.
+
+Record the clarified and completed intent after user review; do not copy raw input merely to preserve
+its wording. Keep provenance visible and separate the reviewed requirement, design intent, decision,
+final outcome, implementation impact, and later supersession. Do not attribute unreviewed inference
+to the user. Never rewrite an accepted record to make it agree with current Architecture. Add a new
+record or explicit cross-link for a later change, and do not reconstruct unrecorded history from
+current code.
 
 ## Map Concrete Implementations
 
@@ -104,7 +111,7 @@ Check that:
 - user-visible and internal information are visibly separated;
 - Architecture contains no accidental language/file/storage coupling;
 - every exposed field and every internal concept property is explained;
-- Requirements preserve rather than normalize history;
+- Requirements preserve reviewed intent and provenance without treating raw wording as authority;
 - Details cover every relevant module and match code/tests;
 - links form a useful network without duplicate authorities;
 - changed public behavior is aligned across Architecture, Details, Skills, code, and tests;

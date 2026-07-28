@@ -1,7 +1,7 @@
 # 设计约束与失败模型
 
 本文汇总所有实现都必须维持的跨工作流约束。协议规则仍以
-[`spec/overview.md`](../../../../spec/overview.md) 为准。
+[`spec/overview.md`](/spec/overview.md) 为准。
 
 ## 1. 设计约束
 
@@ -11,6 +11,13 @@
 - root、mount namespace、完整 source tree、link root 和过滤边界按 protocol 解释。
 - Git revision、root `.gitignore` readiness 和 maintenance lifecycle 是插件约定，不能
   被描述为 protocol requirement。
+
+协议中的 mount 只读入口、源根写入边界和目录树分离语义，不规定实现如何
+识别 source relationship、表示 maintenance basis、选择可写现场或组织 agent 的工作流。
+`maintenance scope`、same-commit reuse、`open` 和执行中的重新观察，是
+`doctidex-git` 对这些问题的实现方案和公开 user surface，应按本 Architecture
+及适用 Requirements 审查，不应倒推为其他 doctidex 实现也必须提供的命令、
+算法或调度步骤。
 
 ### 1.2 可读性
 
@@ -23,11 +30,22 @@
 
 ### 1.3 写入
 
-- host mount path 是只读边界；source 修改必须进入 maintenance root。
+- host mount path 是只读边界；source 修改必须进入 maintenance scope 选出的 host root
+  或独立 maintenance root，不能透过 mount path 写入。
+- scope item 只表示命令当前观察到的 host root 或 mounted source，不携带待分配、已分配
+  或计划归属状态；scope 可以在同一工作中按现场变化重复运行。
+- agent 选定一个写入根后，该根就是本次执行边界。执行中通过 mount 发现其他源目标时，
+  必须重新观察并复核范围，不能把目标静默纳入当前边界。
 - preview/apply 必须区分，省略 flag 不是破坏性授权。
 - 不自动 commit、push、merge、reset、clean、移除 tracked content 或丢弃结果。
-- protected 写入、Git index 改动、credentials、revision 选择和交付动作需要相应用户
-  指示或授权。
+- protected 是普通目录树维护的默认权限边界，不是不可撤销的文件系统锁。
+  没有明确用户指示时必须保持不写；用户可以对精确的 protected 内容授权本次
+  维护，也可以授权调整或移除对应保护配置。这是任务级用户权限，不是 CLI
+  可以自行推断或扩大的默认权限。
+- atomic 只定义负责 index 的组织责任。除内部不得出现 `index.md` 或 `log.md` 外，
+  协议不对其内部内容或 link 范围施加递归符合性要求。它不创建新的读取
+  边界或 link root，也不得把“离开 atomic 目录”本身当成 link-root escape。
+- Git index 改动、credentials、revision 选择和交付动作需要相应用户指示或授权。
 
 ### 1.4 网络
 
@@ -83,7 +101,8 @@
 
 batch 和 multi-root 操作不是事务。顶层 blocked 表示至少一个目标未完成，不表示成功
 items 被撤销。结果必须提供 `completed_count`、每项 payload、汇总 findings 和仍保留
-内容。agent 按 root/source 分开报告，不为制造“全部成功”而回滚用户结果。
+内容。agent 按最终选定的写入范围分开报告；同一 source/basis 的多个观察 item 可以属于
+同一结果，但不能为制造“全部成功”而合并不兼容范围或回滚用户结果。
 
 ## 5. Human Escalation
 
@@ -102,4 +121,5 @@ items 被撤销。结果必须提供 `completed_count`、每项 payload、汇总
 
 实现测试至少覆盖 preview 不写入、lazy state 不误报缺失、旧 effective commit 在 sync
 失败后保留、mount path 不进入 tracked diff、maintenance changes 阻止 close、batch
-partial result 保留，以及默认输出预算生效。
+partial result 保留、同/different revision 自引用 scope 选择、未知仓库关系不猜测，以及
+默认输出预算生效。

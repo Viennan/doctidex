@@ -66,6 +66,8 @@
 | link root kind | Public | `host_root` 或 `mounted_source`，用于解释 root 与 link root 可能不同。 |
 | working path | Public | 原生文件工具可以尝试访问的文件系统路径。 |
 | relevant mount | Public conditionally | 路径命中或来源依赖的 mount state。 |
+| root relation | Public conditionally | 涉及 mount 时，对 source 是否可确认为当前根仓库及 commit 是否相同的保守判断。 |
+| maintenance reuse | Public conditionally | 若随后需要写入，可否复用已有 scope 的有界建议；不改变 working path。 |
 
 路径规范化不得越过 link root。一次从 host 开始的 mount namespace 不嵌套：mounted
 source 中再次出现 `/.doctidex/mounts/...` 时回到原 host namespace。
@@ -108,6 +110,18 @@ selector 表达用户意图，不等于已读取对象，也不证明远端当�
 `not_prepared` 是正常 lazy 状态，不代表 source 或目标文件不存在。`ready` 只说明当前
 effective commit 可读，不说明 branch/tag 已与远端同步。
 
+### 4.4 Root Relation
+
+| 属性 | 可见性 | 含义与约束 |
+|---|---|---|
+| source | Public conditionally | `same_repository` 表示可可靠确认 source 对应当前 checkout root；否则为 `unknown`，不作否定断言。 |
+| revision | Public conditionally | source 相同时为 `same_commit`、`different_commit` 或 `unknown`；source 未确认时固定为 `unknown`。 |
+| evidence | Internal | 本地 checkout、已配置 source 地址和 Git 元数据；不在普通结果或 Skills 中展开。 |
+
+相同 commit 不能单独证明 source 相同。当前 doctidex 根不是 Git checkout root 时不得把
+同仓库 URL 当作根自引用。判断不联网，不承诺识别所有等价 URL、镜像或 fork；未知关系
+保持普通 mount 行为。
+
 ## 5. Maintenance
 
 ### 5.1 Maintenance Scope Item
@@ -115,14 +129,39 @@ effective commit 可读，不说明 branch/tag 已与远端同步。
 | 属性 | 可见性 | 含义与约束 |
 |---|---|---|
 | kind | Public | `host_root` 或 `mounted_source`。 |
-| identity | Public | host root path 或 exact mount path；用于去重独立结果。 |
+| identity | Public | host root path 或 exact mount path；用于在本次返回中去重观察对象。 |
 | base commit | Public | host HEAD 或 mounted source effective commit；可以未知。 |
+| declared revision | Public conditionally | mounted source 的 commit、tag 或 branch selector。 |
+| target branch | Public conditionally | host 当前 symbolic branch 或 mounted source 的 branch selector；detached、未知、tag/commit selector 时为 null。 |
 | read path | Public conditionally | mounted source 在 host 中的只读入口。 |
 | write path/action | Public | host 直接写路径，或 mounted source 的 open 动作。 |
+| root relation | Public conditionally | mounted item 与当前 host root 的 source/revision 关系。 |
+| maintenance reuse | Public | 可复用 host/maintenance scope，或没有唯一兼容 scope 的原因。 |
 
-scope 只分类和去重，不打开写入环境、不决定任务顺序，也不形成跨根事务。
+scope item 是本次命令对 host root 或 mounted source 的观察，不是分配状态。
+item 可以是 agent 首次观察的对象，也可以已在现有计划中；返回结构不区分这两种
+情况。scope 按 host 和 exact mount 分类去重，不创建或覆盖 agent 的工作计划。
 
-### 5.2 Maintenance Context
+agent 根据每次返回的当前事实，把同 source、同 base commit 且写入与交付目标兼容的
+items 纳入同一选定写入范围。新目标或现场变化时可以重新运行 scope 并复核这个决定。
+scope 会排除已知 branch 冲突，但不替 agent 完成权限与完整交付意图判断；它不打开写入
+环境，也不形成跨范围事务。
+
+### 5.2 Selected Write Scope
+
+| 属性 | 可见性 | 含义与约束 |
+|---|---|---|
+| selected root | Public | agent 实际执行维护的 host root 或 maintenance root。 |
+| covered items | Public in workflow | agent 已决定在该根处理的一个或多个兼容 scope items；CLI 不持久化该集合。 |
+| write boundary | Public | 所有写入必须位于 selected root 下；mount read path 不得成为写入入口。 |
+| maintenance basis | Public | 被覆盖 items 共享的 source/base commit；不同或未确认基准不得合并。 |
+| result boundary | Public | 以 selected root 产生的 index/log 决策、Git diff、校验和交付动作。 |
+
+一旦进入选定范围执行，原生工具可以自由浏览该根，但不得沿其 mount 将其他源
+直接纳入写入边界。遇到这类目标时，agent 将它作为新的 scope 观察对象，再决定复用
+已有范围还是打开独立范围。
+
+### 5.3 Maintenance Context
 
 | 属性 | 可见性 | 含义与约束 |
 |---|---|---|
@@ -136,6 +175,22 @@ scope 只分类和去重，不打开写入环境、不决定任务顺序，也�
 | changes | Public | Git porcelain entries，不包含 line-level diff。 |
 | lifecycle identifier | Internal | 区分并发或重复 open 的 context。 |
 | owner registration | Internal | 支持从任意 cwd 使用 exact maintenance root。 |
+
+### 5.4 Maintenance Reuse
+
+| 属性 | 可见性 | 含义与约束 |
+|---|---|---|
+| status | Public | `recommended`、`selection_required` 或 `not_available`。 |
+| scope kind | Public conditionally | recommended 时为建议根类型；selection required 时为 `maintenance_root`；not available 时为 null。 |
+| write path | Public conditionally | 唯一建议的可写文件系统根；必须按该 scope 自身边界使用。 |
+| target branch | Public conditionally | 唯一建议根的 branch 提示；没有唯一建议或无法识别时为 null。 |
+| candidate count | Public | 当前已知兼容 scope 数量；不枚举大量内部路径。 |
+| reason | Public | 稳定原因枚举，解释当前根复用、已有同 commit scope、多候选或不可复用。 |
+
+当 item 与候选的 target branch 都已知且不同，候选不进入复用建议；任一侧为 null 时，
+工具保留候选，由 agent 根据任务交付意图判断。`recommended` 不替 agent 判断任务权限；
+`selection_required` 要求先查看已有 maintenance status。`not_available` 表示当前没有
+已知兼容写入入口，不表示 mount 不可读。
 
 ## 6. Validation and Result
 

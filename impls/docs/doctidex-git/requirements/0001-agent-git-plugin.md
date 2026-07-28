@@ -12,7 +12,7 @@
 本文档设计 `impls/agent-plugins/doctidex-git/` 对用户和 agent 暴露的操作界面。它面向在
 Git 管理的目录中创建、读取、查询、维护和审阅 doctidex 目录树的场景。
 
-本文档以 [`spec/overview.md`](../../../../spec/overview.md) 为唯一协议依据。旧的
+本文档以 [`spec/overview.md`](/spec/overview.md) 为唯一协议依据。旧的
 `spec/reference-implementations/git-agent-scaffold.md` 只提供能力目标和 Git 协作
 经验，不作为字段、路径或行为约定的来源。若本文档与协议正文冲突，以协议正文
 为准。

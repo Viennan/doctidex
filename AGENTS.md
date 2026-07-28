@@ -28,6 +28,37 @@ and minimal format constraints.
 - `.asserts/` contains read-only source material used to construct tests.
 - `.tmp/` contains disposable test workspaces and is ignored by Git.
 
+## Repository Doctidex Organization
+
+- Organize and maintain this repository itself as a doctidex directory tree.
+  Repository indexes must follow `spec/overview.md` and should describe the
+  repository as a working source and documentation tree rather than recreate a
+  second documentation system.
+- Keep source-code directories atomic. Their responsible parent index should
+  explain the directory's purpose and may point to authoritative design or
+  usage documentation, but it should not recursively enumerate source files or
+  add indexing documents inside the source tree.
+- Reuse the repository's existing documentation hierarchy. When a directory is
+  already explained and navigated by documents such as those under
+  `impls/docs/`, higher-level indexes should provide a concise entry into that
+  authority instead of repeating its detailed structure or prose.
+- Keep included tool and configuration directories such as `.agents/` and
+  `.codex/` atomic and describe only their repository-level purpose. Apply the
+  same treatment to generated, vendored, fixture, asset, collected-source, or
+  other directories where intrusive indexing would be inappropriate.
+- A directory whose contents are already explained by authoritative internal
+  documentation may be atomic even when it is not source or configuration.
+  Link or name the authoritative explanation from the responsible parent when
+  that improves discovery; do not duplicate it in the index.
+- Use atomic entries to reduce index depth, not to hide useful content or avoid
+  stating a directory's purpose. Atomic content remains available for native
+  file and search exploration.
+- Apply atomic only where the protocol permits it: an atomic directory cannot
+  contain `index.md` or `log.md`. Preserve an existing doctidex index hierarchy
+  instead of marking its directory atomic. Content already excluded by protocol
+  or repository policy remains excluded rather than being reclassified merely
+  to simplify indexing.
+
 ## Sources of Context
 
 - `impls/docs/` may define stricter implementation conventions, but those
@@ -84,11 +115,21 @@ and minimal format constraints.
   For every module, explain intended callers, dependencies, main types and
   functions, all data attributes, side effects, failure and concurrency
   boundaries, expected use cases, and a small usage example where useful.
-- Requirements records must preserve the original request, design intent,
-  accepted outcome, and implementation impact. Do not reconstruct past
-  requirements beyond explicitly designated source material or present inferred
-  wording as an original request. Preserve historical text and express later
-  changes through new records and cross-links.
+- Requirements records preserve the user's reviewed intent, design intent,
+  accepted outcome, and implementation impact; they do not need to reproduce
+  the user's raw input verbatim. The agent may clarify, complete, and organize
+  the requirement, but must present that interpretation for user review before
+  treating it as accepted intent. Do not attribute unreviewed inference to the
+  user, retrospectively rewrite an accepted record to match current design, or
+  reconstruct unrecorded history; express later changes through new records and
+  cross-links.
+- Before processing proposed Requirements, inspect the relevant current
+  Architecture, Details, implementation, tests, and public surfaces to test the
+  request's explicit and implicit assumptions against actual behavior. When an
+  assumption differs from the current implementation, explain the concrete
+  difference and its design impact to the user before basing a Requirement on
+  it; record the corrected or intentionally changed premise only after user
+  review.
 - Stage new implementation documentation according to established authority:
   record undecided work as a proposed Requirement, treat Architecture as current
   only after acceptance, and write Details only for code that exists. Examples,

@@ -1,4 +1,4 @@
 interface:
   display_name: "Doctidex Git Maintain"
-  short_description: "Maintain one selected doctidex directory tree"
-  default_prompt: "Use $doctidex-git-maintain to update this doctidex tree within its maintenance boundaries."
+  short_description: "Execute one scoped doctidex maintenance plan"
+  default_prompt: "Use $doctidex-git-maintain to execute one maintenance plan within its selected doctidex write scope."

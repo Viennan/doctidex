@@ -61,7 +61,9 @@ index、适用 log、过滤属性或 mount 来源时调用 `inspect PATH --json`
 相对 link 继续按文档目录用普通文件工具解析；anchor 不作为 `INTERNAL_PATH` 传入。
 
 **可观察结果**：`link_root` 说明解析基准，`working_path` 可直接交给原生工具，
-`crosses_mount` 和 `mount` 说明是否依赖 lazy mount。
+`crosses_mount` 和 `mount` 说明是否依赖 lazy mount。涉及 mount 时，`root_relation`
+保守标注它是否可确认为当前根的同仓库视图；`maintenance_reuse` 只为后续可能的写入
+提供 scope 建议，不改变本次读取路径。
 
 **失败与动作**：`root_ambiguous` 时不要猜最近根，应从精确宿主或 source root 重试。
 目标 mount 未准备不使 resolve 本身失败；按返回的 `next_action` 恢复后再读取。
@@ -137,15 +139,19 @@ tracked 文件、根 index 和 Git index 不应因此变化。
 **问题与场景**：本地文档需要修改，同时必须确认负责 index、log、protected 或 atomic
 边界，并保持内容导航可渐进披露。
 
-**使用方式**：用 `inspect` 确认路径上下文，在 included 范围使用原生工具编辑；按
-任务语义更新正文、负责 index 和必要的 log。完成后运行 `changes` 与 `check`，结合
-diff 处理 findings 和 semantic candidates。
+**使用方式**：用 `inspect` 确认路径上下文，在 included 范围使用原生工具编辑；当前根
+本身就是 `host_root` 写入 scope，不需要通过自引用 mount 再打开工作区。按任务语义更新
+正文、负责 index 和必要的 log。完成后运行 `changes` 与 `check`，结合 diff 处理
+findings 和 semantic candidates。
 
 **可观察结果**：Git diff 只包含用户授权范围；协议结构有独立 pass/fail；语义候选由
 agent 阅读后形成结论，而非由 CLI 自动补写内容。
 
-**失败与动作**：protected 范围没有明确授权时停止写入并询问用户；excluded 范围不纳入
-宿主维护；atomic 单元作为整体理解。协议 finding 先按 action 修复，语义候选不能机械
+**失败与动作**：protected 范围没有明确授权时停止写入并询问用户；用户可以
+授权本次精确目标的维护，也可以授权调整保护配置，agent 需将实际授权边界记入计划。
+excluded 范围不纳入宿主维护；atomic 单元作为整体索引，但其内文档可按通常
+link 形式引用 atomic 目录之外的内容，其内部内容和 link 范围不参与协议的递归
+符合性判断。协议 finding 先按 action 修复，语义候选不能机械
 转成文本。
 
 **设计理由**：结构事实可自动化，内容质量和维护意图必须保留给人或 agent 判断。
@@ -157,23 +163,44 @@ agent 阅读后形成结论，而非由 CLI 自动补写内容。
 
 **使用方式**：
 
-1. `maintenance scope PATH...` 确认独立维护单位；
-2. source 无 effective commit 时先 prepare；
-3. `maintenance open MOUNT_PATH`，记录返回的 `maintenance_root`；
-4. 只在该可写根使用原生编辑、搜索和 Git 工具；
-5. 以 source 自己的 index、log 和过滤边界完成维护；
-6. 运行 `maintenance handoff MAINTENANCE_ROOT --json`；
-7. 根据用户授权处理 commit、push、merge 或宿主 selector 更新；
-8. Git 状态 clean 后运行 `maintenance close MAINTENANCE_ROOT`。
+1. `maintenance scope PATH...` 取得本次观察的 host/mount items；item 不包含分配状态，
+   agent 可以用它初次制定或后续复核维护计划；
+2. 比较相同 `source` 与 `base_commit`，并读取 `root_relation`、`maintenance_reuse`；
+3. `maintenance_reuse.status: recommended` 时比较 item 与建议根的 `target_branch` 后，
+   把兼容变更放入返回的 `write_path`；自引用且 `same_commit` 且目标 branch 兼容时，
+   该路径就是当前宿主根；两侧 branch 都已知且不同时 CLI 不会给出该推荐；
+4. `selection_required` 时运行 maintenance status 并由 agent 选择一个已有现场，不再
+   新开；选择时先用当前 item 的 `source`、非 null `base_commit` 筛选 status items，再将
+   `target_branch` 提示与任务预期交付目标比较。仍有多个同等候选且任务没有表达偏好时，
+   由用户选择；
+5. 没有兼容 scope 且 source 未准备时先 prepare；`delivery_target_conflict` 默认保持独立。
+   用户明确选择共同集成结果时，自引用可重新 scope host，开放根可用 status 按
+   source/base commit 查找，再选择有授权的共同写入根；需要独立范围时对一个代表性
+   `MOUNT_PATH` 执行 `maintenance open`；
+6. 只在选定的可写根使用原生编辑、搜索和 Git 工具，并以该根自己的 index、log 和
+   过滤边界完成维护。具体文件按 source-relative suffix 映射：从 mounted target 中移除
+   `read_only_path` 前缀，再把剩余 suffix 接到选定的 `write_path`；映射结果必须仍位于该
+   write root 下，否则重新 scope 精确目标并停止猜测；
+7. 执行中通过当前根的 mount 发现其他源目标时，不把它直接加入当前写入边界；
+   对该目标重新运行 scope，再复用兼容范围或打开独立范围；
+8. 独立 maintenance root 使用 handoff/close；复用 host root 则使用 changes/check 和
+   当前仓库的正常 Git 交付流程；
+9. 根据用户授权处理 commit、push、merge 或宿主 selector 更新。
 
-集中在一个 source 的工作量较大、步骤较多时，推荐 `cd` 到返回的维护根开展工作，以
+新目标进入任务、可复用现场变化或执行边界不再清楚时，可再次运行 scope 获得最新
+观察；这不会覆盖 agent 已有计划。集中在一个 source 的工作量较大、步骤较多时，
+推荐 `cd` 到返回的维护根开展工作，以
 简化后续省略路径的命令；短暂跨根协调时可保留 cwd 并显式传维护根。
 
-**可观察结果**：source 有独立 base commit、Git changes、校验和交付提示；宿主 mount
-和其他引用不随编辑现场变化。`target_branch` 只是交付提示，不表示已自动切换分支。
+**可观察结果**：相同 source/base commit 的兼容变更共享一个写入现场；不同 commit
+仍有独立 base、Git changes、校验和交付提示。宿主 mount 和其他读取引用不随编辑现场
+变化。item 的 `target_branch` 表示其预期 branch，reuse 的 `target_branch` 表示唯一建议根
+的 branch；任一侧为 null 时仍由 agent 依据任务交付意图判断。它们都不表示已自动切换
+分支。
 
-**失败与动作**：未 prepare 时先恢复；选择不唯一时传精确维护根；存在 changes 时
-close 必须拒绝并保留现场。CLI 不代替用户执行 commit、push、merge 或清理。
+**失败与动作**：仓库关系未知时不猜测复用；不同 commit 或交付目标不兼容时保持独立。
+open 在已有兼容 scope 时仍尊重显式隔离并返回 warning，agent 应只保留一个非预期的
+clean 现场。存在 changes 时 close 必须拒绝并保留现场。CLI 不代替用户执行 Git 交付。
 
 **设计理由**：读视图与写现场分离，使每个 source 的责任、diff 和交付动作保持清楚。
 
@@ -182,11 +209,14 @@ close 必须拒绝并保留现场。CLI 不代替用户执行 commit、push、me
 **问题与场景**：一次需求可能同时影响宿主及多个 source，它们具有不同仓库、基准和
 权限，不能伪装成原子写入。
 
-**使用方式**：用 `maintenance scope PATH...` 去重并得到独立 units。为每个 unit 记录
-root、base commit、可写入口、diff、校验结果和待授权 Git 动作；按依赖顺序逐根完成。
-批量 prepare/sync 的每个 item 也按独立结果解释。
+**使用方式**：用 `maintenance scope PATH...` 按 host/mount 去重观察，再把同 source、同
+base commit 且权限和交付目标兼容的 items 纳入同一写入 scope。item 可以已经位于
+agent 的工作计划中；命令不记录分配状态。`source` 和
+`base_commit` 相同足以识别同声明源的候选；`root_relation` 只在工具能可靠确认时把
+自引用 mount 纳入当前 host scope。为每个最终 scope 记录写入入口、diff、校验和待授权
+Git 动作；按内容依赖顺序完成。执行中发现新 mount 目标时重新 scope 并调整计划。
 
-**可观察结果**：每个根都有单独成功或失败状态。顶层 batch blocked 不撤销已成功项，
+**可观察结果**：每个最终写入范围都有单独成功或失败状态。顶层 batch blocked 不撤销已成功项，
 `completed_count` 与逐项 `result` 说明已保留内容。
 
 **失败与动作**：只重试失败 unit；向用户分别报告各根已完成、仍保留和需要决策的
@@ -232,11 +262,13 @@ root、base commit、可写入口、diff、校验结果和待授权 Git 动作�
 ```mermaid
 flowchart LR
     A[选择明确 root] --> B[用 index 和原生工具阅读]
-    B --> C{目标是否为 lazy mount}
-    C -->|否| D[直接读取或维护]
+    B --> C{目标是否为 mount}
+    C -->|否| D[使用选定的可写 scope]
     C -->|是且不可读| E[prepare 后重试原生工具]
-    C -->|是且需修改| F[open maintenance root]
+    C -->|是且需修改| F[scope 判断可复用写入入口]
+    F -->|有兼容 scope| D
+    F -->|无兼容 scope| I[open maintenance root]
     D --> G[check + Git review]
-    F --> G
+    I --> G
     G --> H[agent 形成语义结论并交付]
 ```

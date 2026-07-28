@@ -333,10 +333,18 @@ symlink 或整棵 destination，避免清理未登记的用户内容。
 `maintenance scope` 用 `inspect_path` 把输入归并为：
 
 - `host_root`：当前宿主本身可写；
-- `mounted_source`：host mount 只读，应执行 `maintenance open`。
+- `mounted_source`：host mount 只读，并附带 relation、reuse 与必要时的 open action。
 
 同一宿主或同一 mount 的多个输入去重。base commit 对宿主取当前 `HEAD`，对 mount 取
-state 中 effective commit，可以为 `null`。
+state 中 effective commit，可以为 `null`。host item 还返回当前 symbolic branch；mount
+item 返回 declared revision 和 branch selector 对应的 target branch。结果是本次调用时
+的观察，不含计划分配状态；重复调用不会保存或覆盖调用者的计划。
+
+调用者先依据 `root_relation` 和 `maintenance_reuse` 选择兼容的 host root 或已有
+maintenance root。reuse 过滤 source/base commit 不匹配、路径已丢失及已知 target branch
+冲突的候选；任一 branch 未知时仍交给调用者按交付意图决定。只有不存在可复用范围，
+或调用者明确需要隔离时，才对 mounted source 执行 `maintenance open`。最终范围及其
+执行边界由调用者维护，`scope()` 不在 state 中登记这一决策。
 
 ### 9.2 Open
 

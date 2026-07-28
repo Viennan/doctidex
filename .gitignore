@@ -1,4 +1,5 @@
 .DS_Store
+/.doctidex/mounts/
 .tmp/
 tmp
 build

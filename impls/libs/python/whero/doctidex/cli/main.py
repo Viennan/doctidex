@@ -211,6 +211,10 @@ def _resolve(context: RootContext, value: str, *, link_document: Path | None = N
         if not mount or mount["readable"]
         else "Mount is not prepared; use the listed action before native file access.",
     }
+    if mount is not None:
+        relation, reuse = MaintenanceService(context).guidance(mount["mount_path"])
+        result["root_relation"] = relation
+        result["maintenance_reuse"] = reuse
     if link_document is not None:
         result["link_document"] = str(link_document)
     return result

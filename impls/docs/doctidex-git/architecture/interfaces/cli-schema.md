@@ -28,6 +28,7 @@ protocol_structure, semantic_review, plugin_readiness,
 mount_state, mount_path, source, declared_revision,
 effective_commit, readable,
 maintenance_root, base_commit, target_branch,
+root_relation, maintenance_reuse,
 changed, planned_changes, findings, semantic_candidates,
 items, collection, next_actions
 ```
@@ -80,13 +81,15 @@ Need from user: <requires_user or none>
 | `affected` | array[string] | blocked 原因影响的路径、逻辑 mount 或其他对象。 |
 | `requires_user` | string/null | blocked 操作是否需要某类用户输入或授权；`null` 表示 agent 可按 actions 自行处理。 |
 | `details` | object | 仅 JSON 可见的有限诊断补充；人读输出隐藏。它不应成为正常流程前置。 |
+| `root_relation` | object | mount source 与当前命令根的保守仓库/commit 关系；只在相关 operation 出现。 |
+| `maintenance_reuse` | object | 当前是否有可复用写入 scope 的有界建议；只在相关 operation/item 出现。 |
 
 ## 5. 状态字段和值
 
 | 字段 | 可能值 | Agent 解读 |
 |---|---|---|
 | `status` | `ok` | 当前操作完成；仍需查看独立结果域。 |
-| `status` | `warning` | 结果可用，但存在协议失败、插件未就绪或语义候选。 |
+| `status` | `warning` | 结果可用，但存在协议/插件/语义后续，或显式 open 前已有兼容 scope 等需要决策的事实。 |
 | `status` | `blocked` | 当前请求未完成；按 finding actions 或询问用户。 |
 | `protocol_structure` | `pass`/`fail` | 当前确定性协议检查是否有 error。 |
 | `semantic_review` | `clear`/`required` | 是否存在需 agent 阅读判断的候选。`required` 不等于内容错误。 |
@@ -96,7 +99,8 @@ Need from user: <requires_user or none>
 | `mode` | `host_read`/`mount_read` | `context` 对输入路径的字符串级读取模式提示。 |
 | `source`（PathContext） | `local`/`mount` | 路径来自宿主本地内容还是声明 mount。 |
 | `host_scope` | `included`/`excluded` | 路径是否属于宿主 doctidex 的索引/维护范围。 |
-| scope item `kind` | `host_root`/`mounted_source` | maintenance scope 的独立维护单位类型。 |
+| scope item `kind` | `host_root`/`mounted_source` | 本次 scope 调用观察到的宿主根或挂载源类型；不表示 item 是否已分配到写入范围。 |
+| maintenance reuse `status` | `recommended`/`selection_required`/`not_available` | 是否有唯一兼容 scope、需要从多个已有 scope 中选择，或当前没有兼容 scope。 |
 
 ## 6. Finding
 
@@ -168,6 +172,49 @@ severity/code/message/actions，受影响对象位于顶层 `affected`。
 
 `effective_commit` 非 null 但可读路径丢失时仍返回 `not_prepared/readable: false`，
 prepare 会尝试复用该 commit 恢复读取。
+
+### 9.1 Root relation
+
+`root_relation` 固定包含两个字段：
+
+| 字段 | 类型/值 | 含义 |
+|---|---|---|
+| `source` | `same_repository`/`unknown` | `same_repository` 表示工具可可靠确认 mount source 对应当前 doctidex checkout root；`unknown` 不表示已确认不同。 |
+| `revision` | `same_commit`/`different_commit`/`unknown` | 只在 source 已确认且两侧 commit 可得时比较；否则为 `unknown`。 |
+
+判定离线且保守。相同 commit 本身不证明 source 相同；等价 URL、镜像、fork 或 nested
+doctidex root 可能保持 `unknown`。调用方不得从 unknown 推断相同或不同。
+
+### 9.2 Maintenance reuse
+
+`maintenance_reuse` 固定包含：
+
+| 字段 | 类型/值 | 含义 |
+|---|---|---|
+| `status` | string | `recommended`、`selection_required` 或 `not_available`。 |
+| `scope_kind` | string/null | `recommended` 时为 `host_root` 或 `maintenance_root`；`selection_required` 时为 `maintenance_root`；`not_available` 时为 null。 |
+| `write_path` | string/null | 唯一建议的可写根；否则 null。 |
+| `target_branch` | string/null | 唯一建议根的 branch 提示；没有唯一建议或无法识别时为 null。 |
+| `candidate_count` | integer | 已知兼容 scope 数量；不会在该 object 中枚举全部路径。 |
+| `reason` | string | 见下表的稳定原因。 |
+
+| reason | 含义与动作 |
+|---|---|
+| `current_root` | item 本身就是当前 host root；直接使用 write path。 |
+| `current_root_same_commit` | 自引用 mount 与当前 HEAD 相同；优先把兼容变更合并到 host root。 |
+| `existing_scope_same_commit` | 已有一个同 source/base commit maintenance root；复用 write path。 |
+| `multiple_existing_scopes` | 已有多个兼容维护根；先用 maintenance status 选择，不再新开。 |
+| `source_not_prepared` | 没有 effective commit，先 prepare。 |
+| `current_root_different_commit` | source 相同但 commit 不同；不要合并到 host root。 |
+| `delivery_target_conflict` | 同 source/base commit 候选的已知 branch 与当前 item 不同；默认保持独立。用户明确选择共同集成结果时，自引用可重新 scope host，开放根可用 status 按 source/base commit 查找，再由用户/agent 选择授权根。 |
+| `no_compatible_scope` | 当前没有已知兼容写入入口；需要时 open。 |
+
+工具在 scope item 与候选 `target_branch` 都为已知字符串且不同时排除该候选；任一侧为
+null 时保留候选，由 agent 根据用户授权和预期交付目标判断。写入权限、其他交付动作
+不兼容或用户明确要求隔离时，agent 可以不采纳 recommended；mount 读取路径始终保持
+只读。`selection_required` 的候选通过 `maintenance status` 返回：先匹配 scope item 的
+`source` 与非 null `base_commit`，再结合候选 `target_branch` 选择；不能唯一决定时由
+用户选择。
 
 ## 10. PathContext
 
@@ -338,6 +385,8 @@ payload 不能把它理解为只属于某一个 collection key。Cursor 是 opaq
 | `working_path` | string | 原生文件工具可尝试访问的路径；mounted source 结果仍位于宿主可访问 mount path 下。 |
 | `crosses_mount` | boolean | 本次解析是否依赖一个宿主 mount；既包括目标命中宿主 mount，也包括从 mounted source 解析普通绝对 link。 |
 | `mount` | object/null | 与本次解析相关的 Mount item；未涉及 mount 时为 null。 |
+| `root_relation` | object，可选 | 涉及 mount 时必有；见 Root relation。 |
+| `maintenance_reuse` | object，可选 | 涉及 mount 时必有；见 Maintenance reuse。 |
 | `result` | string | 普通 resolved，或提示 mount 尚未准备。 |
 
 `--from` 只提供 link 来源，不解析文档内容。源文档中的普通 `/...` 会产生
@@ -440,6 +489,10 @@ payload 不能把它理解为只属于某一个 collection key。Cursor 是 opaq
 
 顶层为 `status: ok`、`operation: maintenance_scope`、`root`、`items`、`result`。
 
+`items` 是本次命令对输入路径所属 host/mount 对象的当前观察。命令可在同一
+维护工作中反复运行；它不持久化工作计划，也不返回“待分配/已分配”状态。agent
+使用每次返回的事实制定或复核最终写入范围。
+
 `host_root` item：
 
 | 字段 | 含义 |
@@ -447,7 +500,9 @@ payload 不能把它理解为只属于某一个 collection key。Cursor 是 opaq
 | `kind` | `host_root`。 |
 | `root` | 宿主 doctidex 根。 |
 | `base_commit` | 当前 HEAD 或 null。 |
+| `target_branch` | 当前 symbolic branch；detached 或不可识别时为 null。unborn branch 仍可作为 symbolic branch 返回。 |
 | `write_path` | agent 可直接维护的宿主根路径。 |
+| `maintenance_reuse` | 固定推荐该 host root 自身。 |
 
 `mounted_source` item：
 
@@ -456,15 +511,25 @@ payload 不能把它理解为只属于某一个 collection key。Cursor 是 opaq
 | `kind` | `mounted_source`。 |
 | `mount_path` | 宿主逻辑 mount。 |
 | `source` | 清理后的 source URL。 |
+| `declared_revision` | mount 的 `{kind, value}` selector。 |
 | `base_commit` | effective commit 或 null。 |
+| `target_branch` | selector 为 branch 时的值，否则 null。 |
 | `read_only_path` | 宿主 mount 的文件系统路径。未准备时也会返回该计划路径。 |
-| `write_action` | 精确 maintenance open 命令。 |
+| `root_relation` | source 与当前 root 的保守关系。 |
+| `maintenance_reuse` | 唯一可复用 scope、选择要求或不可复用原因。 |
+| `write_action` | recommended 时 null；多候选时为 status 命令；没有兼容 scope 时为精确 open 命令。 |
+
+`read_only_path` 同时提供文件映射基准。对其下的具体 mounted target，移除该目录前缀并
+把 source-relative suffix 接到选定 `write_path` 或 maintenance root，即得到对应可写
+目标；结果必须保持在所选写入根内。CLI 不替 agent 返回或写入这个具体文件目标。
+如果执行中又通过 mount 发现其他源目标，该目标需要新的 scope 观察和范围决策，
+不能因当前 item 已有写入根而直接跨越边界。
 
 ### 20.2 `maintenance_open`
 
 | 字段 | 含义 |
 |---|---|
-| `status` | `ok`。 |
+| `status` | 通常为 `ok`；调用前已有兼容 scope 时为 `warning`，但新根仍已创建。 |
 | `operation` | `maintenance_open`。 |
 | `root` | 宿主根。 |
 | `maintenance_root` | 新 maintenance root 的绝对路径。 |
@@ -474,7 +539,9 @@ payload 不能把它理解为只属于某一个 collection key。Cursor 是 opaq
 | `target_branch` | branch selector 值，否则 null。仅为交付提示。 |
 | `writable_root` | 当前与 maintenance_root 相同。 |
 | `boundaries` | `{writable: <path>, host_mount: "read_only"}`。`writable` 是允许写入根；`host_mount` 是宿主路径边界状态。 |
-| `next_actions` | 使用源 index 维护、check、handoff 三个提示。 |
+| `root_relation` | source 与当前 root 的保守关系。 |
+| `maintenance_reuse` | open 调用前已知的兼容 scope；用于确认本次隔离是否有意。 |
+| `next_actions` | 必要时先提示已有 scope，再给使用源 index、check、handoff 的动作。 |
 | `changed` | 空数组；open 不改变用户维护的公开文件，但会创建维护现场。 |
 | `result` | 独立维护根已就绪。 |
 

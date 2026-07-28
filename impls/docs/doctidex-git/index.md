@@ -1,3 +1,9 @@
+---
+type: index
+doctidex:
+  type: index
+---
+
 # doctidex-git 设计与实现文档
 
 状态：Draft，非规范性实现文档
@@ -50,7 +56,7 @@ Python 包内的类和函数目前属于参考实现接口，不承诺为稳定�
 - Architecture 先说明场景和 user surface，再说明内部模型；不包含 Python 文件布局、
   函数名或缓存路径。
 - Details 说明当前代码事实，并链接其落实的 Architecture 抽象。
-- Requirements 保留明确指定的初始基线；后续记录原始要求、意图、最终决策和实现影响，
-  不以当前设计反向改写历史。
+- Requirements 保留明确指定的初始基线；后续记录经用户审阅的需求意图、最终决策和
+  实现影响，不以当前设计反向改写历史。
 - 同一事实只保留一个权威说明，其他文档通过链接引用。
 - 行为变更时同步更新相关 Architecture、Details、Skills、代码和测试。

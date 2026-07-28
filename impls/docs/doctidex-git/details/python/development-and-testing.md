@@ -46,7 +46,8 @@ atomic 内禁止文档和 link 越界。
 
 `tests/test_git_plugin.py` 覆盖：init/ignore、同源多 mount lazy prepare、namespace 回边
 读取、resolve `--from`、嵌套根歧义、inspect 双重上下文、独立 effective commit sync、
-maintenance 跨 cwd 生命周期、changes 阻止 close，以及 protocol/readiness 分域。
+maintenance 跨 cwd 生命周期、changes 阻止 close、根自引用同/different commit、nested
+root 保守 unknown、已有同 source/base commit scope 复用，以及 protocol/readiness 分域。
 
 当前缺失覆盖集中列在[已知限制](known-limitations.md)，尤其是远端认证/网络、并发、
 fallback presentation、cursor 多列表和 state 损坏恢复。

@@ -11,7 +11,8 @@ from whero.doctidex.protocol.tree import RootContext, inspect_path
 from whero.doctidex.protocol.validation import validate_protocol
 
 from .context import git_status, root_gitignore_status
-from .mounts import GitMountService, public_url
+from .mounts import GitMount, GitMountService, public_url
+from .relations import current_root_reuse, git_branch, git_head, maintenance_reuse, repository_relation
 from .repository import SourceRepository
 from .state import StateStore
 
@@ -25,28 +26,63 @@ class MaintenanceService:
 
     def scope(self, paths: list[Path]) -> list[dict[str, Any]]:
         scopes: dict[str, dict[str, Any]] = {}
+        state = self.store.read()
+        records = _maintenance_records(state)
+        root_head = git_head(self.root, operation="maintenance_scope")
+        root_branch = git_branch(self.root, operation="maintenance_scope")
         for path in paths or [self.root]:
             inspected = inspect_path(self.context, path)
             if inspected.source == "mount" and inspected.mount_path:
                 mount, effective = self.mounts.effective(inspected.mount_path)
+                target_branch = _target_branch(mount)
+                relation = repository_relation(self.root, mount.url, effective, root_head=root_head)
+                reuse = maintenance_reuse(
+                    self.root,
+                    mount.url,
+                    effective,
+                    relation,
+                    records,
+                    target_branch=target_branch,
+                    root_branch=root_branch,
+                )
                 key = f"mount:{mount.mount_path}"
                 scopes[key] = {
                     "kind": "mounted_source",
                     "mount_path": mount.mount_path,
                     "source": public_url(mount.url),
+                    "declared_revision": mount.selector.as_dict(),
                     "base_commit": effective,
+                    "target_branch": target_branch,
                     "read_only_path": str(self.root.joinpath(*mount.mount_path.lstrip("/").split("/"))),
-                    "write_action": f"doctidex-git maintenance open {mount.mount_path}",
+                    "root_relation": relation,
+                    "maintenance_reuse": reuse,
+                    "write_action": _write_action(mount.mount_path, reuse),
                 }
             else:
                 key = f"root:{self.root}"
                 scopes[key] = {
                     "kind": "host_root",
                     "root": str(self.root),
-                    "base_commit": _head(self.root),
+                    "base_commit": root_head,
+                    "target_branch": root_branch,
                     "write_path": str(self.root),
+                    "maintenance_reuse": current_root_reuse(self.root, root_branch),
                 }
         return list(scopes.values())
+
+    def guidance(self, mount_path: str) -> tuple[dict[str, str], dict[str, Any]]:
+        mount, effective = self.mounts.effective(mount_path)
+        relation = repository_relation(self.root, mount.url, effective)
+        reuse = maintenance_reuse(
+            self.root,
+            mount.url,
+            effective,
+            relation,
+            _maintenance_records(self.store.read()),
+            target_branch=_target_branch(mount),
+            root_branch=git_branch(self.root, operation="maintenance_guidance"),
+        )
+        return relation, reuse
 
     def open(self, mount_path: str) -> dict[str, Any]:
         mount, effective = self.mounts.effective(mount_path)
@@ -58,10 +94,20 @@ class MaintenanceService:
                 actions=[f"Run doctidex-git mount prepare {mount.mount_path}, then retry maintenance open."],
                 code="maintenance_source_not_prepared",
             )
+        target_branch = _target_branch(mount)
+        relation = repository_relation(self.root, mount.url, effective)
+        reuse = maintenance_reuse(
+            self.root,
+            mount.url,
+            effective,
+            relation,
+            _maintenance_records(self.store.read()),
+            target_branch=target_branch,
+            root_branch=git_branch(self.root, operation="maintenance_open"),
+        )
         identifier = f"{int(time.time())}-{secrets.token_hex(4)}"
         repository = SourceRepository(mount.url)
         path = repository.open_maintenance(effective, identifier)
-        target_branch = mount.selector.value if mount.selector.kind == "branch" else None
 
         def update(data: dict[str, Any]) -> None:
             data["maintenance"][identifier] = {
@@ -74,8 +120,15 @@ class MaintenanceService:
             }
 
         self.store.update(update)
+        next_actions = [
+            f"Maintain files under {path} using the source root index.md.",
+            f"Run doctidex-git check {path}.",
+            f"Run doctidex-git maintenance handoff {path}.",
+        ]
+        if reuse["status"] != "not_available":
+            next_actions.insert(0, _reuse_notice(reuse))
         return {
-            "status": "ok",
+            "status": "warning" if reuse["status"] != "not_available" else "ok",
             "operation": "maintenance_open",
             "root": str(self.root),
             "maintenance_root": str(path),
@@ -85,13 +138,13 @@ class MaintenanceService:
             "target_branch": target_branch,
             "writable_root": str(path),
             "boundaries": {"writable": str(path), "host_mount": "read_only"},
-            "next_actions": [
-                f"Maintain files under {path} using the source root index.md.",
-                f"Run doctidex-git check {path}.",
-                f"Run doctidex-git maintenance handoff {path}.",
-            ],
+            "root_relation": relation,
+            "maintenance_reuse": reuse,
+            "next_actions": next_actions,
             "changed": [],
-            "result": "Independent maintenance root is ready.",
+            "result": "Independent maintenance root is ready."
+            if reuse["status"] == "not_available"
+            else "Independent maintenance root is ready; a compatible scope was already available.",
         }
 
     def status(self, maintenance_root: Path | None) -> list[dict[str, Any]]:
@@ -209,8 +262,29 @@ class MaintenanceService:
         return [(identifier, item) for identifier, item in entries if Path(item.get("path", "")).absolute() == target]
 
 
-def _head(path: Path) -> str | None:
-    from .runner import git
+def _maintenance_records(state: dict[str, Any]) -> list[dict[str, Any]]:
+    maintenance = state.get("maintenance")
+    if not isinstance(maintenance, dict):
+        return []
+    return [item for item in maintenance.values() if isinstance(item, dict)]
 
-    result = git(["-C", str(path), "rev-parse", "HEAD"], operation="maintenance_scope", check=False)
-    return result.stdout.strip() if result.returncode == 0 else None
+
+def _target_branch(mount: GitMount) -> str | None:
+    return mount.selector.value if mount.selector.kind == "branch" else None
+
+
+def _write_action(mount_path: str, reuse: dict[str, Any]) -> str | None:
+    if reuse["status"] == "recommended":
+        return None
+    if reuse["status"] == "selection_required":
+        return "doctidex-git maintenance status --json"
+    return f"doctidex-git maintenance open {mount_path}"
+
+
+def _reuse_notice(reuse: dict[str, Any]) -> str:
+    if reuse["status"] == "selection_required":
+        return "Compatible same-commit maintenance scopes already exist; select one or keep this explicit isolation."
+    return (
+        f"A compatible {reuse['scope_kind']} was already available at {reuse['write_path']}; "
+        "keep compatible changes in one scope unless isolation was intentional."
+    )

@@ -36,6 +36,8 @@ def render_human(payload: dict[str, Any]) -> str:
         "maintenance_root",
         "base_commit",
         "target_branch",
+        "root_relation",
+        "maintenance_reuse",
         "changed",
         "planned_changes",
         "findings",
