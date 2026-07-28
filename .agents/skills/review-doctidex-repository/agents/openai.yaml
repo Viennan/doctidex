@@ -1,0 +1,6 @@
+interface:
+  display_name: "Review doctidex Repository"
+  short_description: "Review changes through independent evidence-based lenses"
+  default_prompt: "Use $review-doctidex-repository to review the current repository changes without repairing them."
+policy:
+  allow_implicit_invocation: false

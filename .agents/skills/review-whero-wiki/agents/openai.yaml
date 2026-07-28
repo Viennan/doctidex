@@ -1,6 +1,0 @@
-interface:
-  display_name: "Review Whero Wiki"
-  short_description: "Holistically review code, docs, translations, and usability"
-  default_prompt: "Use $review-whero-wiki to perform the holistic repository review I explicitly authorize."
-policy:
-  allow_implicit_invocation: false

@@ -1,5 +1,6 @@
 .DS_Store
-.tmp
+/.doctidex/mounts/
+.tmp/
 tmp
 build
 .venv/

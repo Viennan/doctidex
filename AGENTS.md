@@ -1,263 +1,210 @@
-# Repository Agent Guide
+# Repository Guide
 
-## Purpose
+## Project Scope
 
-This repository develops Whero Wiki, an AI-oriented knowledge-organization
-model. Its work includes the format specification, maintenance and query
-workflows, selective-disclosure behavior, reusable agent instructions, and the
-tools and tests that support those contracts.
-
-The repository is a product-development workspace, not a collected reference
-corpus. Treat changes to the Whero Wiki model as specification and software
-changes that require coherent documentation, implementation, and tests.
+`doctidex` is an emerging directory-tree structure standard for use by both
+agents and humans. Its current design goals are interoperability, extensibility,
+and minimal format constraints.
 
 ## Repository Layout
 
-- `whero-wiki/` is the canonical specification, implementation, reference set,
-  test suite, and portable agent skill. It is also a Whero Wiki root.
-- `whero-wiki/spec/` contains the normative English protocol and synchronized
-  Chinese translations under `whero-wiki/spec/CN/`.
-- `whero-wiki/references/` contains non-normative workflow guidance and
-  historical background loaded by the skill as needed.
-- `asserts/` contains collected documents used as test fixtures. The spelling
-  `asserts` is intentional and canonical for this repository.
-- `.tmp/` contains disposable, task-specific test workspaces and copied fixture
-  material.
-- `.venv/` is the repository Python environment used for development,
-  validation, scripts, and tests.
-- `.agents/skills/` contains repository-local development workflows for
-  testing, review, and remote submission.
-- `.codex/config.toml` contains trusted project-level Codex settings, including
-  the repository subagent concurrency limit.
+- `spec/overview.md` contains the draft `doctidex` protocol.
+- `spec/refs/` contains background reference material.
+- `impls/` contains the non-normative implementations of the standard,
+  including implementation design documents, shared libraries, and public
+  surfaces used by agents.
+- `impls/docs/` contains implementation design documents.
+- `impls/docs/doctidex-git/` documents the Git plugin. `architecture/` contains
+  the current language-neutral design, `requirements/` contains the explicitly
+  designated initial baseline and subsequent requirement history, and `details/`
+  contains language-specific implementation maps such as `details/python/`.
+- `impls/libs/` contains shared implementation libraries.
+- `impls/libs/python/` contains the Python implementation.
+- `impls/agent-plugins/` contains agent plugins and their agent-facing
+  surfaces. `doctidex-git/` provides the plugin for Git repositories.
+- `.agents/skills/` contains repository-local maintenance Skills. These Skills
+  may use repository source, tests, and design documents and are not part of a
+  published plugin user surface.
+- `.asserts/` contains read-only source material used to construct tests.
+- `.tmp/` contains disposable test workspaces and is ignored by Git.
 
-## Repository Skills
+## Repository Doctidex Organization
 
-Use the repository-local Skills instead of duplicating their workflows in task
-prompts or ad hoc commands:
+- Organize and maintain this repository itself as a doctidex directory tree.
+  Repository indexes must follow `spec/overview.md` and should describe the
+  repository as a working source and documentation tree rather than recreate a
+  second documentation system.
+- Keep source-code directories atomic. Their responsible parent index should
+  explain the directory's purpose and may point to authoritative design or
+  usage documentation, but it should not recursively enumerate source files or
+  add indexing documents inside the source tree.
+- Reuse the repository's existing documentation hierarchy. When a directory is
+  already explained and navigated by documents such as those under
+  `impls/docs/`, higher-level indexes should provide a concise entry into that
+  authority instead of repeating its detailed structure or prose.
+- Keep included tool and configuration directories such as `.agents/` and
+  `.codex/` atomic and describe only their repository-level purpose. Apply the
+  same treatment to generated, vendored, fixture, asset, collected-source, or
+  other directories where intrusive indexing would be inappropriate.
+- A directory whose contents are already explained by authoritative internal
+  documentation may be atomic even when it is not source or configuration.
+  Link or name the authoritative explanation from the responsible parent when
+  that improves discovery; do not duplicate it in the index.
+- Use atomic entries to reduce index depth, not to hide useful content or avoid
+  stating a directory's purpose. Atomic content remains available for native
+  file and search exploration.
+- Apply atomic only where the protocol permits it: an atomic directory cannot
+  contain `index.md` or `log.md`. Preserve an existing doctidex index hierarchy
+  instead of marking its directory atomic. Content already excluded by protocol
+  or repository policy remains excluded rather than being reclassified merely
+  to simplify indexing.
 
-- `$test-whero-wiki` runs isolated tests and validation while protecting
-  collected fixtures.
-- `$review-whero-wiki`, only when explicitly authorized by the user, performs
-  the xhigh subagent review of code, the complete documentation system,
-  English/Chinese protocol alignment, portable Skill quality, and first-use
-  usability. Do not infer review authorization from another workflow.
-- `$submit-whero-wiki-change` prepares a development branch, validation,
-  commit, push, and copyable PR or MR text, plus review only when the user
-  separately authorizes it.
+## Sources of Context
 
-These Skills complement this file. The ownership, language, change-discipline,
-and Git rules in `AGENTS.md` remain authoritative.
+- `impls/docs/` may define stricter implementation conventions, but those
+  conventions are not protocol requirements.
+- `spec/refs/` contains background references, not `doctidex` requirements.
+- `.asserts/` contains collected source material. Treat it as read-only.
 
-## Whero Wiki Product Boundary
+## Working Rules
 
-- Treat files under `whero-wiki/` as product specifications, code, tests, and
-  maintained references rather than immutable collected sources. Edit them
-  normally when the requested work authorizes it.
-- Keep `whero-wiki/` self-contained and portable as a skill. It must not depend
-  on this root `AGENTS.md`, assume installation under `.agents/`, or use paths
-  that only work in this repository. Resolve bundled resources relative to the
-  skill root.
-- Keep `whero-wiki/SKILL.md`, protocol documents, references, scripts, tests,
-  and `whero-wiki/agents/openai.yaml` aligned when a contract or workflow
-  changes. Do not describe a draft protocol feature as implemented behavior.
-- Use `whero-wiki/requirements.txt` for the skill's Python dependencies.
+- Keep proposals, accepted specification, and implemented behavior visibly
+  distinct.
+- Keep `spec/` focused on standard definitions and `impls/` focused on
+  non-normative implementation design, code, and agent-facing surfaces.
+- Keep the protocol focused on observable structure, semantics, and
+  conformance. Implementation, construction, and maintenance workflows belong
+  to implementation variants.
+- Do not turn placeholders such as "refer to OKF" into detailed requirements
+  without an explicit design decision.
+- Make small, coherent changes and preserve unrelated user work.
+- Keep implementation design documents, shared libraries, agent-facing
+  surfaces, and tests aligned once a behavior spans those layers.
+- For local development, use the project-root `.venv` and install the Python
+  implementation in editable mode with
+  `.venv/bin/python -m pip install -e impls/libs/python` before running its CLI
+  or tests. This repository-specific setup belongs here, not in published
+  Skills.
+- Validate changes in proportion to their scope using the tooling that exists
+  at the time of the change.
 
-## Protocol, Skill, And Tooling Layers
+## Implementation Documentation Design
 
-Treat the protocol, Skill, workflow references, and tooling as distinct product
-layers. Keep them aligned, but do not turn one layer into a restatement of
-another.
+- Lead architecture documentation with the user surface. For every supported
+  workflow, state the concrete problem and scenario, why the design exists, how
+  a human, agent, or program uses the interface, what remains observable after
+  the operation, and how failures affect the next decision.
+- Keep current design, requirement history, and implementation detail separate.
+  Under `impls/docs/doctidex-git/`, `architecture/` says what the current design
+  is, `requirements/` preserves the designated initial baseline and subsequent
+  requirements as history, and `details/` explains how a concrete implementation
+  realizes the design.
+- Keep architecture language-neutral unless a user explicitly authorizes a
+  language-specific design. Public CLI syntax and schemas may appear there
+  because they are user interfaces; source files, classes, functions, storage
+  paths, and library mechanics belong in implementation details.
+- Distinguish user-visible information from internal support information in
+  headings, tables, and diagrams. Cross-link the two layers so an observable
+  behavior can be traced to its design support without requiring users to learn
+  the internal mechanism.
+- Define responsibilities, non-responsibilities, invariants, and design
+  constraints for every subsystem. Document every property of each domain
+  concept and interface object; familiar properties may be concise, but none
+  may be left implicit or ambiguous.
+- Make implementation details a code design map rather than a source listing.
+  For every module, explain intended callers, dependencies, main types and
+  functions, all data attributes, side effects, failure and concurrency
+  boundaries, expected use cases, and a small usage example where useful.
+- Requirements records preserve the user's reviewed intent, design intent,
+  accepted outcome, and implementation impact; they do not need to reproduce
+  the user's raw input verbatim. The agent may clarify, complete, and organize
+  the requirement, but must present that interpretation for user review before
+  treating it as accepted intent. Do not attribute unreviewed inference to the
+  user, retrospectively rewrite an accepted record to match current design, or
+  reconstruct unrecorded history; express later changes through new records and
+  cross-links.
+- Before processing proposed Requirements, inspect the relevant current
+  Architecture, Details, implementation, tests, and public surfaces to test the
+  request's explicit and implicit assumptions against actual behavior. When an
+  assumption differs from the current implementation, explain the concrete
+  difference and its design impact to the user before basing a Requirement on
+  it; record the corrected or intentionally changed premise only after user
+  review.
+- Stage new implementation documentation according to established authority:
+  record undecided work as a proposed Requirement, treat Architecture as current
+  only after acceptance, and write Details only for code that exists. Examples,
+  forward-test prompts, and agent inferences are not historical requirements
+  unless the user explicitly designates them as such.
+- Architecture must include the agent-facing Skill design principles below:
+  installed-product wording, user-only information, a sufficient and acyclic
+  reading chain, complete command contracts, native-tool freedom,
+  deterministic non-AI helpers, bounded output, and actionable failures.
+  Language-specific details must not duplicate self-explanatory Skill usage.
+- Prefer Markdown tables, timelines, state diagrams, flowcharts, and sequence
+  diagrams when they reduce explanation cost. Avoid UML unless a user
+  explicitly asks for it.
+- Keep one authoritative explanation for each fact and link to it elsewhere.
+  Maintain navigation indexes, update links when moving files, and validate
+  that no document is orphaned after a reorganization.
+- Cross-link `architecture/`, `details/`, and `requirements/` documents as
+  needed to form a complete, navigable, and insight-building knowledge network
+  across current design, historical intent, and concrete implementation.
 
-### Protocol Specification
+## Repository Maintenance Skills
 
-Files under `whero-wiki/spec/` are the normative design and implementation
-contract. Use them to define the complete model precisely, including canonical
-terminology, identities, metadata schemas, invariants, ownership rules, state
-transitions, boundary behavior, edge cases, recovery, compatibility, and
-conformance requirements.
+- Use `.agents/skills/review-doctidex-repository/` only after the user
+  explicitly authorizes a review, audit, compliance check, or review-and-repair
+  cycle. A review-only request is read-only; enter repair and targeted re-review
+  only when the user explicitly authorizes repair.
+- Use `.agents/skills/write-doctidex-design-docs/` when creating or revising
+  implementation Architecture, Requirements, or Details for any implementation,
+  not only `doctidex-git`.
+- Use `.agents/skills/write-doctidex-agent-skills/` when creating or revising
+  published or repository-local Skills. Preserve the audience boundary: local
+  maintenance Skills may read repository authorities, while published Skills
+  must remain usable as installed-product guidance.
+- Validate every changed local Skill and its `agents/openai.yaml`. Forward-test
+  complex workflow changes with independent agents using raw artifacts rather
+  than leaked expected findings or fixes.
 
-- Make the protocol complete enough for an independent implementation and for
-  resolving behavior outside the supported workflows.
-- State observable behavior and correctness requirements independently of the
-  current Python module layout or CLI syntax. Specify an algorithm only when
-  its exact behavior is part of interoperability or safety.
-- Keep normative definitions, valid and invalid states, and difficult boundary
-  cases in the protocol even when scripts currently enforce them automatically.
-- Do not put repository-maintenance instructions, agent prompting, routine CLI
-  recipes, or implementation convenience details in the protocol.
-- Keep draft behavior visibly separate from the active runtime contract and
-  maintain the English and Chinese protocol trees together.
+## Agent-Facing Skill Design
 
-### Skill Interface
-
-`whero-wiki/SKILL.md` is the user and agent interface built on the protocol. It
-should help a capable agent complete supported tasks with the smallest useful
-context, not teach the complete protocol.
-
-- Include the minimum protocol mental model needed to choose and safely perform
-  a workflow, plus operation routing, user-visible constraints, common command
-  forms, expected outcomes, and handling for actionable failures.
-- Optimize the common path so most tasks do not require loading protocol files.
-  Link directly to the relevant protocol document or section for unusual cases,
-  protocol work, migrations, or questions beyond supported workflows.
-- Do not duplicate full schemas, recursive rules, validation algorithms, Git
-  comparison details, or other behavior already enforced by scripts. State the
-  user-visible effect and let the tool perform the mechanical work.
-- Describe only implemented workflows as available behavior. Route draft
-  features to the draft specification without implying that the CLI supports
-  them.
-- Do not compensate for a missing or awkward tool capability by requiring the
-  agent to perform fragile path normalization, metadata discovery, or other
-  deterministic preprocessing in context.
-
-### References And Tooling
-
-Files under `whero-wiki/references/` are non-normative, task-specific workflow
-and scenario guides. Put detailed CLI usage, current runtime limitations,
-examples, review prompts, and recommended project layouts there when they would
-make `SKILL.md` too large or too specialized.
-
-Prefer scripts for stable, repeated, validation-sensitive workflows. Design
-public CLI inputs for human and agent convenience: accept broadly useful path
-forms, infer owning Wiki and ancestor metadata when unambiguous, validate and
-normalize internally, and expose explicit overrides for genuine ambiguity.
-Internal module APIs may use canonical protocol forms. Tool diagnostics should
-carry the missing context and direct the caller to protocol details only when
-the normal workflow cannot resolve the issue.
-
-### Change Routing
-
-Use the layer affected by a change to determine the required synchronization:
-
-- A protocol-semantic change updates the English and Chinese specification and
-  conformance coverage. Update implementation and tests when activating the
-  behavior; update the Skill only when the user-visible mental model or workflow
-  changes.
-- A CLI or workflow change updates scripts, focused tests, relevant workflow
-  references, and the Skill entry point. Update the protocol only when the
-  underlying semantic contract changes.
-- An internal refactor with unchanged observable behavior updates code and
-  tests without causing protocol or Skill wording churn.
-- A Skill-only usability edit must not silently redefine the protocol. An
-  implementation must not establish an undocumented protocol merely because
-  tests currently encode its behavior.
-
-## Product Versioning
-
-Every completed product change that adds, modifies, moves, or removes repository
-content under `whero-wiki/` must increment the active Whero Wiki version. Use a
-three-part `MAJOR.MINOR.PATCH` version and select the highest-impact change in
-the product change:
-
-- Increment `MAJOR` for an incompatible protocol or runtime change, including an
-  identity, metadata, state-transition, or CLI contract change that requires
-  consumers to migrate. Reset `MINOR` and `PATCH` to zero.
-- Increment `MINOR` for a backward-compatible protocol addition or a new
-  supported user-visible capability or workflow. Reset `PATCH` to zero.
-- Increment `PATCH` for backward-compatible corrections and refinements,
-  including fixes, internal refactors, tests, translations, references, Skill
-  guidance, and framework-document updates that do not add a supported
-  capability.
-
-Apply one version increment per coherent product change, regardless of the
-number of affected files or commits. The version update itself does not trigger
-an additional increment. Changes confined outside `whero-wiki/` do not change
-the product version.
-
-Until the protocol defines separate product and format versions, treat the
-three-part active version as the bundle's single version identity. Synchronize
-all active version declarations in the same product change, including runtime
-constants, Wiki and View metadata, English and Chinese protocol status and
-examples, `SKILL.md`, maintained references and templates, tests, the repository
-`README.md`, and root-level framework documents. Add a root `whero-wiki/log.md`
-entry that records the new version and why its component changed. Preserve
-historical documents that intentionally identify an older version.
-
-## Minimal Self-Hosted Wiki Structure
-
-`whero-wiki/` is itself a Whero Wiki, but its Wiki framework must remain
-minimally invasive:
-
-- Create and maintain framework documents only at the `whero-wiki/` root, such
-  as `whero-wiki-meta.md`, `index.md`, and `log.md`.
-- Do not create nested `index.md`, `log.md`, curated-knowledge scaffolding, or
-  other Wiki framework files inside `spec/`, `references/`, `scripts/`,
-  `tests/`, `agents/`, or other descendants.
-- Do not inject Whero frontmatter into `SKILL.md`, source code, tests, or
-  reference documents merely because they reside inside the Wiki root.
-- Update the root-level index or log when appropriate for an authorized product
-  change, but do not expand this root-only policy unless the user explicitly
-  requests it.
-
-This exception defines how this repository hosts the Whero Wiki product. It
-must not be generalized into a restriction on Whero Wikis created elsewhere.
-
-## Testing And Validation
-
-Use `$test-whero-wiki` before every test or validation run. It defines fixture
-copying, unique `.tmp` workspaces, `TMPDIR`, `.venv` setup, focused and full
-tests, compilation, self-hosted Wiki validation, Skill validation, failure
-artifact handling, and cleanup.
-
-The following boundaries remain mandatory even when the Skill is unavailable:
-
-- Treat everything under `asserts/` as immutable collected material. Never edit
-  it or run a mutating command against it.
-- Copy only the required fixture scope into a task-specific `.tmp/` workspace
-  before transformation or testing.
-- Run repository Python through `.venv/bin/python`, with dependencies declared
-  by `whero-wiki/requirements.txt`.
-- Add or update focused tests under `whero-wiki/tests/` for behavior changes.
-- Keep generated environments, caches, coverage data, and `.tmp/` content out
-  of version control.
-
-## Git Workflow
-
-- Do not develop on `main`. Before starting new work, require a clean worktree,
-  switch to `main`, fetch and fast-forward it from its configured remote, then
-  verify local `main` exactly matches the fetched remote branch and create a
-  development branch. Stop if local `main` is ahead or divergent.
-- Name development branches with a meaningful prefix such as `feat/`,
-  `bugfix/`, `refactor/`, `docs/`, `test/`, or `chore/`.
-- Never merge a local development branch into local `main`. PR or MR integration
-  happens on the remote hosting service.
-- The only routine local update to `main` is a fast-forward from its remote
-  tracking branch. Stop on divergence instead of creating a merge commit.
-- If uncommitted work is discovered on `main`, do not synchronize, stage,
-  commit, or push it there. Move it to an explicitly approved prefixed branch
-  before any remote operation, then assess whether that branch needs a reviewed
-  rebase onto the remote baseline.
-- Use `$submit-whero-wiki-change` for commit, push, and PR or MR preparation.
-
-## Language
-
-- Write repository-authored skill instructions, framework documents, logs,
-  code comments, tests, and non-protocol references in English.
-- Maintain every normative English protocol file under `whero-wiki/spec/` with
-  a Chinese counterpart at the same relative filename under
-  `whero-wiki/spec/CN/`. English is normative; Chinese is a
-  synchronized translation. Update both in the same product change.
-- Preserve the original language and terminology of fixture documents under
-  `asserts/`.
-- Do not translate fixture text as part of test preparation. Tests may generate
-  English maintained output from copied fixtures when that behavior is what the
-  test is designed to exercise.
-
-## Change Discipline
-
-1. Identify which product layer owns the requested change and whether it alters
-   normative semantics, a supported workflow, or only internal implementation.
-2. For a contract change, read the relevant protocol first, then the Skill,
-   workflow reference, implementation, and tests that expose or enforce it.
-3. Preserve unrelated user changes, especially during repository restructuring;
-   do not revert or reclassify files outside the requested scope.
-4. Make the smallest coherent change and keep specification, agent guidance,
-   implementation, and tests consistent where the behavior spans them.
-5. Keep draft protocol and active runtime behavior visibly distinct. Add
-   compatibility guidance before renaming an active metadata field, status
-   file, CLI command, or validation mode.
-6. Use isolated copies of selected `asserts/` material for any fixture-backed
-   validation, and never promote test mutations back into the fixture source.
-7. Maintain only the root-level framework documents for the self-hosted
-   `whero-wiki/`; do not introduce framework files deeper in the product tree.
-8. Run `$test-whero-wiki` with checks proportional to the change before handoff.
+- Write published Skills for an installed product. They must not require the
+  agent to read source code, implementation documentation, repository-local
+  paths, test commands, or debugging notes in order to use the public surface.
+- Separate shared and specialized guidance. Use one foundational or
+  orchestrator Skill for the user mental model, shared terminology, common CLI
+  grammar, output conventions, safety rules, and routing; keep task-specific
+  workflows in specialized Skills.
+- Give Skills an explicit, acyclic reading chain. A specialized Skill may
+  conditionally direct an unfamiliar agent to the foundational Skill and may
+  route to another specialized workflow, but common reference material should
+  not be copied into every Skill. Define the runtime order so already-loaded
+  Skills are not reopened when a routing table and specialist reference each
+  other.
+- Define specialized terms before using them in a workflow. For every CLI
+  command introduced by a Skill, document its exact invocation, argument form
+  and constraints, required and optional inputs, omission/default behavior,
+  root-selection behavior, read/write and network effects, dry-run/apply and
+  batch behavior where applicable, decision-relevant output fields, and
+  actionable failure handling.
+- Keep parameter and output descriptions user-facing: explain what the agent
+  supplies, observes, and can do next, not how the implementation stores or
+  computes the result. Internal architecture, repository development, and
+  debugging guidance belong in `impls/docs/` or this file.
+- A foundational Skill plus the relevant specialized Skill must be sufficient
+  to complete the supported workflow without guessing command syntax or
+  consulting implementation documentation.
+- Preserve the agent's use of native file, search, shell, editing, and Git
+  tools. CLI helpers should add doctidex-specific objective facts rather than
+  replace mature general-purpose tools.
+- Keep CLI behavior deterministic and non-AI. Agents author and judge semantic
+  content; CLIs may validate, format, or report objective structure and state.
+- Keep default output bounded and explain pagination, collapse, summary, and
+  filtering controls wherever a command can return a collection.
+- For watch, subscription, polling, follow, or streaming commands, define event
+  ordering and replay, duplicate and gap behavior, cursor lifetime, schema
+  compatibility, waiting and cancellation, interruption and backpressure, and
+  a bounded non-following default for agents.
+- Validate every changed Skill and its agent metadata, then validate the
+  containing plugin.
