@@ -25,7 +25,8 @@ creating an outline.
 
 ## Maintain the Requirement Lifecycle
 
-Every Requirement displays exactly one lowercase status:
+Every standalone Requirement, large-Requirement overview, and sub-requirement displays exactly one
+lowercase status:
 
 - `draft`: the user and agent are refining the requirement and solution.
 - `implemented`: the agent has implemented and validated the current record, but the user has not
@@ -41,6 +42,35 @@ Treat user intent equivalent to "create a requirement" or "record this requireme
 authorization to create the next numbered `draft` record in `docs/requirements/`. Build it from the
 initial intent during the same task; do not return only a proposed outline or require a second,
 formulaic authorization message.
+
+## Structure Large Requirements
+
+Use a single numbered Markdown file by default. When the user selects a directory for a large
+Requirement, allocate the next project-wide number once and create
+`docs/requirements/<NNNN>-<kebab-case-title>/` with:
+
+- `overview.md`, which owns the overall stable ID, overall description and scope, aggregate status,
+  and a link, derived stable ID, summary, and current status for every sub-requirement;
+- one Markdown document per sub-requirement, each with its own derived stable ID, lifecycle status,
+  reviewed intent, decisions, implementation impact, and acceptance criteria.
+
+Do not allocate another project-wide number to a sub-requirement. Keep filenames stable and make
+every sub-requirement reachable from `overview.md`. Link the overview from
+`docs/requirements/index.md`. Do not convert an existing standalone record to a directory unless
+the user directs it.
+
+Treat the overview status as an aggregate gate, not as a command that changes children:
+
+- keep it `draft` while any sub-requirement is `draft`;
+- allow `implemented` only when every sub-requirement is `implemented` or `approved`;
+- allow `approved` only when every sub-requirement is `approved` and the user explicitly approves
+  the overall Requirement.
+
+An overview may remain `implemented` while sub-requirements mix `implemented` and `approved`.
+Approval of all children does not automatically approve the overview. If a child moves backward,
+move the overview to a status whose gate remains satisfied; preserve the explicit-user-authority
+rule for any rollback from `approved`. Update child documents and the overview navigation before
+changing the aggregate status.
 
 For a new implementation, preserve the order of authority:
 
@@ -113,6 +143,37 @@ The user's adjacent answer, when supplied in the document.
 The user may instead answer in conversation. Incorporate that answer into the Requirement and remove
 all resolved `<question>` and `<answer>` blocks unless the user explicitly asks to preserve them.
 
+The user may also insert feedback next to the affected text with this exact form:
+
+```text
+<comment>
+The user's feedback on the Requirement.
+</comment>
+```
+
+Only the user may author or explicitly authorize a `<comment>` block. Never create one on the
+user's behalf, rewrite agent inference as a user comment, or place a comment between an adjacent
+`<question>` and `<answer>` pair. Treat every live comment as unresolved feedback and keep its
+non-approved record `draft`.
+
+Before refining the solution, read every comment and resolve each one through one of these paths:
+
+- verify and incorporate direct feedback into the requirement, design, impact, and acceptance
+  criteria;
+- turn a decision or missing input into a `<question>`, then incorporate the user's adjacent
+  `<answer>` or conversational answer;
+- surface conflicts between comments, prior decisions, or current facts and obtain the user's
+  decision instead of guessing;
+- when the user rejects the proposed change, record the resulting decision without presenting the
+  rejected content as an implemented requirement.
+
+Acknowledging, moving, or deleting a comment is not resolution. Remove its block only after the
+substantive record reflects the result and all resulting questions and impacts are settled. If the
+user asks to preserve the feedback, rewrite it as ordinary provenance or decision text rather than
+leaving a live comment. A comment added to an `implemented` record moves it to `draft`. For an
+`approved` record, do not infer rewrite or rollback authority from the comment alone; ask whether to
+reopen the record or create a reciprocally linked follow-up Requirement.
+
 Keep provenance visible and separate the reviewed requirement, design intent, decision, outcome,
 implementation impact, and later supersession. Before approval, revise the same record as it moves
 between `draft` and `implemented`; do not preserve obsolete question/answer scaffolding as history.
@@ -138,8 +199,9 @@ explanation per fact. Maintain indexes, reciprocal links where useful, valid rel
 anchors, and no orphan pages.
 
 Every dependency, refinement, supersession, or follow-up between Requirement records must be linked
-in both documents. Name the relationship direction on each side; a one-way mention or index-only
-entry does not satisfy dependency traceability.
+in both documents. For a large Requirement, target the overview unless the relationship applies to
+one sub-requirement, in which case target that document. Name the relationship direction on each
+side; a one-way mention or index-only entry does not satisfy dependency traceability.
 
 Use tables, timelines, flowcharts, sequence diagrams, and state diagrams when they materially lower
 comprehension cost. Avoid UML unless the user explicitly requests it.
@@ -155,8 +217,13 @@ Check that:
 - Requirements preserve reviewed intent and provenance without treating raw wording as authority;
 - every Requirement uses only `draft`, `implemented`, or `approved`, and approval transitions have
   explicit user provenance;
+- every large-Requirement overview reaches all child documents, reports their statuses accurately,
+  and satisfies the aggregate gate for its own status;
 - Requirement dependencies are navigable in both directions;
 - resolved question and answer blocks are removed unless explicitly retained;
+- no Requirement transitions to `implemented` or `approved` with a live `<comment>` block; any
+  comment found in approved history is left unchanged until the user chooses reopening or a linked
+  follow-up, and every removed comment is reflected in substantive text or an explicit decision;
 - Details cover every relevant module and match code/tests;
 - links form a useful network without duplicate authorities;
 - changed public behavior is aligned across Architecture, Details, Skills, code, and tests;

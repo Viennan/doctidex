@@ -66,6 +66,8 @@ agent 从用户意图出发补全 Requirement 的表达、约束与方案，不�
 - [DXG-REQ-0001](0001-agent-git-plugin.md) 是迁移到共享目录的初始插件基线；其反向链接说明本记录治理其状态和位置。
 - [DXG-REQ-0002](0002-root-self-reference-and-maintenance.md) 是迁移到共享目录的后续功能需求；其反向链接说明本记录治理其状态和位置。
 - [DXG-REQ-0003](0003-maintenance-scope-semantics.md) 是迁移到共享目录的语义细化；其反向链接说明本记录治理其状态和位置。
+- [DX-REQ-0006](0006-large-requirement-directories.md) 是本记录的后续细化；它在共享编号与三态生命周期上增加大型 Requirement 目录、子需求独立状态和 overview 聚合门槛。
+- [DX-REQ-0007](0007-requirement-comment-blocks.md) 是本记录的后续细化；它在 question/answer Draft 协作上增加用户评论块、解决条件和状态门槛。
 
 ## 5. Review 默认范围
 

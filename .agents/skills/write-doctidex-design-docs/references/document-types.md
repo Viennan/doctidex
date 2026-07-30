@@ -10,8 +10,8 @@
 
 ## Minimal Implementation Tree
 
-After the user explicitly authorizes recording a proposal, start in the project-wide Requirement
-layer:
+After the user explicitly authorizes recording an ordinary proposal, start in the project-wide
+Requirement layer:
 
 ```text
 docs/
@@ -31,6 +31,23 @@ docs/<implementation>/
     `-- <language-or-runtime>/
         `-- index.md
 ```
+
+Use a single numbered file for an ordinary Requirement. When the user selects a directory for a
+large Requirement, use one project-wide number for the whole directory:
+
+```text
+docs/requirements/
+`-- <NNNN>-<kebab-case-title>/
+    |-- overview.md
+    |-- <NN>-<kebab-case-subrequirement>.md
+    `-- ...
+```
+
+`overview.md` owns the overall stable ID, description, scope, aggregate status, and child
+navigation. Each child owns a stable ID derived from the overall ID and an independent lifecycle
+status; children do not consume project-wide numbers. Keep filenames stable, link every child from
+the overview, and link the overview from `docs/requirements/index.md`. Do not convert an existing
+single-file record without user direction.
 
 Do not create empty topic pages merely to complete the skeleton. Number Requirement records across
 the project in historical order using the next unused zero-padded number; re-read
@@ -102,11 +119,34 @@ Use temporary `<question>...</question>` blocks for unresolved decisions; place 
 `<answer>...</answer>` immediately after its question. The user may answer in conversation instead.
 After incorporating the decision, remove both blocks unless the user explicitly preserves them.
 
+The user may place `<comment>...</comment>` beside the text it addresses. Only the user may author
+or explicitly authorize a comment block; an agent uses `<question>` rather than fabricating user
+feedback. A comment must not split an adjacent question/answer pair. Treat every live comment as
+unresolved: verify and incorporate direct feedback, or use question/answer when a decision,
+ambiguity, or conflict remains. Acknowledgement or deletion alone is not resolution. Remove the
+comment only after substantive text and all resulting impacts reflect the outcome; preserve needed
+history as ordinary provenance or decision text instead of a live comment block.
+
+A non-approved record with a live comment remains `draft`. A comment added to an `implemented`
+record returns it to `draft`. A comment in an `approved` record does not itself authorize rewriting
+or downgrading history; preserve the record and ask the user whether to reopen it or create a
+reciprocally linked follow-up Requirement.
+
 Mark the record `implemented` after the agent completes and validates it. User feedback may move it
 back to `draft` for revision and later to `implemented` again. Set `approved` only when the user
 explicitly accepts the current implementation as PR/MR-ready. Do not downgrade or rewrite an
 `approved` record without explicit user direction; a later change normally gets a new Requirement
 with reciprocal links.
+
+For a large Requirement, apply that lifecycle independently to every child. Keep the overview
+`draft` while any child is `draft`; allow it to become `implemented` only when every child is
+`implemented` or `approved`; and allow it to become `approved` only when every child is `approved`
+and the user explicitly approves the overall Requirement. Child transitions never automatically
+change other children. If a child moves backward, the overview must return to a status whose gate
+is still satisfied, while any rollback from `approved` continues to require explicit user direction.
+Apply comment handling to the document that contains the block: a child comment affects that
+child's status and therefore the overview gate, while an overview comment does not rewrite child
+statuses.
 
 ## Details
 

@@ -34,7 +34,8 @@ Preserve unrelated work in the repository in all modes.
    explicitly names as dependencies. Keep only records whose visible status is `draft` or
    `implemented`. An `approved` record may be supporting authority but is not a default review
    target. If no active non-approved Requirement exists, stop and ask the user to select the review
-   scope.
+   scope. For a directory-form Requirement, include its `overview.md` and active child records;
+   retain approved children as supporting authority needed to verify the overview aggregate.
 4. Record the resulting target, comparison base, relevant commits or worktree diff, and any files
    explicitly excluded from review.
 5. Read raw artifacts before forming conclusions: changed files, nearby callers, tests, public
@@ -103,7 +104,11 @@ When repair was explicitly authorized:
 3. Update code, tests, Architecture, Details, Requirements, and Skills together only where the
    behavior spans those layers. Never rewrite historical requirement text to match a repair.
    After completing a Requirement implementation, set it to `implemented`, never `approved`, unless
-   the user explicitly directs the approval transition.
+   the user explicitly directs the approval transition. For a large Requirement, update each child
+   independently and change the overview only after its aggregate status gate is satisfied. Resolve
+   every user `<comment>` in the authorized record through substantive changes or an explicit user
+   decision before removing the block or completing the Requirement. Do not infer authority to
+   rewrite an `approved` record from a comment alone.
 4. Run proportionate validation.
 5. Re-run each affected lens as a fresh independent pass over the repaired artifacts.
 6. Aggregate again and repeat until no authorized `must_fix` finding remains or a genuine blocker

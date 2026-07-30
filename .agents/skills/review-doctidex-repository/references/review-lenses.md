@@ -91,6 +91,21 @@ has explicit user provenance. Check every inter-Requirement dependency from both
 user answered in-document; resolved pairs should be incorporated and removed unless explicitly
 retained.
 
+Treat every live `<comment>` block as unresolved user feedback. Verify that the agent did not author
+or fabricate it, that it does not split a question/answer pair, and that a non-approved record
+remains `draft`.
+A comment is resolved only when substantive requirement text reflects the requested change or the
+user's explicit decision not to change it, with resulting questions and impacts settled; deletion or
+acknowledgement alone is insufficient. No target may transition to `implemented` or `approved` with
+a live comment. A comment in approved history does not by itself authorize rewrite or rollback;
+report the protected unresolved state and require the user's reopening or follow-up decision.
+
+For a directory-form Requirement, verify that `overview.md` links every child and reports each
+child's ID and status accurately. The overview must remain `draft` while any child is `draft`, may
+be `implemented` only when all children are `implemented` or `approved`, and may be `approved` only
+when all children are `approved` and explicit user approval exists. Child statuses remain
+independent; an overview transition must not silently rewrite them.
+
 ## Implementation Design Documents
 
 Authority: `Implementation Documentation Design` in `AGENTS.md`, plus the current document tree.

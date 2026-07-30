@@ -23,6 +23,12 @@ doctidex:
 `draft` 与 `implemented` 可在批准前反复转换。只有用户的明确指令可以设置
 `approved`，或将 `approved` 回退为其他状态。
 
+Requirement 通常使用 `<NNNN>-<title>.md` 单文件记录。用户也可以为大型 Requirement
+选择 `<NNNN>-<title>/` 目录：`overview.md` 保存整体描述、聚合状态与子需求导航，每份
+子需求文档独立维护状态。所有子需求至少为 `implemented` 或 `approved` 时，overview
+才可成为 `implemented`；只有所有子需求均为 `approved` 且用户明确批准整体时，
+overview 才可成为 `approved`。详见 [DX-REQ-0006](0006-large-requirement-directories.md)。
+
 | ID | 记录 | 来源与范围 | 状态 |
 |---|---|---|---|
 | 0001 | [初始 Agent Plugin 需求](0001-agent-git-plugin.md) | doctidex-git 初始 user surface、工作流、实现约束和验收标准。 | `approved` |
@@ -30,7 +36,12 @@ doctidex:
 | 0003 | [维护范围的规划与执行语义](0003-maintenance-scope-semantics.md) | doctidex-git scope 观察语义与协议 `v0.1.0` 维护边界。 | `approved` |
 | 0004 | [项目文档组织与 Requirement 生命周期](0004-project-docs-and-requirement-lifecycle.md) | 根级 docs、共享 Requirements、三态生命周期、双向依赖和默认 review 范围。 | `approved` |
 | 0005 | [协议升级至 v1.0.0](0005-protocol-v1-0-0.md) | 移除 mount 与旧 flags，保留最近负责制并重构根内 link、边界和索引语义。 | `approved` |
+| 0006 | [大型 Requirement 目录与聚合状态](0006-large-requirement-directories.md) | 大型需求的目录形式、子需求独立状态与 overview 聚合门槛。 | `approved` |
+| 0007 | [Requirement 用户评论块](0007-requirement-comment-blocks.md) | 用户在需求文档中插入的评论、question/answer 配合与完成门槛。 | `approved` |
 
 新记录按全项目连续编号。`draft` 中可使用 `<question>` 与紧邻的 `<answer>` 块协作；
-答案被方案吸收后应删除这些块，除非用户明确保留。每一项 Requirement 依赖必须在关系
-两端都提供可导航链接，不能只在本索引中表达。
+用户也可以用 `<comment>...</comment>` 在相关位置留下评论。agent 不得代用户创建评论，
+必须将每项评论吸收到方案，或通过 question/answer 获得所需决定。答案被方案吸收后应
+删除 question/answer；所有评论得到实质解决并删除其块之前，非 `approved` 记录必须
+保持 `draft`。`approved` 记录中的评论需要用户明确决定重新打开或创建后续记录。每一项
+Requirement 依赖必须在关系两端都提供可导航链接，不能只在本索引中表达。

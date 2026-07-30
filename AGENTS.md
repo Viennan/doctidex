@@ -12,9 +12,11 @@ and minimal format constraints.
 - `spec/refs/` contains background reference material.
 - `docs/` contains non-normative implementation design documents and the
   project-wide requirement history.
-- `docs/requirements/` contains requirements shared across the project. Every
-  record names its affected implementation or repository surface and links its
-  dependencies in both directions.
+- `docs/requirements/` contains requirements shared across the project. A
+  record may be a numbered Markdown file or, for a user-selected large
+  requirement, a numbered directory whose `overview.md` navigates separately
+  statused sub-requirements. Every record names its affected implementation or
+  repository surface and links its dependencies in both directions.
 - `docs/doctidex-git/` documents the Git plugin. `architecture/` contains the
   current language-neutral design, and `details/` contains language-specific
   implementation maps such as `details/python/`.
@@ -118,18 +120,34 @@ and minimal format constraints.
   For every module, explain intended callers, dependencies, main types and
   functions, all data attributes, side effects, failure and concurrency
   boundaries, expected use cases, and a small usage example where useful.
-- Every Requirement record has exactly one visible lowercase status: `draft`,
+- Every standalone Requirement, large-Requirement `overview.md`, and
+  sub-requirement document has exactly one visible lowercase status: `draft`,
   `implemented`, or `approved`. `draft` covers user-agent discussion and design;
   `implemented` means the agent has implemented the record but the user has not
   confirmed the result; `approved` means the user explicitly accepts the current
   implementation as ready for a PR or MR. Only an explicit user instruction may
   set `approved` or move an `approved` record back to another status.
 - When the user expresses an intent equivalent to "create a requirement" or
-  "record this requirement", create a new `draft` document in
+  "record this requirement", create a new `draft` record in
   `docs/requirements/` from the user's initial intent. Do not stop at a chat-only
   proposal or wait for separately worded authorization to create the record.
   Re-read the shared directory first, allocate the next project-wide number, and
   identify the affected implementation or repository surface.
+- When the user selects the large-Requirement form, allocate one project-wide
+  number to a `<NNNN>-<kebab-case-title>/` directory. Put the overall stable ID,
+  description, scope, aggregate status, and sub-requirement navigation in
+  `overview.md`. Give each sub-requirement document a stable ID derived from the
+  overall ID and its own status, intent, decisions, impact, and acceptance
+  criteria. Sub-requirements do not consume additional project-wide numbers.
+  Keep the single-file form as the default and do not convert an existing record
+  to a directory without user direction.
+- Treat a large-Requirement overview status as a gated aggregate. It may be
+  `implemented` only when every sub-requirement is `implemented` or `approved`,
+  and it may be `approved` only when every sub-requirement is `approved` and the
+  user explicitly approves the overall Requirement. An overview status never
+  changes sub-requirement statuses. If a sub-requirement returns to an earlier
+  state, return the overview to a state whose gate remains satisfied; an
+  `approved` rollback still requires explicit user direction.
 - A Requirement may move repeatedly between `draft` and `implemented` before
   approval. Mark it `implemented` after completing and validating the work. If
   the user then changes the requirement or solution, move it back to `draft`,
@@ -141,6 +159,23 @@ and minimal format constraints.
   immediately adjacent `<answer>...</answer>` block or in conversation. Once the
   decision is incorporated, remove the question and answer blocks unless the
   user explicitly asks to preserve them.
+- A user may insert `<comment>...</comment>` next to Requirement content to
+  provide feedback. Only the user may author or explicitly authorize such a
+  block; an agent must not create one or attribute inferred wording to the user.
+  Read and resolve every live comment while refining the record. Incorporate
+  direct feedback into the substantive text; when a comment requires a user
+  decision, use `<question>` with an immediately adjacent `<answer>` or obtain
+  the answer in conversation. A comment must not split a question/answer pair.
+- Do not treat acknowledgement, relocation, or deletion alone as comment
+  resolution. A comment is resolved only after the record reflects the requested
+  change or the user's explicit decision not to change it, and all resulting
+  questions, implementation impact, dependencies, and acceptance criteria are
+  settled. Then remove the `<comment>` block; if its content must be preserved,
+  rewrite it as ordinary provenance or decision text. Any live comment keeps a
+  non-approved record `draft`. A comment added to an `implemented` record moves
+  it back to `draft`; for an `approved` record, preserve its status and content
+  until the user authorizes reopening it or creating a linked follow-up instead
+  of inferring permission to rewrite approved history.
 - Requirements records preserve the user's reviewed intent, design intent,
   decisions, implementation impact, and status without needing to reproduce raw
   input verbatim. Do not attribute unreviewed inference to the user or
@@ -148,8 +183,10 @@ and minimal format constraints.
   downgraded without explicit user direction; later changes normally use a new
   linked record.
 - Record dependency and follow-up relationships with navigable links in both
-  participating Requirement documents. Keep stable IDs and describe the
-  relationship so direction is discoverable from either record.
+  participating Requirement documents. For a large Requirement, link the
+  overview by default and the specific sub-requirement when the relationship is
+  narrower. Keep stable IDs and describe the relationship so direction is
+  discoverable from either record.
 - Before processing `draft` Requirements, inspect the relevant current
   Architecture, Details, implementation, tests, and public surfaces to test the
   request's explicit and implicit assumptions against actual behavior. When an
@@ -190,6 +227,9 @@ and minimal format constraints.
   `implemented`. An `approved` record may be read as supporting authority but is
   not a default review target. If there is no active non-approved Requirement,
   ask the user to select the review scope before proceeding.
+- When an active Requirement uses a directory, include its `overview.md` and the
+  active sub-requirements in the scope. Verify that overview navigation matches
+  sub-requirement statuses and that the aggregate status gates are satisfied.
 - Protocol review must trace every violation to an actual protocol requirement.
   An implementation feature is not nonconforming merely because the protocol
   leaves it unspecified. A potentially valuable new protocol rule is an
