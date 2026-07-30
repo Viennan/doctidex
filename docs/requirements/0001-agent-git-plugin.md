@@ -3,7 +3,7 @@
 | 属性 | 值 |
 |---|---|
 | ID | `DXG-REQ-0001` |
-| 状态 | `implemented` |
+| 状态 | `approved` |
 | 来源 | 原 `impls/docs/agent-git-plugin.md` |
 | 影响范围 | doctidex-git 的用户 surface、Skills、CLI、Python 参考实现与实现文档 |
 | 文档性质 | 历史记录，非规范性 |

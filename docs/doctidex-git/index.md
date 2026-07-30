@@ -17,7 +17,7 @@ doctidex:
 | 目的 | 入口 | 内容边界 |
 |---|---|---|
 | 理解产品解决什么问题、如何使用 | [Architecture](architecture/index.md) | 当前 user surface、工作流、公共接口、语言无关模型和设计约束。 |
-| 开发或排查 Python 参考实现 | [Python Details](details/python/index.md) | 模块职责、对象属性、调用模式、运行时、测试和已知限制。 |
+| 开发或排查 Python 参考实现 | [Implementation Details](details/index.md) | 进入具体实现索引，查看模块职责、对象属性、调用模式、运行时、测试和已知限制。 |
 | 追溯需求如何演进 | [Project Requirements](../requirements/index.md) | 从项目级历史中查找影响 doctidex-git 的需求、状态与双向依赖。 |
 
 正常使用已发布插件时，应优先阅读插件自身的 Skills。Architecture 用于理解产品和

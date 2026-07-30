@@ -3,7 +3,7 @@
 | 属性 | 值 |
 |---|---|
 | ID | `DX-REQ-0004` |
-| 状态 | `implemented` |
+| 状态 | `approved` |
 | 日期 | 2026-07-30 |
 | 来源 | 用户明确提出项目文档迁移、Requirement 维护规则和 review 规则调整 |
 | 影响范围 | 仓库文档组织、全部 Requirements、仓库维护 Skills 与 review 输出 |

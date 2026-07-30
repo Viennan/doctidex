@@ -3,7 +3,7 @@
 | 属性 | 值 |
 |---|---|
 | ID | `DXG-REQ-0002` |
-| 状态 | `implemented` |
+| 状态 | `approved` |
 | 日期 | 2026-07-28 |
 | 来源 | 用户在当前会话中提出，并在核对现有行为后收敛范围 |
 | 影响范围 | doctidex-git Read、Maintain、Workspace Skills，CLI 关系提示与 Python 实现 |

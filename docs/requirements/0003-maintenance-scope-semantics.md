@@ -3,7 +3,7 @@
 | 属性 | 值 |
 |---|---|
 | ID | `DXG-REQ-0003` |
-| 状态 | `implemented` |
+| 状态 | `approved` |
 | 日期 | 2026-07-28 |
 | 来源 | 用户对协议维护边界与 Workspace 工作流的复核和补充决策 |
 | 影响范围 | doctidex 协议维护语义、doctidex-git Architecture、Workspace Skill 与 Details |
