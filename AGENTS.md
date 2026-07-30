@@ -10,14 +10,16 @@ and minimal format constraints.
 
 - `spec/overview.md` contains the draft `doctidex` protocol.
 - `spec/refs/` contains background reference material.
+- `docs/` contains non-normative implementation design documents and the
+  project-wide requirement history.
+- `docs/requirements/` contains requirements shared across the project. Every
+  record names its affected implementation or repository surface and links its
+  dependencies in both directions.
+- `docs/doctidex-git/` documents the Git plugin. `architecture/` contains the
+  current language-neutral design, and `details/` contains language-specific
+  implementation maps such as `details/python/`.
 - `impls/` contains the non-normative implementations of the standard,
-  including implementation design documents, shared libraries, and public
-  surfaces used by agents.
-- `impls/docs/` contains implementation design documents.
-- `impls/docs/doctidex-git/` documents the Git plugin. `architecture/` contains
-  the current language-neutral design, `requirements/` contains the explicitly
-  designated initial baseline and subsequent requirement history, and `details/`
-  contains language-specific implementation maps such as `details/python/`.
+  including shared libraries and public surfaces used by agents.
 - `impls/libs/` contains shared implementation libraries.
 - `impls/libs/python/` contains the Python implementation.
 - `impls/agent-plugins/` contains agent plugins and their agent-facing
@@ -40,7 +42,7 @@ and minimal format constraints.
   add indexing documents inside the source tree.
 - Reuse the repository's existing documentation hierarchy. When a directory is
   already explained and navigated by documents such as those under
-  `impls/docs/`, higher-level indexes should provide a concise entry into that
+  `docs/`, higher-level indexes should provide a concise entry into that
   authority instead of repeating its detailed structure or prose.
 - Keep included tool and configuration directories such as `.agents/` and
   `.codex/` atomic and describe only their repository-level purpose. Apply the
@@ -61,7 +63,7 @@ and minimal format constraints.
 
 ## Sources of Context
 
-- `impls/docs/` may define stricter implementation conventions, but those
+- `docs/` may define stricter implementation conventions, but those
   conventions are not protocol requirements.
 - `spec/refs/` contains background references, not `doctidex` requirements.
 - `.asserts/` contains collected source material. Treat it as read-only.
@@ -70,8 +72,9 @@ and minimal format constraints.
 
 - Keep proposals, accepted specification, and implemented behavior visibly
   distinct.
-- Keep `spec/` focused on standard definitions and `impls/` focused on
-  non-normative implementation design, code, and agent-facing surfaces.
+- Keep `spec/` focused on standard definitions, `docs/` focused on
+  non-normative implementation design and requirement history, and `impls/`
+  focused on code and agent-facing surfaces.
 - Keep the protocol focused on observable structure, semantics, and
   conformance. Implementation, construction, and maintenance workflows belong
   to implementation variants.
@@ -95,10 +98,10 @@ and minimal format constraints.
   a human, agent, or program uses the interface, what remains observable after
   the operation, and how failures affect the next decision.
 - Keep current design, requirement history, and implementation detail separate.
-  Under `impls/docs/doctidex-git/`, `architecture/` says what the current design
-  is, `requirements/` preserves the designated initial baseline and subsequent
-  requirements as history, and `details/` explains how a concrete implementation
-  realizes the design.
+  Under `docs/<implementation>/`, `architecture/` says what the current design
+  is and `details/` explains how a concrete implementation realizes it.
+  `docs/requirements/` preserves the project-wide requirement history and links
+  each record to the implementations and repository surfaces it affects.
 - Keep architecture language-neutral unless a user explicitly authorizes a
   language-specific design. Public CLI syntax and schemas may appear there
   because they are user interfaces; source files, classes, functions, storage
@@ -115,15 +118,39 @@ and minimal format constraints.
   For every module, explain intended callers, dependencies, main types and
   functions, all data attributes, side effects, failure and concurrency
   boundaries, expected use cases, and a small usage example where useful.
+- Every Requirement record has exactly one visible lowercase status: `draft`,
+  `implemented`, or `approved`. `draft` covers user-agent discussion and design;
+  `implemented` means the agent has implemented the record but the user has not
+  confirmed the result; `approved` means the user explicitly accepts the current
+  implementation as ready for a PR or MR. Only an explicit user instruction may
+  set `approved` or move an `approved` record back to another status.
+- When the user expresses an intent equivalent to "create a requirement" or
+  "record this requirement", create a new `draft` document in
+  `docs/requirements/` from the user's initial intent. Do not stop at a chat-only
+  proposal or wait for separately worded authorization to create the record.
+  Re-read the shared directory first, allocate the next project-wide number, and
+  identify the affected implementation or repository surface.
+- A Requirement may move repeatedly between `draft` and `implemented` before
+  approval. Mark it `implemented` after completing and validating the work. If
+  the user then changes the requirement or solution, move it back to `draft`,
+  incorporate the reviewed change, and implement again. Do not create false
+  historical finality around normal pre-approval iteration.
+- During `draft`, improve the record from the user's intent without adding
+  unrequested features or requirements. Use `<question>...</question>` blocks
+  only for decisions that genuinely need discussion. A user may answer in an
+  immediately adjacent `<answer>...</answer>` block or in conversation. Once the
+  decision is incorporated, remove the question and answer blocks unless the
+  user explicitly asks to preserve them.
 - Requirements records preserve the user's reviewed intent, design intent,
-  accepted outcome, and implementation impact; they do not need to reproduce
-  the user's raw input verbatim. The agent may clarify, complete, and organize
-  the requirement, but must present that interpretation for user review before
-  treating it as accepted intent. Do not attribute unreviewed inference to the
-  user, retrospectively rewrite an accepted record to match current design, or
-  reconstruct unrecorded history; express later changes through new records and
-  cross-links.
-- Before processing proposed Requirements, inspect the relevant current
+  decisions, implementation impact, and status without needing to reproduce raw
+  input verbatim. Do not attribute unreviewed inference to the user or
+  reconstruct unrecorded history. An `approved` record is not rewritten or
+  downgraded without explicit user direction; later changes normally use a new
+  linked record.
+- Record dependency and follow-up relationships with navigable links in both
+  participating Requirement documents. Keep stable IDs and describe the
+  relationship so direction is discoverable from either record.
+- Before processing `draft` Requirements, inspect the relevant current
   Architecture, Details, implementation, tests, and public surfaces to test the
   request's explicit and implicit assumptions against actual behavior. When an
   assumption differs from the current implementation, explain the concrete
@@ -131,10 +158,12 @@ and minimal format constraints.
   it; record the corrected or intentionally changed premise only after user
   review.
 - Stage new implementation documentation according to established authority:
-  record undecided work as a proposed Requirement, treat Architecture as current
-  only after acceptance, and write Details only for code that exists. Examples,
-  forward-test prompts, and agent inferences are not historical requirements
-  unless the user explicitly designates them as such.
+  record undecided work as a `draft` Requirement, keep target design there until
+  it is implemented, update Architecture and Details when code exists, and then
+  mark the Requirement `implemented`. Approval is a later user decision, not a
+  prerequisite for documenting current code. Examples, forward-test prompts,
+  and agent inferences are not historical requirements unless the user
+  explicitly designates them as such.
 - Architecture must include the agent-facing Skill design principles below:
   installed-product wording, user-only information, a sufficient and acyclic
   reading chain, complete command contracts, native-tool freedom,
@@ -156,6 +185,16 @@ and minimal format constraints.
   explicitly authorizes a review, audit, compliance check, or review-and-repair
   cycle. A review-only request is read-only; enter repair and targeted re-review
   only when the user explicitly authorizes repair.
+- Unless the user explicitly selects a review scope, review only Requirement
+  records that are active in the current task and have status `draft` or
+  `implemented`. An `approved` record may be read as supporting authority but is
+  not a default review target. If there is no active non-approved Requirement,
+  ask the user to select the review scope before proceeding.
+- Protocol review must trace every violation to an actual protocol requirement.
+  An implementation feature is not nonconforming merely because the protocol
+  leaves it unspecified. A potentially valuable new protocol rule is an
+  advisory recommendation, not a high-severity `must_fix`, unless current
+  observable behavior violates an existing normative rule.
 - Use `.agents/skills/write-doctidex-design-docs/` when creating or revising
   implementation Architecture, Requirements, or Details for any implementation,
   not only `doctidex-git`.
@@ -191,7 +230,7 @@ and minimal format constraints.
 - Keep parameter and output descriptions user-facing: explain what the agent
   supplies, observes, and can do next, not how the implementation stores or
   computes the result. Internal architecture, repository development, and
-  debugging guidance belong in `impls/docs/` or this file.
+  debugging guidance belong in `docs/` or this file.
 - A foundational Skill plus the relevant specialized Skill must be sufficient
   to complete the supported workflow without guessing command syntax or
   consulting implementation documentation.

@@ -31,6 +31,11 @@ claim.
 
 Severity measures impact, not whether a change is mandatory.
 
+An implementation feature in an area the protocol leaves unspecified is not a protocol defect. A
+proposal to standardize it, even when valuable, is `advisory` and `recommended` unless a separate
+existing authority is actually violated; it cannot become `high` or `must_fix` merely because the
+protocol is silent.
+
 ## Disposition
 
 - Use `must_fix` for verified correctness, safety, protocol, applicable Requirement, or public

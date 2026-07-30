@@ -1,8 +1,12 @@
 # 初始需求：doctidex Git Agent Plugin
 
-状态：Initial requirement baseline，历史记录，非规范性
-
-来源：原 `impls/docs/agent-git-plugin.md`
+| 属性 | 值 |
+|---|---|
+| ID | `DXG-REQ-0001` |
+| 状态 | `implemented` |
+| 来源 | 原 `impls/docs/agent-git-plugin.md` |
+| 影响范围 | doctidex-git 的用户 surface、Skills、CLI、Python 参考实现与实现文档 |
+| 文档性质 | 历史记录，非规范性 |
 
 本文档保留 `doctidex-git` 首个完整用户 surface 需求与方案基线。第 1 至 4 节记录问题、
 设计目标、心智模型和信息边界；第 5 至 7 节记录拟定的 Skills、CLI 与工作流；第 8 至
@@ -18,8 +22,8 @@ Git 管理的目录中创建、读取、查询、维护和审阅 doctidex 目录
 为准。
 
 本文档形成时用于描述目标 surface。当前语言无关设计以
-[Architecture](../architecture/index.md) 为准；当前 Python 代码、CLI 字段及已知限制见
-[Python Details](../details/python/index.md)。当前设计或实现与本记录不同时，不修改本记录
+[Architecture](../doctidex-git/architecture/index.md) 为准；当前 Python 代码、CLI 字段及已知限制见
+[Python Details](../doctidex-git/details/python/index.md)。当前设计或实现与本记录不同时，不修改本记录
 来掩盖演进结果。
 
 ## 1. 设计目标
@@ -990,3 +994,9 @@ agent 无法通过只读检查或安全重试解决以下情况时，必须停�
 
 这些验收项约束的是插件公开行为。满足它们所采用的 Git object 复用、隔离 checkout、
 worktree、锁和逻辑映射方案属于后续内部设计，不构成 agent surface 契约。
+
+## 12. Requirement 关系
+
+- [DXG-REQ-0002](0002-root-self-reference-and-maintenance.md) 依赖本初始基线，并补充根自引用提示与同 revision 范围复用。
+- [DXG-REQ-0003](0003-maintenance-scope-semantics.md) 细化本记录中的 mounted-source 维护范围语义。
+- [DX-REQ-0004](0004-project-docs-and-requirement-lifecycle.md) 迁移并治理本记录的共享目录位置、状态与双向链接。

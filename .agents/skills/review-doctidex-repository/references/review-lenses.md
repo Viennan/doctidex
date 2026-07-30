@@ -23,6 +23,12 @@ to the exact protocol rule and the design or execution path that can expose the 
 Report the exact protocol section and affected behavior. Do not report a different implementation
 choice as a violation when the protocol leaves it open.
 
+The absence of a protocol rule is not evidence of nonconformance. An implementation may add
+observable features in unspecified areas provided they do not violate an existing rule or falsely
+claim normative status. When standardizing such a feature would have substantial future value,
+report a specification suggestion as `advisory` and `recommended`; do not classify it as `high` or
+`must_fix` on the basis of unspecified behavior alone.
+
 Apply these adjudication boundaries:
 
 - Protocol mount and maintenance semantics do not prescribe a CLI, source-identity algorithm,
@@ -63,10 +69,10 @@ is part of the review scope.
 
 Authority order:
 
-1. The applicable record under `impls/docs/<implementation>/requirements/`.
-2. Current related documents under `architecture/`.
+1. The applicable record under `docs/requirements/`.
+2. Current related documents under `docs/<implementation>/architecture/`.
 3. Concrete implementation and tests.
-4. `details/` as a code map, not as authority over current Architecture.
+4. `docs/<implementation>/details/` as a code map, not as authority over current Architecture.
 
 Build a trace from each requirement statement to observable behavior, implementation, tests, and
 public documentation. Verify the result actually solves the stated scenario instead of merely
@@ -78,10 +84,17 @@ does, require the current Architecture to be updated while preserving the histor
 If a new requirement lacks a corresponding record where the repository expects one, report the
 traceability gap without inventing historical wording.
 
+Verify that every reviewed Requirement uses exactly `draft`, `implemented`, or `approved`; that
+agent-completed but unconfirmed work is `implemented`; and that `approved` or any rollback from it
+has explicit user provenance. Check every inter-Requirement dependency from both ends. During
+`draft`, unresolved `<question>` blocks may remain, with an immediately adjacent `<answer>` when the
+user answered in-document; resolved pairs should be incorporated and removed unless explicitly
+retained.
+
 ## Implementation Design Documents
 
 Authority: `Implementation Documentation Design` in `AGENTS.md`, plus the current document tree.
-These principles apply to every implementation under `impls/docs`, not only `doctidex-git`. Use
+These principles apply to every implementation under `docs`, not only `doctidex-git`. Use
 `$write-doctidex-design-docs` for the full authoring contract.
 
 Check that Architecture starts from concrete user problems, mental models, workflows, observable

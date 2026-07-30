@@ -10,11 +10,11 @@
 
 ## Minimal Implementation Tree
 
-After the user explicitly authorizes recording a proposal, start with only the Requirement layer:
+After the user explicitly authorizes recording a proposal, start in the project-wide Requirement
+layer:
 
 ```text
-impls/docs/<implementation>/
-|-- index.md
+docs/
 `-- requirements/
     |-- index.md
     `-- <NNNN>-<kebab-case-title>.md
@@ -23,8 +23,8 @@ impls/docs/<implementation>/
 Expand the tree only as authority and implementation mature:
 
 ```text
-impls/docs/<implementation>/
-|-- architecture/                 # Add after design acceptance
+docs/<implementation>/
+|-- architecture/                 # Add when the design becomes current
 |   `-- index.md
 `-- details/                      # Add after an implementation exists
     |-- index.md
@@ -32,11 +32,12 @@ impls/docs/<implementation>/
         `-- index.md
 ```
 
-Do not create empty topic pages merely to complete the skeleton. Number Requirement records in
-historical order using the next unused zero-padded number; re-read the directory before writing so
-concurrent work does not reuse an existing number. Name Architecture pages after stable workflows,
-interfaces, or domain concepts; name Details pages after concrete implementation responsibilities
-rather than copying source filenames mechanically.
+Do not create empty topic pages merely to complete the skeleton. Number Requirement records across
+the project in historical order using the next unused zero-padded number; re-read
+`docs/requirements/` before writing so concurrent work does not reuse an existing number. Keep
+existing stable IDs when moving records into the shared directory. Name Architecture pages after
+stable workflows, interfaces, or domain concepts; name Details pages after concrete implementation
+responsibilities rather than copying source filenames mechanically.
 
 ## Architecture
 
@@ -67,7 +68,8 @@ interface authority.
 
 Include:
 
-- stable ID, title, date/status, and provenance;
+- stable ID, title, date, affected surfaces, provenance, and one of the exact lowercase statuses
+  `draft`, `implemented`, or `approved`;
 - user-reviewed requirement intent, clarified and completed with agent assistance rather than
   copied verbatim from raw input;
 - scenario and design intent;
@@ -75,7 +77,7 @@ Include:
 - accepted or rejected outcome;
 - implementation and documentation impact;
 - links to resulting Architecture and Details;
-- superseding or follow-up records.
+- reciprocal links for dependencies, refinements, supersession, and follow-up records.
 
 Before drafting the requirement statement, inspect relevant current Architecture, Details,
 implementation, tests, and public surfaces. Check explicit and implicit assumptions against actual
@@ -87,16 +89,24 @@ authority. If only source material is known, draft a clearly proposed interpreta
 unknown decision/outcome fields rather than inventing them or attributing unreviewed additions to
 the user.
 
-For a new proposal, create the Requirement first and keep proposed alternatives and target-design
-reasoning in that record until a decision is accepted. A hypothetical task or forward-test scenario
-is not accepted provenance unless the user explicitly designates it as a repository requirement;
-without that authorization, propose content in the response and create no documentation tree.
-“Record the following as a Requirement” is sufficient authorization; “brainstorm,” “propose,” or
-“forward-test this example” is not.
+For a new proposal, create the Requirement first with status `draft` and keep alternatives and
+target-design reasoning there until implementation. A hypothetical task or forward-test scenario is
+not repository provenance unless the user designates it as a Requirement; without that
+authorization, propose content in the response and create no documentation tree. Any clear intent
+equivalent to "create a requirement" or "record this requirement" is sufficient authorization and
+requires creating the next numbered `draft` record from the user's initial intent. "Brainstorm,"
+"propose," or "forward-test this example" alone is not.
 
-When the proposal receives its first decision, update the same record's status, decision, outcome,
-and impact sections without changing the reviewed requirement intent. A later change, reversal, or
-supersession gets a new Requirement record linked to the earlier decision.
+While a record is `draft`, improve it from the user's stated intent without adding unrequested scope.
+Use temporary `<question>...</question>` blocks for unresolved decisions; place a document-supplied
+`<answer>...</answer>` immediately after its question. The user may answer in conversation instead.
+After incorporating the decision, remove both blocks unless the user explicitly preserves them.
+
+Mark the record `implemented` after the agent completes and validates it. User feedback may move it
+back to `draft` for revision and later to `implemented` again. Set `approved` only when the user
+explicitly accepts the current implementation as PR/MR-ready. Do not downgrade or rewrite an
+`approved` record without explicit user direction; a later change normally gets a new Requirement
+with reciprocal links.
 
 ## Details
 
@@ -121,7 +131,7 @@ Separate current limitation lists from target design. Do not duplicate published
 link public command contracts back to Architecture.
 
 Do not create implementation claims before code exists. It is acceptable for `details/index.md` to
-state that no concrete variant is implemented yet and link to the accepted Architecture that future
+state that no concrete variant is implemented yet and link to the current Architecture that future
 Details must realize.
 
 ## Cross-Layer Links
@@ -133,5 +143,8 @@ Use links to answer useful maintainer questions:
 - Architecture to Details: where is this model realized?
 - Details to Architecture: which contract constrains this code?
 - Details to Requirement: which exceptional implementation choice was explicitly requested?
+- Requirement to Requirement: what does this record depend on, refine, supersede, or trigger next?
 
-Links should create insight, not merely satisfy navigation. Avoid circular prose duplication.
+For every Requirement-to-Requirement relationship, add a navigable link in both records and name
+the direction from each side. Links should create insight, not merely satisfy navigation. Avoid
+circular prose duplication.

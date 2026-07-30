@@ -3,7 +3,7 @@
 `git/relations.py` 为 [root relation 与 maintenance reuse](../../architecture/domain-model.md#44-root-relation)
 提供离线、确定性的 Python 实现。它只生产供上层决策的客观事实，不改变 mount 路径、
 创建 worktree、选择交付目标或判断任务是否应当合并。本模块落实
-[DXG-REQ-0002](../../requirements/0002-root-self-reference-and-maintenance.md)。
+[DXG-REQ-0002](../../../requirements/0002-root-self-reference-and-maintenance.md)。
 
 ## 1. 模块责任
 

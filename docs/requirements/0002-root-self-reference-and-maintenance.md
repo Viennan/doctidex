@@ -3,9 +3,10 @@
 | 属性 | 值 |
 |---|---|
 | ID | `DXG-REQ-0002` |
-| 状态 | Implemented |
+| 状态 | `implemented` |
 | 日期 | 2026-07-28 |
 | 来源 | 用户在当前会话中提出，并在核对现有行为后收敛范围 |
+| 影响范围 | doctidex-git Read、Maintain、Workspace Skills，CLI 关系提示与 Python 实现 |
 | 协议关系 | 非规范性实现需求；不改变 [`doctidex` 协议](/spec/overview.md)规定的 mount 路径、排除和维护边界 |
 
 本文要求 `doctidex-git` 在根自引用及相近场景出现时，为 agent 提供足以选择正确读取
@@ -13,7 +14,7 @@
 source cache、Git worktree 或仓库身份判定等内部机制。
 
 本文是需求历史，不是当前接口事实。当前实际行为以
-[Architecture](../architecture/index.md)、[Python Details](../details/python/index.md)和已发布
+[Architecture](../doctidex-git/architecture/index.md)、[Python Details](../doctidex-git/details/python/index.md)和已发布
 Skills 为准。
 
 ## 1. 需求来源摘要
@@ -156,12 +157,12 @@ agent 对写入现场的选择。合并后的变更使用所选 scope 自己的 
 | Published Skills | Guide 定义共享术语；Read、Maintain、Workspace 分别说明只读路径、当前根直写和 scope 复用决策。 |
 | Python 实现 | `git.relations` 保守判断本地关系并排除已知 branch 冲突；resolve/scope/open 返回同一关系 object，路径选择和 maintenance 生命周期保持不变。 |
 | 测试 | 已覆盖同/different commit 自引用、branch 交付冲突、SCP/local 地址歧义、nested root unknown、已有同 source/base commit scope 复用和普通 mount 回归。 |
-| Details | [Repository Relation](../details/python/repository-relations.md)与[Maintenance](../details/python/maintenance.md)记录模块、字段生产和限制。 |
+| Details | [Repository Relation](../doctidex-git/details/python/repository-relations.md)与[Maintenance](../doctidex-git/details/python/maintenance.md)记录模块、字段生产和限制。 |
 
-相关当前设计入口包括 [User Surface](../architecture/user-surface.md)、
-[工作流](../architecture/workflows.md)、[领域模型](../architecture/domain-model.md)、
-[CLI 结果契约](../architecture/interfaces/cli-schema.md)和
-[Skill 系统](../architecture/skill-system.md)。这些页面现已作为当前行为的权威说明。
+相关当前设计入口包括 [User Surface](../doctidex-git/architecture/user-surface.md)、
+[工作流](../doctidex-git/architecture/workflows.md)、[领域模型](../doctidex-git/architecture/domain-model.md)、
+[CLI 结果契约](../doctidex-git/architecture/interfaces/cli-schema.md)和
+[Skill 系统](../doctidex-git/architecture/skill-system.md)。这些页面现已作为当前行为的权威说明。
 
 ## 7. 验收标准
 
@@ -185,3 +186,7 @@ agent 对写入现场的选择。合并后的变更使用所选 scope 自己的 
 本文是对同一需求在现状核对后的收敛，而不是另一个维护架构。实现采用最小附加字段，
 并已同步 Skills、Architecture、Python code、测试和 Details；后续若扩展 URL 等价识别
 或改变 scope 生命周期，应新建 Requirement，而不是回写本记录。
+
+依赖方向如下：本文依赖 [DXG-REQ-0001](0001-agent-git-plugin.md) 的初始插件 surface；
+[DXG-REQ-0003](0003-maintenance-scope-semantics.md) 后续细化本文的 scope 合并语义；
+[DX-REQ-0004](0004-project-docs-and-requirement-lifecycle.md) 迁移并治理本文的状态和链接。

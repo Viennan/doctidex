@@ -20,16 +20,17 @@ doctidex:
 
 This repository defines the doctidex directory-tree standard and contains its
 non-normative implementations. Start with the protocol when deciding what a
-conforming tree means; use the implementation documentation and agent surfaces
-when building or maintaining a concrete variant.
+conforming tree means; use the design documentation, implementation code, and
+agent surfaces when building or maintaining a concrete variant.
 
 ## Primary Entrypoints
 
 - [Protocol specification](spec/overview.md): the normative draft and the
   authority for doctidex conformance. The `spec/` source directory is atomic;
   this document is its primary entrypoint.
-- [Implementations](impls/index.md): implementation design, shared libraries,
-  and agent-facing plugins.
+- [Design documentation](docs/index.md): current implementation Architecture,
+  project-wide Requirements, and concrete implementation Details.
+- [Implementations](impls/index.md): shared libraries and agent-facing plugins.
 - [Repository guide](AGENTS.md): repository layout, maintenance boundaries, and
   documentation and Skill design rules.
 - [License](LICENSE): repository licensing terms.

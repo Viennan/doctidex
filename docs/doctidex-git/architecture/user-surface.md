@@ -77,8 +77,8 @@ scope：自引用 mount 与当前根处于同一 commit 且已知 branch 不冲�
 同一工作过程中反复 scope，使用最新事实制定或复核最终写入范围。执行开始后，
 写入边界固定为选定根；遇到其他 mount 源时回到 scope 决策，不直接跨越。
 
-该分支来自 [DXG-REQ-0002](../requirements/0002-root-self-reference-and-maintenance.md)，规划与执行
-语义由 [DXG-REQ-0003](../requirements/0003-maintenance-scope-semantics.md) 澄清。
+该分支来自 [DXG-REQ-0002](../../requirements/0002-root-self-reference-and-maintenance.md)，规划与执行
+语义由 [DXG-REQ-0003](../../requirements/0003-maintenance-scope-semantics.md) 澄清。
 
 ### 3.5 声明 revision 与 effective commit 分离
 

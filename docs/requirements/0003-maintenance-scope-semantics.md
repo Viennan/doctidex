@@ -3,9 +3,10 @@
 | 属性 | 值 |
 |---|---|
 | ID | `DXG-REQ-0003` |
-| 状态 | Implemented |
+| 状态 | `implemented` |
 | 日期 | 2026-07-28 |
 | 来源 | 用户对协议维护边界与 Workspace 工作流的复核和补充决策 |
+| 影响范围 | doctidex 协议维护语义、doctidex-git Architecture、Workspace Skill 与 Details |
 | 协议关系 | 推动 doctidex 标准升级到 `v0.1.0`，明确第 9 节的维护范围语义 |
 
 本记录澄清 `maintenance scope` 在多根工作中的定位：CLI 返回的 item 是本次
@@ -14,7 +15,7 @@
 可写现场。
 
 本文是需求历史，不是当前接口权威。当前行为见
-[Architecture](../architecture/index.md)、[CLI schema](../architecture/interfaces/cli-schema.md)
+[Architecture](../doctidex-git/architecture/index.md)、[CLI schema](../doctidex-git/architecture/interfaces/cli-schema.md)
 和已发布 Skills。
 
 ## 1. 现状与假设核对
@@ -106,6 +107,9 @@
 它同时对 [DXG-REQ-0001](0001-agent-git-plugin.md) 中“每个 mounted source 必然打开新的
 独立维护根”的初始基线形成后续决策：不同源或基准仍独立，对同一 source/base
 的多个引用不再强制重复建立写入现场。两份旧记录的历史正文保持不变。
+
+[DX-REQ-0004](0004-project-docs-and-requirement-lifecycle.md) 后续迁移并治理本文的共享目录位置、
+`implemented` 状态和双向关系链接；它不改变本文的产品语义。
 
 ## 7. 验收标准
 

@@ -17,7 +17,7 @@ agent 不读源码、不读 implementation docs、也不靠命令试错即可完
 | Review | 只读审阅单根或多根结果 | findings、语义结论和用户 Git 动作。 |
 
 实际使用文本位于
-[`impls/agent-plugins/doctidex-git/skills/`](../../../agent-plugins/doctidex-git/skills/)。
+[`impls/agent-plugins/doctidex-git/skills/`](../../../impls/agent-plugins/doctidex-git/skills/)。
 Architecture 只定义分工和约束，不复制具体 Skill 的完整命令教程。
 
 ## 2. 阅读链

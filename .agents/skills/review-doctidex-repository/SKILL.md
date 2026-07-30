@@ -26,13 +26,22 @@ Preserve unrelated work in the repository in all modes.
 ## Freeze the Review Scope
 
 1. Read the repository `AGENTS.md` and any closer applicable instructions.
-2. Record the user-selected target, comparison base, relevant commits or worktree diff, and any
-   files explicitly excluded from review.
-3. Read raw artifacts before forming conclusions: changed files, nearby callers, tests, public
+2. Determine whether the user explicitly selected bounded files, commits, Requirements, or another
+   scope that overrides the default. A generic request to review the repository or current changes
+   does not by itself override the Requirement-based default.
+3. If no overriding scope was selected, identify Requirement records active in the current task:
+   records created, revised, or implemented for the user's current work, plus records the task
+   explicitly names as dependencies. Keep only records whose visible status is `draft` or
+   `implemented`. An `approved` record may be supporting authority but is not a default review
+   target. If no active non-approved Requirement exists, stop and ask the user to select the review
+   scope.
+4. Record the resulting target, comparison base, relevant commits or worktree diff, and any files
+   explicitly excluded from review.
+5. Read raw artifacts before forming conclusions: changed files, nearby callers, tests, public
    documentation, and authoritative requirements.
-4. Identify which review lenses apply. Mark a lens `not_applicable` with a reason instead of
+6. Identify which review lenses apply. Mark a lens `not_applicable` with a reason instead of
    silently skipping it.
-5. Do not treat uncommitted unrelated files as part of the target merely because they are visible.
+7. Do not treat uncommitted unrelated files as part of the target merely because they are visible.
 
 ## Run Independent Review Passes
 
@@ -68,13 +77,18 @@ Treat subagent output as candidate evidence, not accepted truth.
 
 1. Re-open every cited location and verify the claim against its stated authority.
 2. Reject findings based on inferred requirements, implementation preferences presented as
-   protocol rules, or evidence outside the frozen scope.
+   protocol rules, unspecified protocol behavior presented as nonconformance, or evidence outside
+   the frozen scope.
 3. Merge duplicates by root cause while retaining the strongest evidence and affected surfaces.
 4. Resolve disagreements explicitly. Prefer normative protocol, then the applicable requirement,
    then current Architecture, then implementation Details and local conventions.
 5. Assign severity, disposition, and confidence independently according to the finding contract.
 6. Keep subjective organization suggestions as `low` or `advisory` and `recommended` unless they
    demonstrably cause incorrect use, missing behavior, or an authoritative-rule violation.
+7. When the protocol leaves an implementation feature unspecified, do not issue a protocol finding
+   merely because the feature exists. If adding a protocol rule would have unusually high value,
+   report it only as an `advisory`/`recommended` specification suggestion and state that current
+   conformance is unaffected.
 
 Report findings first, ordered by severity. Then report open questions or assumptions, lens
 coverage, and residual test risk. If no finding survives verification, say so clearly.
@@ -88,6 +102,8 @@ When repair was explicitly authorized:
    the repaired surface coherent.
 3. Update code, tests, Architecture, Details, Requirements, and Skills together only where the
    behavior spans those layers. Never rewrite historical requirement text to match a repair.
+   After completing a Requirement implementation, set it to `implemented`, never `approved`, unless
+   the user explicitly directs the approval transition.
 4. Run proportionate validation.
 5. Re-run each affected lens as a fresh independent pass over the repaired artifacts.
 6. Aggregate again and repeat until no authorized `must_fix` finding remains or a genuine blocker
