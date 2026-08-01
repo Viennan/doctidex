@@ -1,725 +1,416 @@
-# CLI 结果与字段契约
+# CLI JSON Schema 契约
 
-本篇定义 CLI 的 JSON、人读格式和全部公共字段。字段不是每次都出现；每个命令的精确
-字段集合在后半部分列出。序列化、预算和渲染如何实现见
-[Python CLI 与 rendering](../../details/python/cli-and-rendering.md)。
+本文是 doctidex-git `v1.0.0` 稳定 JSON surface 的权威说明。调用语法和副作用见
+[CLI](cli.md)，概念关系见 [领域模型](../domain-model.md)。本篇只定义可观察数据结构，
+不重复用户步骤或内部 storage。未知 optional field 可以忽略；本篇标为 required 的字段
+缺失或类型变化是兼容失败。
 
-## 1. JSON 格式
+## 1. 公共结果结构
 
-`--json` 输出一个 JSON object，并遵循：
-
-- 输出是一个 JSON object；
-- key 按字典序排列，不按本文表格顺序；
-- Unicode 保持原字符；
-- 缩进为 2；
-- 未知或不适用的显式值使用 `null`，布尔值保持 JSON boolean；
-- 空数组和空 object 仍保留，除非某段代码本身不添加该字段。
-
-Agent 需要稳定读取字段时应使用 `--json`。人读输出适合快速查看，但 blocked 时只
-展示第一个 finding，且始终隐藏 `details`。
-
-## 2. 人读格式
-
-非 blocked payload 先按以下优先顺序输出存在且非 `null`/空列表/空 object 的字段：
-
-```text
-status, operation, root, result,
-protocol_structure, semantic_review, plugin_readiness,
-mount_state, mount_path, source, declared_revision,
-effective_commit, readable,
-maintenance_root, base_commit, target_branch,
-root_relation, maintenance_reuse,
-changed, planned_changes, findings, semantic_candidates,
-items, collection, next_actions
-```
-
-剩余字段按 key 排序输出，但 `details` 永远省略。label 把下划线替换为空格并仅将首
-字符大写。object/array 被压成一行 JSON，boolean 显示为 `yes`/`no`。
-
-blocked payload 使用固定格式：
-
-```text
-Cannot continue: <operation>
-Reason: <first finding message>
-Still available: <result>
-Changes made: <changed items or none>
-Next actions:
-1. <first finding action>
-Need from user: <requires_user or none>
-```
-
-它不显示第二个及后续 findings、`affected`、`details` 或 batch items。因此 agent 在
-失败处理、批量操作和审阅中应优先使用 JSON。
-
-## 3. 退出码
-
-| 退出码 | 条件 |
-|---:|---|
-| `0` | payload 不 blocked，且 `protocol_structure` 不是 `fail`。`status: warning` 通常仍为 0。 |
-| `1` | payload 顶层 `protocol_structure: fail`。当前主要是 `check`。 |
-| `2` | payload 顶层 `status: blocked`。命令行语法错误通常也为 2，但不保证结构化 payload。 |
-| `130` | 执行期间被调用者中断。 |
-
-不要仅凭退出码把 warning 当作完全通过：`plugin_readiness: blocked` 或
-`semantic_review: required` 当前可以退出 0。
-
-## 4. 公共顶层字段
+每次 `--json` 调用在 stdout 输出一个 object，不混入日志或进度文本。公共字段全部
+required；空值使用 null 或空 collection，不依赖 key 缺失表达状态。
 
 | 字段 | 类型 | 含义 |
 |---|---|---|
-| `status` | string | 操作级状态：`ok`、`warning`、`blocked`。它不是协议符合性字段。 |
-| `operation` | string | 产生 payload 的稳定操作名，例如 `mount_prepare`、`maintenance_handoff`。 |
-| `root` | string/null | 当前命令选中的 doctidex 根；mount 操作中它是宿主根。resolve 使用 `--from` 时可能与 `link_root` 不同。无法建立根上下文的失败通常为 `null`；batch 子结果可能有 root。 |
-| `result` | string | 对已完成或仍保留结果的简短说明，不是完整诊断。 |
-| `changed` | array 或 boolean | 多数命令为实际改变的文件路径数组；batch/prepare/close 常为空数组。`mount_sync` 特例为 old/new commit 是否不同的 boolean。必须按 operation 解读。 |
-| `planned_changes` | array[string] | dry-run 与 apply 共同展示计划涉及的文件；当前只由 `init` 返回。 |
-| `items` | array[object] | list、status、scope、changes 或 batch 的项目。项目 schema 由 operation 决定。 |
-| `findings` | array[object] | 确定性问题或 batch 汇总的问题；元素见“Finding”。 |
-| `semantic_candidates` | array[object] | 需 agent 阅读判断的候选；不是 confirmed finding。 |
-| `next_actions` | array[string] | 成功或 warning 后建议的有序后续动作。与 blocked finding 内 `actions` 不同。 |
-| `collection` | object | 输出预算产生的列表统计和 cursor；没有列表被截断且 offset 为 0 时字段缺失。 |
-| `affected` | array[string] | blocked 原因影响的路径、逻辑 mount 或其他对象。 |
-| `requires_user` | string/null | blocked 操作是否需要某类用户输入或授权；`null` 表示 agent 可按 actions 自行处理。 |
-| `details` | object | 仅 JSON 可见的有限诊断补充；人读输出隐藏。它不应成为正常流程前置。 |
-| `root_relation` | object | mount source 与当前命令根的保守仓库/commit 关系；只在相关 operation 出现。 |
-| `maintenance_reuse` | object | 当前是否有可复用写入 scope 的有界建议；只在相关 operation/item 出现。 |
+| `schema_version` | string | 固定 `1.0`；不是 doctidex 协议版本。 |
+| `operation` | string | 本篇定义的 operation discriminator。 |
+| `status` | `ok`/`warning`/`blocked` | 当前请求完成、完成但有需关注结果，或请求未完成。 |
+| `result` | string | 已完成与已保留结果的简短说明。 |
+| `root` | absolute path/null | 已选择的 doctidex 根；link-parse 为拥有外层安装/依赖的 owner root，cache clean 固定为 null，选择前 blocked 时也为 null。 |
+| `changed` | array[absolute path] | 本次实际创建、修改、替换或移除的公开路径；dry-run/只读/blocked 为空。 |
+| `network` | boolean | 本次是否实际访问 network。 |
+| `findings` | array[Finding] | 客观问题、warning 或保留原因；默认空。 |
+| `next_actions` | array[string] | 已完成结果的建议后续；默认空。 |
+| `affected` | array[string] | blocked/partial result 影响对象；默认空。 |
+| `requires_user` | string/null | 继续所需的用户输入类别；无需用户时 null。 |
+| `collection` | Collection/null | validate/external restore/worktree list 的分页事实；其他 operation 为 null。 |
 
-## 5. 状态字段和值
+`status` 不替代 operation domain：validate 的 `protocol_structure: fail` 是已完成的 warning，
+worktree dirty 是 list item state，只有当前请求无法按契约完成时才是 blocked。
 
-| 字段 | 可能值 | Agent 解读 |
+## 2. Finding 与候选项
+
+### 2.1 Finding
+
+| 字段 | 类型 | 含义 |
 |---|---|---|
-| `status` | `ok` | 当前操作完成；仍需查看独立结果域。 |
-| `status` | `warning` | 结果可用，但存在协议/插件/语义后续，或显式 open 前已有兼容 scope 等需要决策的事实。 |
-| `status` | `blocked` | 当前请求未完成；按 finding actions 或询问用户。 |
-| `protocol_structure` | `pass`/`fail` | 当前确定性协议检查是否有 error。 |
-| `semantic_review` | `clear`/`required` | 是否存在需 agent 阅读判断的候选。`required` 不等于内容错误。 |
-| `plugin_readiness` | `ready`/`blocked`/`not_applicable` | Git mount 使用前置是否满足。它不改变协议结构结论。 |
-| `mount_state` 或 mount item `state` | `ready`/`not_prepared` | 当前逻辑 mount 是否有有效 commit 且可读路径存在。 |
-| maintenance item `state` | `ready`/`has_changes` | maintenance root 的 Git porcelain 是否为空。 |
-| `mode` | `host_read`/`mount_read` | `context` 对输入路径的字符串级读取模式提示。 |
-| `source`（PathContext） | `local`/`mount` | 路径来自宿主本地内容还是声明 mount。 |
-| `host_scope` | `included`/`excluded` | 路径是否属于宿主 doctidex 的索引/维护范围。 |
-| scope item `kind` | `host_root`/`mounted_source` | 本次 scope 调用观察到的宿主根或挂载源类型；不表示 item 是否已分配到写入范围。 |
-| maintenance reuse `status` | `recommended`/`selection_required`/`not_available` | 是否有唯一兼容 scope、需要从多个已有 scope 中选择，或当前没有兼容 scope。 |
+| `domain` | `protocol`/`command`/`external`/`worktree`/`cache` | 问题所属的用户层领域。 |
+| `severity` | `error`/`warning`/`info` | error 影响操作或协议结果；warning 表示可用但需处理；info 是客观提示。 |
+| `code` | string | 稳定机器分支标识，不匹配 message。 |
+| `message` | string | 不依赖内部 cache、lock、module 或 traceback 的说明。 |
+| `path` | absolute/root-relative path/null | 能定位时给出用户可访问路径。 |
+| `actions` | array[string] | 有序、可执行恢复动作；不能以无限重试代替用户决定。 |
 
-## 6. Finding
+### 2.2 语义候选项
 
-Finding object 当前使用以下字段：
-
-| 字段 | 类型/是否必有 | 含义 |
+| 字段 | 类型 | 含义 |
 |---|---|---|
-| `domain` | string，可选 | `protocol_structure`、`semantic_review` 或 `plugin_readiness`。通用 blocked error finding 通常没有 domain。 |
-| `severity` | string，必有 | 当前使用 `error` 或 `info`。 |
-| `code` | string，必有 | 稳定机器标识；用于分支处理，不应只匹配英文 message。 |
-| `message` | string，必有 | 用户层原因或候选说明。 |
-| `actions` | array[string]，必有 | 可执行下一步；blocked 时按顺序处理。 |
-| `path` | string，可选 | finding 对应文件、内部路径或配置位置。通用 error 可能只在顶层 `affected` 给路径。 |
-| `index` | string，可选 | 语义候选由哪个 `index.md` 负责。`init` 产生的候选当前没有该字段。 |
+| `code` | string | `index_description_review` 或 `unsafe_scope_review`。 |
+| `path` | absolute path | 需要阅读的目标。 |
+| `responsible_index` | absolute path | 判断所需的负责 index。 |
+| `message` | string | 为什么需要语义判断，不声称 defect。 |
+| `actions` | array[string] | 建议读取和决定步骤。 |
 
-协议结构 finding 通常同时有 `domain/path`；通用 blocked finding 可能只有
-severity/code/message/actions，受影响对象位于顶层 `affected`。
+candidate 不进入 `findings`，也不改变 `protocol_structure`。
 
-## 7. Semantic candidate
+## 3. 集合与分页
 
-语义候选沿用 finding 的基本字段，并总是：
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| `limit` | integer | 本页每个顶层列表的预算。 |
+| `lists` | object | `field -> {total, returned, truncated}`；validate 使用 findings/semantic_candidates，external restore 与 worktree list 使用 items。 |
+| `truncated` | boolean | 任一列表还有后续项时 true。 |
+| `next_cursor` | string/null | 同时恢复所有列表位置的 opaque token；没有下一页时 null。 |
+
+cursor 与 operation、root、规范化 scope/filter、limit 及命令定义的模式绑定。validate 的 scope 输入次序、
+重复项或被祖先覆盖的后代不同，只要规范化后集合相同，就属于同一 cursor identity。
+无效、过期或上下文不同返回
+`cursor_invalid` blocked；不能静默回到第一页。集合按规范化 path、code、稳定 identity
+排序，重复调用在输入状态不变时顺序相同。
+
+## 4. RevisionSelector
+
+```json
+{"kind": "commit|tag|branch", "value": "string"}
+```
+
+显式 selector 保留调用输入。install 省略 revision 时返回 kind `commit` 和首次解析的
+full object ID；`default_branch` 单独记录来源。`resolved_commit`/`base_commit` 始终是
+repository object format 的完整 commit ID。
+
+## 5. `validate`
+
+非 blocked result 的 operation-specific required fields：
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| `operation` | `validate` | 操作判别字段。 |
+| `coverage` | `full`/`scoped` | 结论覆盖整个 root，或仅覆盖调用方选择的目录集合及必要支持闭包。 |
+| `scopes` | array[root-absolute POSIX directory path] | 规范化、排序、去重并删除已被祖先覆盖的目录；full 时固定为 `["/"]`。 |
+| `protocol_structure` | `pass`/`fail` | 当前 coverage 及其必要支持闭包内是否存在 protocol error finding；scoped pass 不是全根符合结论。 |
+| `scan_complete` | boolean | 当前 coverage 及其必要支持闭包的所有应检查 safe 内容是否完成读取和判断。 |
+| `semantic_review` | `clear`/`required` | candidate 是否非空。 |
+| `semantic_candidates` | array[SemanticCandidate] | 需要人或 agent 判断的候选。 |
+
+`coverage: scoped` 的支持闭包可以包含 scopes 外的 root/祖先负责 index、适用局部配置、
+可达导航文档和 scopes 内 link 的必要目标。`findings` 与 `semantic_candidates` 只包含 scope
+内事项，或直接阻止解释/验证 scope 的支持路径事项；collection totals 对该结果集合计数，
+不是对整个根计数。
+
+协议 finding code：
+
+| code | 覆盖事实 |
+|---|---|
+| `root_invalid` | 根名、root index 存在性或 root marker。 |
+| `document_unreadable` | 必查 Markdown 不存在、不可读、非 UTF-8。 |
+| `frontmatter_invalid` | YAML、重复键、type 或 doctidex mapping/field 类型。 |
+| `index_continuity_invalid` | index 接管链不连续。 |
+| `log_continuity_invalid` | safe log 接管链不连续或 frontmatter 无效。 |
+| `local_config_invalid` | boundary-set、atomic-indexing、unsafe 的 list/item/path/target kind。 |
+| `local_config_scope_invalid` | 条目越根或越过下级 index 后声明其内部目标。 |
+| `atomic_indexing_invalid` | atomic 目录内部出现协议 index/log 或接管边界。 |
+| `unsafe_declaration_invalid` | unsafe 入口、外部责任或必须 link 注释不成立。 |
+| `path_unreachable` | 负责 index 无有效 Markdown link path 到达必达目标。 |
+| `link_path_invalid` | doctidex 文件路径 link 越根、目标不可读或无法形成有效路径边。 |
+| `link_annotation_invalid` | doctidex 注释结构、重复、必需字段、boundary point 或 unsafe 值错误。 |
+| `reserved_name_conflict` | `.doctidex` 中存在与协议/明确扩展冲突的语义。 |
+
+同一 code 可通过 path/message 区分多个位置；实现不为每个 YAML 子错误发明不稳定 code。
+
+## 6. 外部来源字段
+
+DependencyParents：
+
+```json
+{"total": 1, "returned": 1, "truncated": false, "items": ["opaque-install-id"]}
+```
+
+`items` 按 install ID 排序，最多返回 100 项；`total` 是完整 parent 数量。该摘要不提供
+pagination，因为 agent 建立或判断当前 edge 不需要枚举整个依赖图；`truncated: true` 时不得
+把 items 当作完整集合。
+
+### 6.1 `external_install`
+
+非 blocked result 的 fields：
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| `operation` | `external_install` | 操作判别字段。 |
+| `applied` | boolean | 是否实际 apply；dry-run 为 false。 |
+| `install_id` | opaque string | 在 selected root 内稳定标识该 source install。 |
+| `install_role` | `direct`/`dependency` | 是否进入恢复清单；direct 也可以具有 parent edges。 |
+| `dependency_of` | DependencyParents | parent install IDs 的有界摘要。 |
+| `manifest_included` | boolean | direct 为 true，dependency-only 为 false。 |
+| `install_path` | root-absolute POSIX path | 工具分配的稳定内部路径，位于 `/.doctidex`；不公开具体命名算法。 |
+| `working_path` | absolute path | 原生文件工具读取 repository 根的当前路径。 |
+| `source_url` | sanitized string | 无 credentials 的 source identity。 |
+| `source_relation` | `host_repository`/`other`/`unknown` | 能否可靠确认 source 就是 selected root 的宿主 Git repository。 |
+| `revision_selector` | RevisionSelector | 显式 selector 或默认解析后的 commit selector。 |
+| `default_branch` | string/null | 仅省略首次 install revision 时记录 remote default branch。 |
+| `resolved_commit` | full commit ID | install 固定对应的 immutable commit。 |
+| `host_repository` | absolute path | 包含 selected root 且负责 Git 追踪边界的 repository 根。 |
+| `payload_tracking` | `ignored_untracked` | 安装载荷被精确 ignore 且没有 tracked entry。 |
+| `git_exclusion_file` | absolute path | 宿主 repository 根 `.gitignore`。 |
+| `git_exclusion_state` | `absent`/`tracked`/`modified`/`untracked` | 精确规则所在文件的 Git 状态；absent 只用于 dry-run 的 planned path。 |
+| `recovery_manifest` | absolute path | 可版本化恢复清单的公开路径。 |
+| `recovery_manifest_state` | `absent`/`tracked`/`modified`/`untracked` | 清单的 Git 状态；absent 只用于 dry-run 的 planned path，CLI 不代为 stage/commit。 |
+| `responsible_index` | absolute path | 负责内部受管命名空间边界/unsafe 声明的 index。 |
+| `frontmatter_changes` | FrontmatterChanges | 对内部命名空间 planned 或 actual structured changes。 |
+| `planned_changes` | array[absolute path] | 可能修改的 index、`.gitignore`、install path 与受管记录；只有 direct/提升操作包含恢复清单。 |
+
+首次省略 revision 的 `revision_selector.kind` 必须为 commit，且 value 等于
+`resolved_commit`。remote default branch 后续移动不能改变任何现有 result。install identity
+由 root、canonical source 和 normalized selector 构成；不同 selector 不因 resolved commit
+相同而合并。同 key 重试保持 `install_id`/`install_path`，dependency-only 可提升为 direct。
+
+### 6.2 `external_link`
+
+非 blocked result 的 fields：
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| `operation` | `external_link` | 操作判别字段。 |
+| `applied` | boolean | 是否实际 apply；dry-run 为 false。 |
+| `install_id` | opaque string | source 最终所属安装。 |
+| `install_path` | root-absolute POSIX path | symlink 最终指向的稳定内部安装根。 |
+| `source_path` | absolute path | 调用方传入并规范化后的受管 source directory。 |
+| `target_path` | POSIX relative path | symlink 相对 selected root 的调用输入。 |
+| `presentation_path` | absolute path | target 的文件系统入口，即使 dry-run 尚不存在也给出计划路径。 |
+| `working_path` | absolute path | 原生文件工具读取 source directory 的路径。 |
+| `repository_relative_path` | POSIX path | link 入口对应 repository 内的起始路径；根为 `.`。 |
+| `source_url` | sanitized string | 从 install 继承的 source identity。 |
+| `source_relation` | `host_repository`/`other`/`unknown` | 从 install 继承的宿主 source 关系。 |
+| `revision_selector` | RevisionSelector | 从 install 继承的 selector provenance。 |
+| `default_branch` | string/null | 从 install 继承的 default branch provenance。 |
+| `resolved_commit` | full commit ID | symlink 当前指向 install 的固定 commit。 |
+| `safe_state` | `safe`/`unsafe` | 该 link 入口的产品接入分类。 |
+| `symlink_tracking` | `trackable` | symlink 未被宿主 Git ignore；CLI 不保证用户已 stage/commit。 |
+| `responsible_index` | absolute path | 接收该 link boundary/unsafe 条目的最近负责 index。 |
+| `frontmatter_changes` | FrontmatterChanges | 该 link planned 或 actual structured changes。 |
+| `recovery_manifest` | absolute path | 同步记录 link mapping 的恢复清单。 |
+| `recovery_manifest_state` | `tracked`/`modified`/`untracked` | 更新后的清单 Git 状态；link 的 source manifest 已存在。 |
+| `planned_changes` | array[absolute path] | 可能修改的 index、symlink、恢复清单与 link mapping。 |
+
+FrontmatterChanges：
 
 ```json
 {
-  "domain": "semantic_review",
-  "severity": "info",
-  "code": "...",
-  "path": "...",
-  "message": "...",
-  "actions": ["..."]
+  "boundary_set": "add|existing",
+  "unsafe": "add|existing|remove|not_required"
 }
 ```
 
-`index_reference_candidate` 在完整 protocol validation 中另有 `index`；`init` 的根直接
-子项候选没有 `index`。`git_change_review` 的 path 是 Git porcelain 相对路径，不一定
-是绝对文件系统路径。
+### 6.3 `external_restore`
 
-当前 candidate codes：
+RestoreItem：
 
-| code | 含义 |
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| `install_id` | opaque string | 恢复清单中的稳定安装标识。 |
+| `install_path` | root-absolute POSIX path | 必须恢复到的原内部路径。 |
+| `source_url` | sanitized string | 获取缺失 objects 的 portable source identity。 |
+| `revision_selector` | RevisionSelector | 原安装的 selector provenance；不用于重新解析 moving ref。 |
+| `default_branch` | string/null | 原安装省略 revision 时的来源信息。 |
+| `resolved_commit` | full commit ID | 唯一允许恢复的 exact commit。 |
+| `state` | `planned`/`restored`/`unchanged`/`blocked` | dry-run 可重建、apply 已重建、原内容已匹配，或该项未完成。 |
+| `findings` | array[Finding] | item-level 阻塞与恢复动作；正常为空。 |
+
+非整体 blocked result 的 fields：
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| `operation` | `external_restore` | 操作判别字段。 |
+| `applied` | boolean | 是否实际 apply；dry-run 为 false，缺失且可重建的 item 使用 `planned`。 |
+| `recovery_manifest` | absolute path | 本次读取的恢复清单。 |
+| `recovery_manifest_identity` | opaque string | 用于 cursor 一致性判断，不泄漏内部 storage。 |
+| `install_filter` | array[opaque string] | 规范化、排序并去重后的 filter；省略时为空。 |
+| `items` | array[RestoreItem] | 当前有界页。 |
+
+restore items 只来自 manifest 中的 direct installs；dependency-only install 和 dependency
+edges 不在集合中。任一 item blocked 令顶层 status 至少为 warning，但其他 item 可以成功。整体清单缺失、schema
+不可识别或无法选择宿主 repository 时，operation blocked。`collection.lists.items` 对 filter
+后的记录计数；恢复载荷不改变 manifest identity，也不使后续 cursor 失效。
+
+## 7. `external_link_parse`
+
+非 blocked result 的 fields：
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| `operation` | `external_link_parse` | 操作判别字段。 |
+| `managed` | boolean | 是否识别到 PATH 的 current-owner 或 installed-repository 受管 mapping 身份；不表示 target 可用或 mapping 完整。 |
+| `mapping_origin` | `owner_root`/`installed_repository`/null | mapping 由当前 owner root 的受管记录提供，还是由 install 内 portable manifest 提供。 |
+| `created_by` | `install`/`link`/null | 最内层 mapping 的创建 operation；portable external symlink 为 link。 |
+| `content_root` | absolute path/null | PATH 所在的 doctidex root；安装仓库内可与顶层 `root` 不同。 |
+| `input_path` | absolute path | 规范化 PATH；broken symlink 保留 symlink 自身路径。 |
+| `input_kind` | `directory`/`symlink` | 输入路径自身的种类，不跟随 symlink target 分类。 |
+| `presentation_path` | absolute path/null | 命中的 install/link presentation；portable mapping 时为 install 内 symlink。 |
+| `install_id` | opaque string/null | 当前 owner root 中实际提供 target 的 install；尚未安装时为 null。 |
+| `install_path` | root-absolute POSIX path/null | 当前 owner root 中 target install 的稳定内部路径。 |
+| `install_role` | `direct`/`dependency`/null | 当前 target install 是否进入恢复清单；尚未安装时为 null。 |
+| `dependency_of` | DependencyParents | 当前 target install 的 parent 摘要；尚未安装或未受管时为空摘要。 |
+| `dependency_parent_install_id` | opaque string/null | portable mapping 所在的当前外层 parent install；其他 origin 为 null。 |
+| `target_state` | `available`/`owner_install_missing`/`dependency_not_installed`/`unavailable`/`not_applicable` | target 在当前 owner root 中的解析状态。 |
+| `source_url` | sanitized string/null | target source identity；portable mapping 从版本化 manifest 恢复。 |
+| `source_relation` | `host_repository`/`other`/`unknown`/null | source 与宿主 repository 的可靠关系。 |
+| `revision_selector` | RevisionSelector/null | 固定 presentation 的 selector provenance。 |
+| `default_branch` | string/null | 省略 install revision 时的初次来源。 |
+| `resolved_commit` | full commit ID/null | target source 固定 commit。 |
+| `repository_relative_path` | POSIX path/null | input 对应 target repository 内的位置，根为 `.`。 |
+| `working_path` | absolute path/null | 当前 owner root 已有匹配 install 时可交给原生工具的 target 路径。 |
+| `safe_state` | `safe`/`unsafe`/null | 该 presentation 入口分类。 |
+| `responsible_index` | absolute path/null | 在 content root 中拥有 link boundary/unsafe 条目的 index。 |
+
+顶层 `root` 始终是 owner root。`mapping_origin: installed_repository` 时，`content_root` 是
+正在阅读的安装仓库 doctidex root，`dependency_parent_install_id` 是包含它的当前 install。
+
+`target_state: dependency_not_installed` 是正常 `ok`：portable mapping 完整，但匹配依赖尚未
+在 owner root 扁平安装；`install_id`、`install_path`、`install_role` 和 `working_path` 为
+null，source/selector/commit/repository-relative path 仍完整。匹配 install 已存在时 state
+为 available 并返回外层 working path，不能返回 install 内 broken symlink target。
+调用方决定安装时，以 `source_url`、`resolved_commit` 和 `dependency_parent_install_id`
+构造 `external install --commit ... --dependency-of ...`；`revision_selector` 中的 branch/tag
+只是 provenance。
+
+current-owner durable link 的目标 install 缺失时 state 为 `owner_install_missing`，status 为
+warning，并提供 restore next action。managed false 时 mapping origin 为 null、target state
+为 `not_applicable`，mapping/source/install fields 为 null，`content_root` 在可确定时仍可
+返回，status 为 ok。已识别但损坏的 current-owner/portable mapping 保持 managed true，使用
+`unavailable`、warning/blocked 和 `mapping_damaged` finding；可靠字段保留，不能伪装成
+unmanaged 或 dependency_not_installed。
+
+## 8. WorktreeItem
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| `source_kind` | `managed_path`/`url`/`working_tree`/`bare_gitdir`/`gitfile` | open 时的 source 分类。 |
+| `owner_root` | absolute path | CLI-created worktree 所属的 selected doctidex root。 |
+| `source_url` | sanitized string/null | 可公开 remote identity；纯本地且没有可公开 remote 时 null。 |
+| `revision_selector` | RevisionSelector | open 输入。 |
+| `base_commit` | full commit ID | detached worktree 基准。 |
+| `root_internal_path` | root-absolute POSIX path | owner root 的 `/.doctidex` 下扁平受管路径。 |
+| `worktree_path` | absolute path | repository 根的 writable worktree。 |
+| `repository_relative_path` | POSIX path | 最初 SOURCE 对应位置，根为 `.`。 |
+| `working_path` | absolute path | `worktree_path` 加 repository-relative suffix。 |
+| `state` | `clean`/`changed`/`unavailable` | 当前客观 Git/文件系统状态。 |
+| `findings` | array[Finding] | item-level 问题；正常为空。 |
+
+### 8.1 `worktree_open`
+
+非 blocked result：
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| `operation` | `worktree_open` | 操作判别字段。 |
+| `worktree` | WorktreeItem | 新建且 state 为 clean 的现场。 |
+| `reuse_candidate_count` | integer | 同 canonical source/base commit 的其他受管现场数。 |
+
+candidate count 大于零时 status 为 warning，但 open 已完成且新现场保持独立。
+
+### 8.2 `worktree_list`
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| `operation` | `worktree_list` | 操作判别字段。 |
+| `items` | array[WorktreeItem] | 当前有界页；无匹配为空。 |
+
+顶层 `root` 是 list 选择的 owner root，items 不跨 root。任一 unavailable item 令顶层
+status warning，不阻断其他 items。
+
+### 8.3 `worktree_close`
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| `operation` | `worktree_close` | 操作判别字段。 |
+| `worktree` | WorktreeItem/null | 能识别时为关闭前/被保留状态；无法识别 exact path 时 null。 |
+
+成功时 `changed` 包含已移除 worktree path；dirty/unavailable blocked 时 changed 为空且
+worktree 保留。
+
+## 9. `cache_clean`
+
+非 blocked result 的 required fields：
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| `operation` | `cache_clean` | 操作判别字段。 |
+| `applied` | boolean | 是否请求并完成 apply；dry-run 和 preserved 均为 false。 |
+| `source_url` | sanitized string | 调用 URL 解析出的无 credentials source identity。 |
+| `cache_source_id` | opaque string | 目标 shared bare source cache 的稳定不透明标识；不得据此构造 storage path。 |
+| `linked_worktree_count` | integer | Git metadata 中全部 linked worktree registrations 数量；source bare repository 自身不是 linked worktree，不计入。 |
+| `valid_worktree_count` | integer | Git 判为仍有效、因而阻止删除的 registrations 数量。 |
+| `prunable_worktree_count` | integer | Git 明确判为 prunable 的 registrations 数量。 |
+| `state` | `planned`/`removed`/`preserved` | dry-run 已证明可清理、apply 已删除 bare cache，或有效 worktree 令 cache 保留。 |
+
+非 blocked result 中，三个计数均为非负整数，且
+`linked_worktree_count = valid_worktree_count + prunable_worktree_count`；存在无法归入后两类
+的 registration 时 operation 必须 blocked，不能用第三种隐含分类继续。`state: planned`
+要求 `applied: false`、valid count 为零；`state: removed` 要求 `applied: true`、valid count
+为零；`state: preserved` 要求 `applied: false`、valid count 大于零且 status 为 warning。
+
+cache clean 的顶层 `root`、`collection` 固定为 null，`network` 固定为 false。内部 cache
+path 不公开，因此包括 `removed` 在内的 `changed` 都为空。`cache_source_not_found`、metadata
+损坏/无法分类或并发复查冲突是 blocked；blocked envelope 可以保留已可靠确定的上述字段，
+但调用方不得假定 operation-specific fields 完整。删除后的重复调用返回
+`cache_source_not_found`，而不是再次返回 `removed`。cache-domain Finding 的 `path` 固定为
+null，不能用该字段泄漏内部 cache 或 Git metadata 路径。
+
+## 10. `requires_user`
+
+| 值 | 所需决定 |
 |---|---|
-| `index_reference_candidate` | 没有机器可解析的 Markdown link 精确指向负责范围中的路径；需阅读现有 prose。 |
-| `git_change_review` | 非 index/log Git change 可能需要 index 或 log 跟进；需结合内容判断。 |
-
-## 8. Revision selector
-
-`declared_revision` 使用：
-
-| 字段 | 类型 | 含义 |
-|---|---|---|
-| `kind` | string | `commit`、`tag` 或 `branch`。 |
-| `value` | string | index 声明中的原值。它不保证当前能从远端解析。 |
-
-它与 `effective_commit` 不同：selector 是意图，effective commit 是当前读取快照。
-
-## 9. Mount item
-
-`mount list`、`inspect.mount` 和 `resolve.mount` 使用相同 object：
-
-| 字段 | 类型 | 含义 |
-|---|---|---|
-| `mount_path` | string | 根声明的规范化逻辑路径。 |
-| `source` | string | 清理 userinfo 后的 Git URL 或本地路径。 |
-| `declared_revision` | object | `{kind, value}` selector。 |
-| `effective_commit` | string/null | 当前 source 与 selector 对应的 40 位读取 commit；首次 prepare 前通常为 null。 |
-| `state` | string | `ready` 或 `not_prepared`。 |
-| `readable` | boolean | effective commit 存在且逻辑 destination 当前存在/是 symlink 时为 true。 |
-| `next_action` | string/null | ready 时 null；否则是精确 `doctidex-git mount prepare ...` 命令。 |
-
-`effective_commit` 非 null 但可读路径丢失时仍返回 `not_prepared/readable: false`，
-prepare 会尝试复用该 commit 恢复读取。
-
-### 9.1 Root relation
-
-`root_relation` 固定包含两个字段：
-
-| 字段 | 类型/值 | 含义 |
-|---|---|---|
-| `source` | `same_repository`/`unknown` | `same_repository` 表示工具可可靠确认 mount source 对应当前 doctidex checkout root；`unknown` 不表示已确认不同。 |
-| `revision` | `same_commit`/`different_commit`/`unknown` | 只在 source 已确认且两侧 commit 可得时比较；否则为 `unknown`。 |
-
-判定离线且保守。相同 commit 本身不证明 source 相同；等价 URL、镜像、fork 或 nested
-doctidex root 可能保持 `unknown`。调用方不得从 unknown 推断相同或不同。
-
-### 9.2 Maintenance reuse
-
-`maintenance_reuse` 固定包含：
-
-| 字段 | 类型/值 | 含义 |
-|---|---|---|
-| `status` | string | `recommended`、`selection_required` 或 `not_available`。 |
-| `scope_kind` | string/null | `recommended` 时为 `host_root` 或 `maintenance_root`；`selection_required` 时为 `maintenance_root`；`not_available` 时为 null。 |
-| `write_path` | string/null | 唯一建议的可写根；否则 null。 |
-| `target_branch` | string/null | 唯一建议根的 branch 提示；没有唯一建议或无法识别时为 null。 |
-| `candidate_count` | integer | 已知兼容 scope 数量；不会在该 object 中枚举全部路径。 |
-| `reason` | string | 见下表的稳定原因。 |
-
-| reason | 含义与动作 |
-|---|---|
-| `current_root` | item 本身就是当前 host root；直接使用 write path。 |
-| `current_root_same_commit` | 自引用 mount 与当前 HEAD 相同；优先把兼容变更合并到 host root。 |
-| `existing_scope_same_commit` | 已有一个同 source/base commit maintenance root；复用 write path。 |
-| `multiple_existing_scopes` | 已有多个兼容维护根；先用 maintenance status 选择，不再新开。 |
-| `source_not_prepared` | 没有 effective commit，先 prepare。 |
-| `current_root_different_commit` | source 相同但 commit 不同；不要合并到 host root。 |
-| `delivery_target_conflict` | 同 source/base commit 候选的已知 branch 与当前 item 不同；默认保持独立。用户明确选择共同集成结果时，自引用可重新 scope host，开放根可用 status 按 source/base commit 查找，再由用户/agent 选择授权根。 |
-| `no_compatible_scope` | 当前没有已知兼容写入入口；需要时 open。 |
-
-工具在 scope item 与候选 `target_branch` 都为已知字符串且不同时排除该候选；任一侧为
-null 时保留候选，由 agent 根据用户授权和预期交付目标判断。写入权限、其他交付动作
-不兼容或用户明确要求隔离时，agent 可以不采纳 recommended；mount 读取路径始终保持
-只读。`selection_required` 的候选通过 `maintenance status` 返回：先匹配 scope item 的
-`source` 与非 null `base_commit`，再结合候选 `target_branch` 选择；不能唯一决定时由
-用户选择。
-
-## 10. PathContext
-
-`inspect.path_context` 与 `inspect.source_context` 字段完全相同：
-
-| 字段 | 类型 | 含义 |
-|---|---|---|
-| `host_root` | string | 该上下文计算所基于的 doctidex 根。source_context 中是 mounted source 的呈现根。 |
-| `path` | string | 被检查路径的绝对文件系统路径。 |
-| `internal_path` | string | 相对于该 host_root 的绝对内部路径。 |
-| `source` | string | `local` 或 `mount`。 |
-| `host_scope` | string | `included` 或 `excluded`。 |
-| `attributes` | array[string] | 去重排序的 `atomic`、`excluded`、`protected`、`mount`。多属性可同时存在。 |
-| `responsible_index` | string/null | included 本地路径的负责 index。 |
-| `applicable_log` | string/null | 最近 `log.md`。 |
-| `boundary_index` | string/null | 建立 excluded 边界的 index。 |
-| `boundary_condition` | object/null | 命中的单字段 `{path: string}` 或 `{regex: string}`。 |
-| `mount_path` | string/null | 所属声明 mount path。 |
-
-`source_context` 的出现条件是宿主 path_context 为 mount 且 mount item `readable: true`。
-
-## 11. MarkdownLink
-
-`inspect.links[]`：
-
-| 字段 | 类型 | 含义 |
-|---|---|---|
-| `label` | string | CommonMark link 的 text/inline-code 标签拼接。 |
-| `target` | string | 原始 href。可能是相对路径、绝对内部路径、外部 URL 或 anchor。 |
-| `order` | integer | 当前 index 正文中的零基发现顺序。 |
-
-这些字段不表示 target 已存在或符合推荐路径形式。
-
-## 12. Git change
-
-`changes.items[]`、maintenance `changes[]`：
-
-| 字段 | 类型 | 含义 |
-|---|---|---|
-| `status` | string | Git porcelain v1 的两个状态字符；第一个是 index，第二个是 worktree。 |
-| `path` | string | 相对于相应 Git worktree 的路径。 |
-| `original_path` | string，可选 | rename/copy 时的原路径；只有 status 第一个字符为 `R`/`C` 时添加。 |
-
-常见值包括 ` M`（worktree 修改）、`M `（staged 修改）、`A `、`D `、`R `、`??`。CLI
-不展开 diff，不把 status 转换成自然语言。
-
-## 13. Output collection
-
-某个列表被截断或当前请求从后续页开始时，`collection` 以字段路径为 key 给出：
-
-| 字段 | 类型 | 含义 |
-|---|---|---|
-| `total` | integer | 预算前列表长度。 |
-| `returned` | integer | 当前页实际返回数。 |
-| `collapsed_directories` | integer | 列表 object 中 `path`/`internal_path` 所涉及的不同父目录数。 |
-| `groups` | object | 最多 limit 个按父目录名排序的 `parent -> count` 摘要；无可分组路径时为空。 |
-| `truncated` | boolean | 当前页之后是否还有项目。 |
-| `next_cursor` | string/null | 仅顶层列表且还有后续项时给出 opaque cursor；嵌套列表永远 null。 |
-
-字段路径示例：`items`、`findings`、`semantic_candidates`、`items[].findings`、
-`findings[].actions`。同一个 cursor 当前会推进所有顶层列表，因此包含多个顶层列表的
-payload 不能把它理解为只属于某一个 collection key。Cursor 是 opaque token；调用方
-只能原样回传 `next_cursor`，不能解析或自行构造。
-
-## 14. Blocked error payload
-
-所有预期的操作失败使用：
-
-| 字段 | 类型 | 含义 |
-|---|---|---|
-| `status` | string | 固定 `blocked`。 |
-| `operation` | string | 被阻止的操作。 |
-| `root` | string/null | 已能明确选择根时为该根；在建立上下文前失败时通常为 null。 |
-| `affected` | array[string] | 受影响对象。 |
-| `changed` | array | 固定空数组；若异常前已产生其他独立结果，batch items/result 另行说明。 |
-| `result` | string | 明确哪些结果仍保留；默认 `No changes were made.`。 |
-| `findings` | array | 当前恰好一个 error finding。 |
-| `requires_user` | string/null | 所需用户输入类别。 |
-| `details` | object，可选 | 有限补充信息。 |
-
-`requires_user` 当前值：
-
-| 值 | 需要什么 |
-|---|---|
-| `doctidex_root` | 用户选择精确根。 |
-| `repository_access` | Git 凭据或仓库访问。 |
+| `doctidex_root` | 选择 exact root。 |
 | `network_access` | 允许或恢复网络。 |
-| `revision` | 确认 commit/tag/branch。 |
-| `external_references` | 决定并更新仍指向 mount 的文档。 |
-| `mount_path` | 处理已占用逻辑路径。 |
-| `source_url` | 选择或修正完整 doctidex source。 |
-| `git_index` | 决定如何处理 tracked mount 内容。 |
-| `git_action` | 决定 commit/交付后再关闭维护根。 |
+| `repository_access` | 提供 credentials 或 repository permission。 |
+| `revision` | 选择有效 commit/tag/branch。 |
+| `target_path` | 处理占用、overlap 或选择新路径。 |
+| `install_parent` | 提供 selected root 中有效的 parent install ID，或改用普通 direct install。 |
+| `git_tracking` | 处理已 tracked payload、冲突 ignore 规则，或 stage/commit 恢复清单与 symlink。 |
+| `recovery_manifest` | 恢复、修复或选择有效的版本化清单。 |
+| `git_action` | 处理 dirty worktree 的 commit、交付或保留。 |
 
-`details` 当前 shape：
+## 11. 通用失败代码
 
-- `plugin_not_ready`：`ignored_by_root_gitignore` boolean、`tracked_count` integer；
-- `unexpected_failure`：`diagnostic_id` string。
-
-## 15. `context` 字段
-
-### 15.1 找到根
-
-| 字段 | 含义 |
+| code | 典型恢复 |
 |---|---|
-| `status` | `ok`。 |
-| `operation` | `context`。 |
-| `git_worktree` | Git top-level 绝对路径。 |
-| `root` | doctidex 根绝对路径。 |
-| `index` | 根 `index.md` 绝对路径。 |
-| `mode` | `host_read` 或 `mount_read`。 |
-| `result` | 固定语义为 context 已选择。 |
-
-### 15.2 未找到根
-
-| 字段 | 含义 |
-|---|---|
-| `status` | `warning`。 |
-| `operation` | `context`。 |
-| `git_worktree` | Git top-level 或 null。 |
-| `root` | null。 |
-| `result` | 说明没有根。 |
-| `next_actions` | 当前只包含 init dry-run 建议。 |
-
-## 16. `init` 字段
-
-| 字段 | 类型 | 含义 |
-|---|---|---|
-| `status` | string | `ok`。 |
-| `operation` | string | `init`。 |
-| `root` | string | 选择或计划创建的根。 |
-| `index` | string | 根 index 路径。 |
-| `applied` | boolean | 是否传入 `--apply`。 |
-| `network` | boolean | 当前固定 false。 |
-| `changed` | array[string] | apply 时实际计划写入的 index/.gitignore；dry-run 为空。 |
-| `planned_changes` | array[string] | 需要创建或修正的文件，无论 apply 与否都返回。 |
-| `semantic_review` | string | 有根直接子项候选时 `required`，否则 `clear`。 |
-| `semantic_candidates` | array | 根直接子项候选。 |
-| `plugin_readiness` | string | apply 时直接为 `ready`；dry-run 有 planned changes 时 `blocked`，否则 `ready`。它不重新读取 apply 后 Git index。 |
-| `result` | string | plan ready 或结构已初始化且下一步为 agent 语义复核。 |
-
-## 17. `inspect` 字段
-
-| 字段 | 类型 | 含义 |
-|---|---|---|
-| `status` | string | `ok`。 |
-| `operation` | string | `inspect`。 |
-| `root` | string | 宿主根。 |
-| `path_context` | object | 必有，见 PathContext。 |
-| `links` | array，可选 | 有 responsible index 时，该 index 的 MarkdownLink 列表。 |
-| `mount` | object，可选 | 目标属于 mount 时的 Mount item。 |
-| `source_context` | object，可选 | mount 可读时从 source root 重新计算的 PathContext。 |
-| `semantic_candidates` | array | 当前负责 index 的候选；可以为空。 |
-| `result` | string | 路径上下文已检查。 |
-
-## 18. `resolve` 字段
-
-| 字段 | 类型 | 含义 |
-|---|---|---|
-| `status` | string | `ok`。 |
-| `operation` | string | `resolve`。 |
-| `root` | string | 选中的命令上下文根；使用 mounted LINK_DOCUMENT 时通常是原宿主根。 |
-| `input` | string | 用户原始 INTERNAL_PATH。 |
-| `internal_path` | string | 规范化后路径。 |
-| `link_document` | string，可选 | 传给 `--from` 的现有文件的绝对可访问路径；省略 `--from` 时字段缺失。 |
-| `link_root` | string | 本次解析实际使用的文件系统 link root。它可以是命令 root，也可以是宿主 mount 下的 source root。 |
-| `link_root_kind` | string | `host_root` 表示命令/宿主根语义；`mounted_source` 表示普通绝对 link 从 `link_document` 所属挂载源根解析。 |
-| `working_path` | string | 原生文件工具可尝试访问的路径；mounted source 结果仍位于宿主可访问 mount path 下。 |
-| `crosses_mount` | boolean | 本次解析是否依赖一个宿主 mount；既包括目标命中宿主 mount，也包括从 mounted source 解析普通绝对 link。 |
-| `mount` | object/null | 与本次解析相关的 Mount item；未涉及 mount 时为 null。 |
-| `root_relation` | object，可选 | 涉及 mount 时必有；见 Root relation。 |
-| `maintenance_reuse` | object，可选 | 涉及 mount 时必有；见 Maintenance reuse。 |
-| `result` | string | 普通 resolved，或提示 mount 尚未准备。 |
-
-`--from` 只提供 link 来源，不解析文档内容。源文档中的普通 `/...` 会产生
-`link_root_kind: mounted_source`；源文档中的 `/.doctidex/mounts/...` 按 namespace
-回边产生 `host_root`。因此 agent 不应假设 `root == link_root`。
-
-## 19. Mount 命令字段
-
-### 19.1 `mount_list`
-
-| 字段 | 含义 |
-|---|---|
-| `status` | `ok`。 |
-| `operation` | `mount_list`。 |
-| `root` | 宿主根。 |
-| `items` | Mount item 数组。 |
-| `result` | 找到的 Git mount 数量。 |
-
-### 19.2 `mount_add`
-
-| 字段 | 类型/含义 |
-|---|---|
-| `status` | `ok`。 |
-| `operation` | `mount_add`。 |
-| `root` | 宿主根。 |
-| `mount_path` | 已校验逻辑路径。 |
-| `source` | 清理后的 URL。 |
-| `declared_revision` | selector。 |
-| `network` | 固定 false。 |
-| `changed` | apply 时为根 index 单元素数组；dry-run 为空。 |
-| `result` | 声明可添加或已添加。 |
-| `mount_state` | 固定 `not_prepared`。 |
-
-当前没有 `applied` 字段，需从 `changed`、result 或调用参数判断。
-
-### 19.3 `mount_remove`
-
-| 字段 | 含义 |
-|---|---|
-| `status` | `ok`。 |
-| `operation` | `mount_remove`。 |
-| `root` | 宿主根。 |
-| `mount_path` | 被移除或计划移除的声明。 |
-| `changed` | apply 时根 index 路径数组；dry-run 为空。 |
-| `result` | 可安全移除或已移除。 |
-
-当前没有 `applied` 字段。
-
-### 19.4 单项 `mount_prepare`
-
-| 字段 | 含义 |
-|---|---|
-| `status` | `ok`。 |
-| `operation` | `mount_prepare`。 |
-| `root` | 宿主根。 |
-| `mount_path` | 准备的逻辑路径。 |
-| `source` | 清理后的 URL。 |
-| `declared_revision` | selector。 |
-| `effective_commit` | 已准备的完整 commit。 |
-| `mount_state` | 固定 `ready`；未完成时使用 blocked 结果。 |
-| `readable` | true。 |
-| `changed` | 空数组；prepare 不改变用户维护的公开文件，但会使 mount 可读。 |
-| `result` | 外部目录树可读。 |
-
-### 19.5 单项 `mount_sync`
-
-| 字段 | 类型/含义 |
-|---|---|
-| `status` | `ok`。 |
-| `operation` | `mount_sync`。 |
-| `root` | 宿主根。 |
-| `mount_path` | 同步目标。 |
-| `source` | 清理后的 URL。 |
-| `declared_revision` | selector。 |
-| `old_effective_commit` | string/null，调用前有效 commit。 |
-| `new_effective_commit` | string，新解析 commit。 |
-| `changed` | boolean，old/new 是否不同。 |
-| `applied` | boolean，是否传入 apply；old==new 时 true 也不会重建。 |
-| `result` | already current、new available 或 synchronized。 |
-
-### 19.6 Mount batch
-
-当 prepare/sync 目标数不是 1 时：
-
-| 字段 | 含义 |
-|---|---|
-| `status` | 有任一子项 blocked 时 `blocked`，否则 `ok`。 |
-| `operation` | `mount_prepare` 或 `mount_sync`。 |
-| `root` | 宿主根。 |
-| `items` | 每个目标的完整成功 payload 或 blocked error payload；blocked item 额外补 `mount_path`。 |
-| `findings` | 所有 blocked item findings 的扁平汇总。 |
-| `completed_count` | 成功 callback 数。 |
-| `total_count` | 目标总数。 |
-| `changed` | 固定空数组；真实逐项 changed 位于 items。 |
-| `result` | completed/total 摘要并说明已完成结果保留。 |
-
-## 20. Maintenance 命令字段
-
-### 20.1 `maintenance_scope`
-
-顶层为 `status: ok`、`operation: maintenance_scope`、`root`、`items`、`result`。
-
-`items` 是本次命令对输入路径所属 host/mount 对象的当前观察。命令可在同一
-维护工作中反复运行；它不持久化工作计划，也不返回“待分配/已分配”状态。agent
-使用每次返回的事实制定或复核最终写入范围。
-
-`host_root` item：
-
-| 字段 | 含义 |
-|---|---|
-| `kind` | `host_root`。 |
-| `root` | 宿主 doctidex 根。 |
-| `base_commit` | 当前 HEAD 或 null。 |
-| `target_branch` | 当前 symbolic branch；detached 或不可识别时为 null。unborn branch 仍可作为 symbolic branch 返回。 |
-| `write_path` | agent 可直接维护的宿主根路径。 |
-| `maintenance_reuse` | 固定推荐该 host root 自身。 |
-
-`mounted_source` item：
-
-| 字段 | 含义 |
-|---|---|
-| `kind` | `mounted_source`。 |
-| `mount_path` | 宿主逻辑 mount。 |
-| `source` | 清理后的 source URL。 |
-| `declared_revision` | mount 的 `{kind, value}` selector。 |
-| `base_commit` | effective commit 或 null。 |
-| `target_branch` | selector 为 branch 时的值，否则 null。 |
-| `read_only_path` | 宿主 mount 的文件系统路径。未准备时也会返回该计划路径。 |
-| `root_relation` | source 与当前 root 的保守关系。 |
-| `maintenance_reuse` | 唯一可复用 scope、选择要求或不可复用原因。 |
-| `write_action` | recommended 时 null；多候选时为 status 命令；没有兼容 scope 时为精确 open 命令。 |
-
-`read_only_path` 同时提供文件映射基准。对其下的具体 mounted target，移除该目录前缀并
-把 source-relative suffix 接到选定 `write_path` 或 maintenance root，即得到对应可写
-目标；结果必须保持在所选写入根内。CLI 不替 agent 返回或写入这个具体文件目标。
-如果执行中又通过 mount 发现其他源目标，该目标需要新的 scope 观察和范围决策，
-不能因当前 item 已有写入根而直接跨越边界。
-
-### 20.2 `maintenance_open`
-
-| 字段 | 含义 |
-|---|---|
-| `status` | 通常为 `ok`；调用前已有兼容 scope 时为 `warning`，但新根仍已创建。 |
-| `operation` | `maintenance_open`。 |
-| `root` | 宿主根。 |
-| `maintenance_root` | 新 maintenance root 的绝对路径。 |
-| `mount_path` | 来源 mount。 |
-| `source` | 清理后的 URL。 |
-| `base_commit` | open 的有效 commit。 |
-| `target_branch` | branch selector 值，否则 null。仅为交付提示。 |
-| `writable_root` | 当前与 maintenance_root 相同。 |
-| `boundaries` | `{writable: <path>, host_mount: "read_only"}`。`writable` 是允许写入根；`host_mount` 是宿主路径边界状态。 |
-| `root_relation` | source 与当前 root 的保守关系。 |
-| `maintenance_reuse` | open 调用前已知的兼容 scope；用于确认本次隔离是否有意。 |
-| `next_actions` | 必要时先提示已有 scope，再给使用源 index、check、handoff 的动作。 |
-| `changed` | 空数组；open 不改变用户维护的公开文件，但会创建维护现场。 |
-| `result` | 独立维护根已就绪。 |
-
-### 20.3 `maintenance_status`
-
-顶层为 `status: ok`、`operation: maintenance_status`、`root`、`items`、`result`。
-
-每个 item：
-
-| 字段 | 含义 |
-|---|---|
-| `maintenance_root` | 登记路径。 |
-| `mount_path` | 来源 mount。 |
-| `source` | 清理后的 URL。 |
-| `base_commit` | open 时 commit。 |
-| `target_branch` | branch 提示或 null。 |
-| `state` | 有 changes 时 `has_changes`，否则 `ready`。 |
-| `change_count` | 预算前 Git change 数。 |
-| `changes` | Git change 数组，可能被 limit 截断；用 change_count/collection 判断完整性。 |
-
-### 20.4 `maintenance_handoff`
-
-| 字段 | 含义 |
-|---|---|
-| `status` | 协议 fail、插件 blocked 或有语义候选时 `warning`，否则 `ok`。 |
-| `operation` | `maintenance_handoff`。 |
-| `maintenance_root` | 被交付路径。 |
-| `mount_path` | 来源 mount。 |
-| `source` | 清理后的 URL。 |
-| `base_commit` | 维护基准 commit。 |
-| `target_branch` | branch 提示或 null。 |
-| `changes` | Git change 数组。 |
-| `change_count` | 预算前 change 数。 |
-| `protocol_structure` | `pass`/`fail`。 |
-| `semantic_review` | 合并候选后的 `clear`/`required`。 |
-| `plugin_readiness` | 维护根 `.gitignore`/tracked 状态。 |
-| `findings` | 协议 structure findings。当前不额外加入 readiness finding。 |
-| `semantic_candidates` | 协议候选加 Git change candidates。 |
-| `result` | 维护结果已保留供 agent 审阅。 |
-| `next_actions` | 审阅 diff/候选并向用户请求 Git 动作授权。 |
-
-该 payload 当前没有顶层 `root` 字段；`maintenance_root` 是被检查的 source root。
-
-### 20.5 `maintenance_close`
-
-| 字段 | 含义 |
-|---|---|
-| `status` | `ok`。 |
-| `operation` | `maintenance_close`。 |
-| `maintenance_root` | 已关闭路径。 |
-| `changed` | 空数组。 |
-| `result` | clean maintenance context 已关闭。 |
-
-有 changes 时返回通用 blocked schema，code 为 `maintenance_has_changes`，affected 和
-result 明确保留的 maintenance path。
-
-## 21. `check` 字段
-
-| 字段 | 类型/含义 |
-|---|---|
-| `status` | `ok` 或 `warning`。 |
-| `operation` | `check`。 |
-| `root` | 被检查根。 |
-| `protocol_structure` | 协议 validation 的 pass/fail。 |
-| `semantic_review` | 合并协议与 Git change candidates 后的 clear/required。 |
-| `plugin_readiness` | root Git ignore 与 Git mount 扩展状态。 |
-| `findings` | 协议 findings，加 Git 扩展/readiness findings。 |
-| `semantic_candidates` | 协议 candidates 加 Git change candidates。 |
-| `remote` | offline 时空数组；online 时每个 Git mount 一项。 |
-| `result` | 检查未改变文件或 mount 的 effective commit；online 仍可能刷新本地 Git 信息。 |
-
-Online `remote[]`：
-
-| 字段 | 含义 |
-|---|---|
-| `mount_path` | mount 逻辑路径。 |
-| `effective_commit` | 当前本地有效 commit 或 null。 |
-| `remote_commit` | refresh 后 selector 解析结果。 |
-| `update_available` | 只有 effective commit 非 null 且与 remote 不同时为 true；首次未 prepare 时即使 remote 已解析也为 false。 |
-
-`check` 不返回 `mount_count`，也不展开 readiness 的检查过程；blocked finding 提供
-用户层动作。
-
-## 22. `changes` 字段
-
-| 字段 | 含义 |
-|---|---|
-| `status` | `ok`。 |
-| `operation` | `changes`。 |
-| `root` | 所选 doctidex 根，不一定等于传给 Git status 的 PATH。 |
-| `items` | Git change 数组。 |
-| `result` | 预算前发现的 change 数。 |
-
-## 23. Code 目录
-
-下表按当前代码分组列出可机器处理的 code。
-
-### 23.1 文档、根和路径
-
-| code | 含义 |
-|---|---|
-| `invalid_utf8` | doctidex 文档不是 UTF-8。 |
-| `document_unreadable` | 文件系统读取失败。 |
-| `frontmatter_missing` | 文档开头没有 YAML frontmatter。 |
-| `frontmatter_invalid` | YAML 解析失败。 |
-| `frontmatter_not_mapping` | YAML 顶层不是 mapping。 |
-| `root_not_found` | PATH 不在任何可识别 doctidex 根内。 |
-| `root_ambiguous` | 命中多个根且没有精确选择。 |
-| `link_source_invalid` | `resolve --from` 没有指向一个现有文件。 |
-| `git_worktree_required` | init 目标不在 Git worktree。 |
-| `internal_path_not_absolute` | 内部路径不以 `/` 开头。 |
-| `internal_path_escape` | `..` 越过 link root。 |
-| `filesystem_path_outside_root` | 文件系统路径不在所选根内。 |
-| `cursor_invalid` | pagination cursor 无法解码。 |
-
-### 23.2 协议结构
-
-| code | 含义 |
-|---|---|
-| `root_marker` | 根缺少严格 boolean `doctidex.root: true`。 |
-| `top_level_type` | 顶层 `type` 与 index/log 文件类型不符。 |
-| `doctidex_type` | `doctidex.type` 与文件类型不符。 |
-| `index_continuity` | index 祖先链缺少 index。 |
-| `log_continuity` | log 祖先链缺少 log。 |
-| `mount_exclude` | 根 excludes 缺 `.doctidex/mounts`。 |
-| `atomic_document` | atomic 目录内出现 index/log。 |
-| `link_path_escape` | 可解析 link 越过 link root。 |
-| `filter_not_list` | 某过滤字段不是列表。 |
-| `filter_shape` | 条件不是只含一个字段的 mapping。 |
-| `filter_value` | 条件 key/value 不是合法 path/regex 非空字符串。 |
-| `filter_path` | path 条件是绝对路径或含越界 `..`。 |
-| `filter_regex` | VERSION1 regex 编译失败。 |
-
-### 23.3 Mount 声明与就绪
-
-| code | 含义 |
-|---|---|
-| `mounts_not_list` | `doctidex.mounts` 不是 list。 |
-| `mounts_on_non_root` | 非根 index 声明 mounts。 |
-| `mount_not_mapping` | 某声明不是 mapping。 |
-| `mount_field_invalid` | type/url/mount_path 缺失或非空字符串要求不满足。 |
-| `mount_path_invalid` | mount path 不在 namespace 严格子路径下。 |
-| `mount_path_not_normalized` | 输入含可折叠段或 nested namespace，未使用规范形式。 |
-| `mount_paths_overlap` | 声明重复或祖先/后代重叠。 |
-| `mount_root_required` | add 时选中的 index 不是根。 |
-| `mount_not_declared` | 精确路径没有 Git mount 声明。 |
-| `mount_still_referenced` | remove 扫描到仍指向 mount 的 Markdown links。 |
-| `git_mount_src_path` | Git 扩展不支持 `src_path`。 |
-| `git_mount_revision` | revision 不是唯一合法 selector。 |
-| `git_url_invalid` | URL/本地路径为空或多行。 |
-| `git_url_credentials` | HTTP(S) URL 内嵌 credentials。 |
-| `plugin_not_ready` | mount 写操作前根 ignore/tracked 状态不安全。 |
-| `git_mount_not_ready` | check 对同一 readiness 问题生成的 finding code。 |
-| `mount_path_occupied` | 逻辑路径含未识别内容或无法安全替换。 |
-| `mount_unreadable` | 插件无法让 mount path 成为普通文件工具可读的目录。 |
-| `source_root_missing` | source checkout 根没有 index.md。 |
-| `source_root_invalid` | source index 不是 doctidex root。 |
-
-### 23.4 Git source
-
-| code | 含义 |
-|---|---|
-| `git_auth_required` | 远端需要 credentials/access。 |
-| `git_network_unavailable` | 网络/DNS/连接不可用。 |
-| `git_revision_unavailable` | Git 报告 ref/object 无法解析。 |
-| `git_revision_not_commit` | rev-parse 结果不是预期完整 commit。 |
-| `git_failed` | 未分类 Git 失败。 |
-| `revision_view_unavailable` | 本地已有 commit 读取现场不可复用。 |
-
-### 23.5 Maintenance、候选和运行时
-
-| code | 含义 |
-|---|---|
-| `maintenance_source_not_prepared` | open 前 mount 没有 effective commit。 |
-| `maintenance_root_ambiguous` | handoff/close 没有精确选中一个 context。 |
-| `maintenance_has_changes` | close 时仍有 Git changes，结果已保留。 |
-| `index_reference_candidate` | index link 候选。 |
-| `git_change_review` | Git change 的 index/log 跟进候选。 |
-| `interrupted` | 操作被 Ctrl-C 中断。 |
-| `unexpected_failure` | 未预期异常；使用 details.diagnostic_id 报告。 |
-| `doctidex_error` | 没有更具体分类时的通用 doctidex 操作失败。 |
+| `argument_invalid` | 按 CLI contract 修正参数。 |
+| `root_not_found` / `root_ambiguous` / `root_mismatch` | 传 exact ROOT。 |
+| `path_invalid` / `path_not_directory` / `path_type_unsupported` | 传符合命令类型与根边界的路径；link-parse 只接受目录或 symlink。 |
+| `target_occupied` / `presentation_overlap` | 选择新 target 或由用户处理现有内容。 |
+| `host_git_not_found` / `host_git_ambiguous` | 让 selected root 位于唯一宿主 Git repository 后重试。 |
+| `install_payload_tracked` | 用户用原生 Git 明确移除 payload 的 tracked entries；CLI 不运行 `git rm --cached`。 |
+| `git_exclusion_conflict` | 审阅并修正冲突 ignore 规则，保持 payload ignored、manifest/link trackable。 |
+| `link_target_ignored` | 调整 target 或 ignore 规则，使 symlink 可被宿主 Git 追踪。 |
+| `symlink_unsupported` | 在支持 symlink 的文件系统/平台执行；不回退为目录复制。 |
+| `source_invalid` / `source_unmanaged` | 修正 source locator 或先 install。 |
+| `source_access_failed` | 处理 network/credentials/repository access。 |
+| `default_branch_unavailable` | 显式提供 revision。 |
+| `revision_invalid` / `revision_not_found` / `revision_not_commit` | 提供可唯一解析的 selector。 |
+| `dependency_parent_invalid` | 传 selected root 中现有且完整的 parent install ID。 |
+| `dependency_not_recoverable` | 以同 source/selector 运行普通 install，提升为 direct 后再建立 durable link。 |
+| `mapping_damaged` | 保留可读内容，修复或重建精确 mapping。 |
+| `owner_install_missing` | 按当前 owner root 的恢复清单 dry-run/apply restore；不要重写 durable link。 |
+| `recovery_manifest_missing` / `recovery_manifest_invalid` | 恢复版本化清单或修复其 schema/portable facts。 |
+| `install_not_found` | 修正 `--install` ID 或不带 filter 重新列出。 |
+| `install_path_conflict` / `install_damaged` | 保留占用内容并人工判断；确认后再恢复 exact path/commit。 |
+| `index_update_conflict` | 重新 dry-run，审阅并重试 apply。 |
+| `partial_success` | 按 changed/affected/next actions 只补齐缺失步骤。 |
+| `worktree_unmanaged` / `worktree_unavailable` | 传 exact managed path 或保留现场排查。 |
+| `worktree_changed` | 原生 Git 审阅并由用户决定交付/保留。 |
+| `cache_source_not_found` | 检查 URL；目标 source cache 已删除时无需继续 apply。 |
+| `cache_source_damaged` | 完整保留 cache 和 linked paths；用原生 Git 检查或修复 bare repository/worktree metadata 后重新 dry-run。 |
+| `cache_worktree_active` | cache 已保留；只有确认所有有效 linked worktree 生命周期结束后才重新 dry-run。 |
+| `cache_cleanup_conflict` | cache 已保留；并发 source/worktree mutation 完成后重新 dry-run。 |
+| `cursor_invalid` | 从第一页重新查询，不自行解析 token。 |
+| `scope_invalid` | 提供根绝对、根内且指向现有可读目录的 scope；非法 scope 不会回退到全根。 |
+| `interrupted` | 检查 changed 与现存路径后有限重试。 |
+| `unexpected_failure` | 保存 diagnostic ID；安全重试一次后报告。 |
+
+## 12. 退出码
+
+| code | 条件 |
+|---:|---|
+| 0 | ok，或不含 protocol fail 的 warning。 |
+| 1 | validate 完成且 `protocol_structure: fail`。 |
+| 2 | blocked 或调用语法无效。 |
+| 130 | 调用者中断；已完成状态保留。 |

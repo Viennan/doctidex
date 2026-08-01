@@ -1,5 +1,6 @@
 """Git-backed doctidex implementation variant."""
 
-from .mounts import GitMountService
+from .external import ExternalService
+from .worktrees import CacheService, WorktreeService
 
-__all__ = ["GitMountService"]
+__all__ = ["CacheService", "ExternalService", "WorktreeService"]

@@ -4,12 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "whero-doctidex"
-version = "0.1.0"
+version = "1.0.0"
 description = "Shared doctidex protocol and Git agent tooling"
 requires-python = ">=3.11"
 dependencies = [
   "markdown-it-py>=3.0,<5",
-  "regex==2026.7.19",
   "ruamel.yaml>=0.18,<0.19",
 ]
 

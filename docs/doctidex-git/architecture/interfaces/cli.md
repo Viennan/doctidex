@@ -1,391 +1,325 @@
 # CLI 用户接口
 
-本篇描述 `doctidex-git` 0.1.0 当前接受的命令和副作用。返回字段的逐字段说明见
-[CLI 结果契约](cli-schema.md)。Python 参考实现如何完成参数分发和渲染见
-[CLI 与 rendering](../../details/python/cli-and-rendering.md)。
+本文是 doctidex-git `v1.0.0` 命令、参数、省略行为和副作用的权威说明。结果字段见
+[JSON Schema](cli-schema.md)，任务步骤见 [用户工作流](../workflows.md)。本篇不重复 JSON
+字段类型或内部发布算法。当前 `1.0.0` 可执行程序实现本篇命令 surface。
+
+`external` 与 `worktree` 命令定义可选受管工作流；`validate` 直接检查可观察目录树，不以
+任何管理记录为前提。受管命令也不是 agent 的唯一读取或维护入口，原生 Git、手工
+worktree、submodule、symlink 和其他工具保持可选；本篇的路径、恢复和 close 承诺只适用于
+CLI 创建或登记的对象。
 
 ## 1. 命令总览
 
 ```text
-doctidex-git context [PATH]
-doctidex-git inspect [PATH]
-doctidex-git resolve INTERNAL_PATH [--from LINK_DOCUMENT]
-doctidex-git init [PATH] [--dry-run | --apply]
+doctidex-git validate [ROOT] [--scope INTERNAL_DIRECTORY]...
+  [--limit N] [--cursor TOKEN] [--json]
 
-doctidex-git mount list
-doctidex-git mount add --url URL (--commit SHA | --tag TAG | --branch BRANCH) \
-  --mount-path INTERNAL_PATH [--dry-run | --apply]
-doctidex-git mount remove MOUNT_PATH [--dry-run | --apply]
-doctidex-git mount prepare [MOUNT_PATH]
-doctidex-git mount sync [MOUNT_PATH] [--dry-run | --apply]
+doctidex-git external install --url URL [--root ROOT]
+  [--commit COMMIT | --tag TAG | --branch BRANCH]
+  [--dependency-of INSTALL_ID]
+  [--dry-run | --apply] [--json]
 
-doctidex-git maintenance scope [PATH ...]
-doctidex-git maintenance open MOUNT_PATH
-doctidex-git maintenance status [MAINTENANCE_ROOT]
-doctidex-git maintenance handoff [MAINTENANCE_ROOT]
-doctidex-git maintenance close [MAINTENANCE_ROOT]
+doctidex-git external link SOURCE_DIRECTORY TARGET_PATH [--root ROOT]
+  [--dry-run | --apply] [--json]
 
-doctidex-git check [PATH] [--online]
-doctidex-git changes [PATH]
+doctidex-git external restore [--root ROOT] [--install INSTALL_ID]...
+  [--limit N] [--cursor TOKEN]
+  [--dry-run | --apply] [--json]
+
+doctidex-git external link-parse PATH [--root ROOT] [--json]
+
+doctidex-git worktree open SOURCE [--root ROOT]
+  (--commit COMMIT | --tag TAG | --branch BRANCH) [--json]
+
+doctidex-git worktree list [--root ROOT]
+  [--source SOURCE | --worktree WORKTREE]
+  [--limit N] [--cursor TOKEN] [--json]
+
+doctidex-git worktree close WORKTREE [--json]
+
+doctidex-git cache clean --url URL [--dry-run | --apply] [--json]
 ```
 
-## 2. 全局选项
+`context`、`inspect`、`resolve`、`init`、`changes`、`check`、整个 `mount` 与旧
+`maintenance` 命令族不属于该 surface。普通文件与 Git 操作使用原生工具；`check` 的
+协议职责由 `validate` 取代。
 
-以下全局选项可以出现在子命令之前或之后：
+## 2. 通用选项
 
-| 选项 | 默认值 | 当前行为 |
-|---|---:|---|
-| `--json` | false | 输出 indent 2、Unicode 不转义、key 排序的 JSON。否则输出人读 key/value。 |
-| `--limit N` | 100 | 每个列表最多返回 N 项；最小 1，最大 1000。该限制分别作用于每个列表，不是整个 payload 的总项目数。 |
-| `--cursor TOKEN` | 无 | 继续读取上一结果给出的下一页；必须原样使用 `next_cursor`，不能自行构造。当前同一页位置会作用于结果中的每个顶层列表。 |
-| `--depth N` | 4 | 解析并限制到 0..32，但当前版本没有将其用于遍历或输出裁剪，因此目前没有可观察效果。 |
-
-全局选项可以放在子命令之前或之后，例如以下两种形式等价：
-
-```bash
-doctidex-git --json mount list
-doctidex-git mount list --json
-```
-
-无效 `--cursor` 会成为结构化 `cursor_invalid` blocked 结果。`--limit`/`--depth` 的非整数
-值属于命令行语法错误，不保证产生 JSON 结果。
-
-## 3. 根与路径选择
-
-命令对 `PATH` 的解释不是完全一致的：
-
-| 命令 | 用于选择 doctidex 根的路径 | 实际操作目标 |
+| 选项 | 缺省 | 契约 |
 |---|---|---|
-| `context [PATH]` | PATH，默认 cwd | 同一 PATH。 |
-| `init [PATH]` | 自己决定已有根或新根 | 选择出的 root。 |
-| `inspect [PATH]` | cwd 已选出且包含 PATH 时保留 cwd 宿主；否则由 PATH 选择。PATH 默认 cwd。 | PATH。 |
-| `resolve INTERNAL_PATH` | 默认 cwd；有 `--from` 时结合 cwd 和 LINK_DOCUMENT。 | INTERNAL_PATH 相对于实际 link root。 |
-| 所有 `mount` | cwd | 所选宿主根。 |
-| `maintenance scope/open` | cwd | scope 的 PATH 只用于 scope 分类，不改变宿主根选择；open 作用于当前宿主声明。 |
-| `maintenance status/handoff/close` | 显式 MAINTENANCE_ROOT 对应的宿主；省略时为 cwd | 一个已登记维护根，或当前宿主的登记集合。 |
-| `check [PATH]` | PATH，默认 cwd | 所选根整棵目录树。 |
-| `changes [PATH]` | PATH，默认所选根 | 对 PATH 执行 Git status，但结果中的 `root` 仍是所选 doctidex 根。 |
+| `--json` | 人读输出 | 输出一个符合 `schema_version: "1.0"` 的 UTF-8 JSON object。可在顶层命令前或最终 subcommand 后出现一次；Skills 统一放在末尾。 |
+| `--limit N` | 100 | 只用于 validate/external restore/worktree list；整数 1..1000，分别限制当前页每个顶层列表。 |
+| `--cursor TOKEN` | 首页 | 只用于 validate/external restore/worktree list；必须原样回传，且 operation、root、规范化 scope/filter、limit 与模式必须符合对应命令的 cursor identity。 |
+| `--dry-run` | 写命令默认值 | install/link/restore/cache clean 计划完整结果，可联网条件见各命令，但不持久写入。 |
+| `--apply` | false | install/link/restore/cache clean 才执行各自契约内写入；与 `--dry-run` 互斥。 |
 
-除 `context` 和 `init` 外，命令通常通过 `require_root` 要求唯一根。路径恰好是一个根
-目录时优先选择该根；路径位于嵌套根之间且没有精确指定时返回 `root_ambiguous`。
+不接受无实际效果的 option。parser 在识别 `--json` 后遇到语法错误也返回 JSON blocked
+envelope；未请求 JSON 时可以使用标准 stderr usage，但退出码仍为 2。
 
-cwd 是默认命令上下文，而不是通用访问限制。命令没有统一 `--root` 参数。短暂从
-宿主检查 mount 文件时，`inspect PATH` 会保留宿主上下文；解释该文件中的内部 link
-时可使用 `resolve --from LINK_DOCUMENT`。集中在一个根内的连续操作可以先进入精确根，
-从而简化后续参数。显式 MAINTENANCE_ROOT 是 `maintenance open` 的返回值，可从其他
-cwd 继续传给 status/handoff/close。
+## 3. 路径类型与根选择
 
-## 4. 写模式
+| 占位符 | 类型与约束 |
+|---|---|
+| `ROOT` | 现有、可读取、直接包含 `doctidex.root: true` index 的文件系统目录；相对值以 cwd 为基准。必须是根本身，不接受任意子路径。 |
+| `INTERNAL_DIRECTORY` | `/` 或 `/docs/api` 形式的 doctidex 根绝对 POSIX 目录路径，不是宿主文件系统路径，也不接受 anchor；词法规范化不得越出所选根，结果必须是现有可读目录。 |
+| `TARGET_PATH` | 只用于 external link；所选根下的非空 POSIX relative path，不得以 `/` 开头，不得含空段、`.` 或 `..`，最终目标是 symlink。 |
+| `SOURCE_DIRECTORY` | 现有可读文件系统目录，必须位于所选 root 及其完整受管 external mapping 内；相对值以 cwd 为基准。 |
+| `PATH` | external link-parse 的现有可读目录或 symlink；symlink target 可以不存在。相对值以 cwd 为基准；其他不存在路径不接受。 |
+| `INSTALL_ID` | external install 返回的稳定不透明标识；作为 filter 时可重复，重复值去重。 |
+| `WORKTREE` | `worktree open` 返回的 exact filesystem path；close 不接受其子目录、等价 symlink 或手工 worktree。 |
 
-`init`、`mount add`、`mount remove`、`mount sync` 接受互斥的 `--dry-run`/`--apply`。
-- 有 `--apply` 才进行公开写操作；
-- `--dry-run` 和两个 flag 都不写的行为相同；
-- CLI 不要求必须显式给出其中一个。
+| 命令 | 显式根 | 省略根 |
+|---|---|---|
+| validate | positional `ROOT` | 从 cwd 选择唯一包含根。 |
+| external install/link/restore | `--root ROOT`；link 时还必须包含 SOURCE_DIRECTORY | 从 cwd 选择唯一包含根，link 的 source 必须属于该根。dependency parent 也必须属于该根。 |
+| external link-parse | `--root ROOT`，必须包含 PATH 或拥有其外层受管 presentation | PATH 位于受管 install/link 时恢复其 owner root；否则从 PATH 或其可读父目录选择唯一包含根。 |
+| worktree open managed path | `--root ROOT`，必须包含 SOURCE | 从 SOURCE 选择唯一 mapping owner root。 |
+| worktree open 其他 source | `--root ROOT` | 从 cwd 选择唯一包含根。 |
+| worktree list | `--root ROOT` | 从 cwd 选择唯一包含根。 |
+| worktree close | 不接受；从 exact WORKTREE 恢复 owner root | WORKTREE 必须归属唯一受管 root。 |
+| cache clean | 不接受，也不选择 root | cwd 与 doctidex root 均不参与 source identity 或清理范围。 |
 
-不能根据命令名推断是否联网。尤其 `mount sync --dry-run` 为获得 new commit，可能
-访问远端；它只是不会切换当前可读快照。
+没有候选返回 `root_not_found`；多个候选返回 `root_ambiguous` 和候选路径，不采用“最近
+祖先”猜测。显式 ROOT 与操作路径不匹配返回 `root_mismatch`。
 
-## 5. `context`
+## 4. Revision 选择
 
-```bash
-doctidex-git context [PATH] [--json]
+`--commit`、`--tag`、`--branch` 互斥：
+
+- COMMIT 必须是 repository object format 的完整 object ID，不能是缩写；
+- TAG/BRANCH 必须是单一合法 Git ref name，不接受 `..`、reflog、range 或其他 revspec；
+- tag peel 后、branch tip 和 commit object 都必须唯一解析为 commit；
+- 输出的 selector 保留显式 kind/value，读取或维护基准另以完整 commit 返回。
+
+install identity 使用 normalized selector，而不是 resolved commit：commit value 规范为 full
+object ID；tag/branch 保留各自 kind 和规范化 ref name；省略 revision 在首次解析后使用 full
+commit selector。kind 或 normalized value 不同就是不同 install，即使最终 commit 相同。
+
+install 可以省略 selector。首次创建时读取 remote default branch，将分支名保存为 provenance，
+同时把有效 selector 归一化为 full commit。后续省略调用复用该 commit。worktree open
+始终要求显式 selector。
+
+## 5. `validate`
+
+```text
+doctidex-git validate [ROOT] [--scope INTERNAL_DIRECTORY]...
+  [--limit N] [--cursor TOKEN] [--json]
 ```
 
-用途：发现 PATH 所在 Git 工作目录和 doctidex root，不要求已有根。
+- 离线、只读、不调用 AI；无 dry-run/apply。
+- `--scope` 可重复；省略等价于 `/`。所有值先词法规范化并按规范路径排序、去重；祖先
+  已覆盖的后代从有效集合移除。输入次序及冗余写法不改变有效集合；有效集合为 `["/"]`
+  时 coverage 为 full，否则为 scoped。
+- 任一 scope 不满足路径语法、越根、不是现有目录或不可读时返回 `scope_invalid` blocked，
+  不扫描其余 scope，也不降级为全根。
+- 不带 scope 时扫描协议要求的整个 safe 范围；带 scope 时扫描所选目录，并读取保证判断
+  正确所需的支持闭包：root 和祖先负责 index、适用局部配置、可达性所需负责 index/导航
+  文档，以及所选范围内 link 的必要目标。unsafe 内部始终只按协议保留的外部责任检查。
+- 分开返回 deterministic findings 和 semantic candidates。scoped 输出只含所选目录内事项，
+  以及直接阻止解释或验证所选目录的支持路径事项；collection total 在过滤后计算。
+- 结果以 `coverage: full|scoped` 和规范化 `scopes` 回显覆盖范围。scoped
+  `protocol_structure: pass` 只表示该范围及其必要支持闭包未发现协议 error，不表示整个
+  root 符合；需要全根结论时省略 `--scope` 重新运行。
+- 不读取 plugin registry，不检查 remote、Git status 或 presentation ownership。
+- protocol fail 是已完成的 validation，status 为 warning、退出码为 1；root 无法选择或
+  scope 非法才是 blocked、退出码 2。
 
-无根时返回 `status: warning`、可选 Git 工作目录、`root: null` 和 init 下一步，退出码
-仍为 0。找到一个根时返回根、根 index 和 mode。
+## 6. `external install`
 
-`mode` 当前通过 PATH 字符串是否包含 `/.doctidex/mounts/` 判断：
-
-- `host_read`：没有该片段；
-- `mount_read`：含该片段。
-
-该判断不检查 mount 声明，且 namespace 目录本身没有结尾 `/` 时仍是 `host_read`。
-
-副作用：无文件写入，无网络访问。
-
-## 6. `init`
-
-```bash
-doctidex-git init [PATH] [--dry-run | --apply] [--json]
-```
-
-用途：在 Git working tree 内创建或接管一个 doctidex 根。
-
-根选择：如果 requested PATH 向上只发现一个已有 doctidex 根，使用该根；没有时以
-requested 目录为新根；发现多个时 blocked。目标必须处于 Git 工作目录。
-
-计划内容：
-
-- 新建或修正根 `index.md` 的 `type: index`、`doctidex.type: index`、
-  `doctidex.root: true`；
-- 确保 `excludes` 是列表并包含 `.doctidex/mounts`；
-- 仅当 `<root>/.git` 存在时再加入 `.git` exclude；
-- 确保根 `.gitignore` 有精确行 `/.doctidex/mounts/`；
-- 把根当前直接子项列为语义候选，跳过 `index.md`、`.git`、`.doctidex`。
-
-注意：existing `doctidex.excludes` 不是列表时，当前行为会替换为新列表，而不是保留
-原非法值。apply 会写整个 frontmatter 和 `.gitignore`；不会生成 index 正文、commit
-或访问网络。
-
-## 7. `inspect`
-
-```bash
-doctidex-git inspect [PATH] [--json]
-```
-
-用途：解释一个文件系统路径相对于宿主 doctidex 根的范围和导航信息。
-
-若 cwd 已经唯一选中一个 doctidex 根且 PATH 位于该根下，命令保留这个根作为宿主
-上下文。这使宿主 cwd 下对 mount 文件的 inspect 同时返回宿主 `path_context` 和源
-`source_context`。PATH 位于当前根之外，或 cwd 不在根中时，改由 PATH 选择根。嵌套
-根仍可能要求把 cwd 或 PATH 明确到精确根。
-
-始终返回 `path_context`。本地 included 路径有负责 index 时，还返回该 index 的
-CommonMark `links`。mount 路径额外返回对应 mount 状态；若 mount 已可读，再从 source
-root 角度返回 `source_context`。
-
-`semantic_candidates` 只保留 `index` 字段恰好等于当前 `responsible_index` 的候选。
-excluded/mount 路径没有负责 index，因此通常为空。
-
-副作用：无写入、无网络。它会遍历并校验宿主目录树来生成候选，目录很大时成本可能
-高于单纯路径判断。
-
-## 8. `resolve`
-
-```bash
-doctidex-git resolve INTERNAL_PATH [--from LINK_DOCUMENT] [--json]
-```
-
-用途：规范化 `/` 开头的 doctidex 内部路径，并给出原生文件工具可使用的
-`working_path`。
-
-不传 `--from` 时，cwd 选择的根同时是命令 root 和 link root。`--from` 接受包含该
-link 的现有可读文件系统文件；相对值相对于 cwd。它不接受目录、不读取目标文件，也
-不验证 INTERNAL_PATH 是否真的出现在该文档中。该参数只提供 link 来源上下文：
-
-- LINK_DOCUMENT 是宿主本地文档时，普通 `/...` 以宿主根解析；
-- LINK_DOCUMENT 位于已准备 mount 时，普通 `/...` 以该挂载源根解析，working path
-  仍通过宿主可访问 mount path 表达；
-- 同一挂载文档中的 `/.doctidex/mounts/...` 按不可嵌套规则回到原宿主 namespace；
-- 普通嵌套 doctidex 根不能仅凭文件位置静默选择；cwd 未精确选择时返回
-  `root_ambiguous`。
-
-INTERNAL_PATH 只接受 link 的路径部分，不包含 anchor。调用方已经知道普通同根 link
-的 link root 时，可以直接按规则推导文件系统路径，无需为每个 link 调用 resolve。
-
-返回输入、可选 link document、规范化路径、命令 root、实际 link root 及其种类、
-文件系统路径、是否跨 mount 和完整 mount 状态。涉及 mount 时还返回
-`root_relation` 与 `maintenance_reuse`：前者只在可可靠确认时标明当前根自引用及 commit
-是否相同；后者说明后续写入是否可复用 host 或已开放 maintenance scope。两者都不改变
-`working_path`，自引用读取仍位于 `/.doctidex/mounts/...`。mount 未准备时命令本身仍
-`status: ok`，通过 `result` 和 mount 的 `next_action` 提示 prepare；resolve 不自动
-恢复 mount。
-
-副作用：无写入、无网络。
-
-## 9. `mount list`
-
-```bash
-doctidex-git mount list [--json]
-```
-
-用途：列出根 index 中所有 `type: git` 声明及其本地有效状态。
-
-每项包含 mount path、清理后的 source URL、声明 selector、有效 commit、state、
-readable 和下一步。list 不访问远端；`ready` 只表示已有有效 commit 且逻辑路径当前
-存在，不表示 branch/tag 与远端最新值相同。
-
-副作用：无写入、无网络。
-
-## 10. `mount add`
-
-```bash
-doctidex-git mount add --url URL \
-  (--commit SHA | --tag TAG | --branch BRANCH) \
-  --mount-path /.doctidex/mounts/NAME \
+```text
+doctidex-git external install --url URL [--root ROOT]
+  [--commit COMMIT | --tag TAG | --branch BRANCH]
+  [--dependency-of INSTALL_ID]
   [--dry-run | --apply] [--json]
 ```
 
-用途：在根 index 声明完整 Git doctidex source。
+- URL 必须是完整 repository locator；允许凭据只作为调用期输入，禁止写入 mapping 或输出。
+- dry-run 可以访问 network，并只能使用可丢弃的调用期 Git 数据；持久 objects、恢复清单、
+  root index、`.gitignore` 和 install path 均不改变。
+- 每个 selected root/canonical source identity/normalized selector 只有一个 install。工具
+  分配稳定不透明 `install_id`，并由它确定 `/.doctidex` 下的稳定 `install_path`；调用方不
+  提供 target。同 source 不同 selector 即使解析到同 commit 也不共用路径。
+- apply 持久取得 fixed commit，维护内部受管命名空间的边界/unsafe 结构、精确宿主
+  `.gitignore` 规则和不被忽略的恢复清单，再发布逻辑只读 install。它不生成 prose 或
+  Markdown link，也不执行 Git stage/commit/`rm --cached`。
+- result 分别报告 `.gitignore` 和恢复清单的 `absent|tracked|modified|untracked` 状态；
+  `absent` 只用于 dry-run 中尚不存在的 planned path。
+- 安装载荷必须未被宿主 Git 追踪；恢复清单必须可追踪。宿主 repository 无法唯一确定、
+  载荷已有 tracked entry 或有效 ignore 规则破坏该边界时 blocked，不自动改写无关规则。
+- 同 install key 重试只幂等核对并复用记录 commit，不重新解析 branch/tag；新 selector
+  创建新 install。命令不提供 replace。
+- 省略 `--dependency-of` 创建或提升为 `direct` 并写恢复清单。提供该参数时，ID 必须属于
+  selected root 的完整 install；结果建立/复用 `dependency`，只更新运行期 parent edge，
+  不写恢复清单。direct 不降级，dependency-only 可由后续普通调用原地提升。
+- dependency 始终与 parent 并列位于 selected root 的 `/.doctidex`；CLI 不读取依赖文档、
+  不自动递归。命中既有 install key 即停止，因此 self/cycle 有界。
+- source 指回 host repository 时也返回独立 fixed-commit install，不返回当前 working tree。
+  source/commit 可可靠匹配且 objects 已存在时可以离线复用宿主 Git objects。
 
-前置条件：mount path 规范化且不重叠；URL 合法；根 `.gitignore` 直接覆盖 namespace；
-namespace 下没有 tracked 内容。apply 只修改根 index，返回 `mount_state: not_prepared`。
+## 7. `external link`
 
-副作用：dry-run 无写入；apply 写根 `index.md`。两者都不访问网络、不解析 selector、
-不创建可读路径。
-
-## 11. `mount remove`
-
-```bash
-doctidex-git mount remove MOUNT_PATH [--dry-run | --apply] [--json]
+```text
+doctidex-git external link SOURCE_DIRECTORY TARGET_PATH [--root ROOT]
+  [--dry-run | --apply] [--json]
 ```
 
-用途：删除一个精确 Git mount 声明。
+- 全程离线，不 fetch、不重解析 revision、不写 source Git objects。
+- SOURCE_DIRECTORY 可位于 direct install 或另一个 link 内；以最内层完整 mapping 为准。
+- apply 创建指向稳定 install path 或其子目录的相对 symlink，并更新恢复清单；禁止绝对
+  symlink 和目录复制 fallback。平台不支持 symlink 或 target 被有效 Git ignore 时 blocked。
+- target 独立获得 boundary/unsafe frontmatter 与 link mapping，不继承 source 入口状态；
+  只有 SOURCE_DIRECTORY 本身可作为完整 doctidex 根通过 validation 时才标为 safe，否则
+  按 unsafe 接入。
+- 同 target/同 mapping 幂等；不同 mapping 或任何占用/overlap blocked。
+- 没有 replace。工具不删除或移动旧 link，也不 stage/commit symlink 或相关文档。
+- dependency-only source 返回 `dependency_not_recoverable`；调用方以相同 source/selector 运行
+  普通 install 提升为 direct 后重试。
 
-命令先扫描宿主 Markdown 中可解析的 link。仍有引用时返回
-`mount_still_referenced`。dry-run 只说明是否可移除；apply 修改根 index，并移除该声明
-当前受管理的可读路径和有效选择记录。
+## 8. `external restore`
 
-副作用：不访问网络。apply 不承诺回收可被其他 mount 复用的本地 Git 数据。
-
-## 12. `mount prepare`
-
-```bash
-doctidex-git mount prepare [MOUNT_PATH] [--json]
+```text
+doctidex-git external restore [--root ROOT] [--install INSTALL_ID]...
+  [--limit N] [--cursor TOKEN]
+  [--dry-run | --apply] [--json]
 ```
 
-用途：把 lazy mount 恢复为原生文件工具可读路径。
+- 读取可版本化恢复清单中的 portable facts，只按记录的 source、exact resolved commit 和
+  stable install path 恢复；不发现 default branch、不解析移动 ref。
+- 省略 `--install` 时分页处理全部记录；指定时按稳定 install ID 排序、去重和过滤。未知
+  ID 返回 item-level blocked，不把它当作空匹配。
+- dry-run 可检查本地对象并按需访问记录的 source，但不写入。apply 在对象不足时可以联网
+  获取 exact commit，并把缺失 install 重建到原路径。
+- 每项返回 `planned|restored|unchanged|blocked`；`planned` 只用于 dry-run 中可重建的缺失项。
+  单项失败不撤销其他项。路径被未受管内容占用、清单损坏或 Git 排除边界不成立时保留
+  现场并给出恢复动作。
+- 从 manifest 重建必要的内部 install/link mapping，但不重写、重建或 stage 已有 external
+  link symlink。恢复成功后 symlink 因固定目标路径重新可用。
+- cursor 绑定 root、恢复清单 identity、规范化 install filter、limit 和 dry-run/apply mode；
+  清单变化令 cursor invalid，恢复载荷本身不令 cursor 失效。
 
-指定路径时只处理该 mount；省略时处理所有 Git mounts。只有一个目标时直接返回单项
-schema；零个或多个目标时返回 batch schema。
+## 9. `external link-parse`
 
-已有 effective commit 且所需 Git 数据在本地时可完全离线。首次准备或本地数据不足时
-可能访问 source。成功会建立宿主 mount 的可读路径并保存有效选择，但不修改 tracked
-文件、根 index 或 Git index。
-
-## 13. `mount sync`
-
-```bash
-doctidex-git mount sync [MOUNT_PATH] [--dry-run | --apply] [--json]
+```text
+doctidex-git external link-parse PATH [--root ROOT] [--json]
 ```
 
-用途：显式检查 selector 当前解析到的 commit，并可切换有效读取结果。
+- 离线、只读、单结果、无 pagination 或 dry-run/apply。
+- PATH 可以是可读目录或 symlink 本身；broken symlink 按路径自身的文件系统事实识别，
+  不要求 target 存在。命令不接受其他任意不存在路径，也不沿 broken symlink 猜测后续
+  suffix。
+- PATH 位于当前 owner root 的 install/link 时，解析最内层 current-owner mapping。PATH
+  位于受管 install 的 doctidex content root 中且自身是 external symlink 时，还读取该
+  content root 随 Git 版本化的 portable manifest/link mapping。
+- 外层受管 presentation 的 owner root 始终是结果 `root` 和依赖安装位置；安装内容自身的
+  doctidex root 单独返回为 `content_root`，不能成为递归 install/restore 位置。
+- 显式 `--root` 必须选择该 owner root；把 install 内 `content_root` 作为 `--root` 返回
+  `root_mismatch` 和 owner root candidate，不在只读嵌套根建立新的受管 namespace。
+- portable mapping 完整但 target 尚未在 owner root 安装时，返回正常
+  `target_state: dependency_not_installed`、固定 source/selector/commit 和
+  `dependency_parent_install_id`。这不是 mapping damage；agent 可以把这些字段交给可选的
+  Maintenance 工作流。若决定安装，必须以 `source_url`、`--commit resolved_commit` 和
+  `--dependency-of dependency_parent_install_id` 建立 exact dependency；原 branch/tag 只作
+  provenance，不能在此重新解析。
+- owner root 已有由当前 parent edge 指向、且 source 与 exact resolved commit 匹配的 dependency
+  install 时，命令把 portable link 的 repository-relative base 映射到该 install，并返回外层
+  可读 `working_path`。该 dependency install 使用 commit selector；portable branch/tag 仍只
+  是原快照的 provenance。安装仓库内的原 symlink 保持不变，即使其物理 target 仍不存在。
+- current-owner durable link 的 install path 缺失时返回 `owner_install_missing`，引导调用
+  `external restore`；它与 installed-repository dependency 未展开是不同状态。
+- 没有 current-owner 或 portable mapping 时返回 unmanaged ok。已识别 mapping 的 source、
+  manifest/link 对应关系或 repository-relative path 损坏时保持 managed，并返回
+  warning/blocked 与仍可证明字段。
+- 不判断协议符合性、内容信任、写入授权或 remote 更新。
 
-不指定路径时顺序处理所有 Git mounts。branch/tag 通常 fetch；commit 在已有 effective
-commit 时不重新解析。dry-run 返回 old/new commit 和布尔 `changed`，但不切换当前
-可读快照。apply 在 commit 不同时切换该 mount；其他指向旧 commit 的 mount 不变。
+## 10. `worktree open`
 
-注意：该命令的 `changed` 是“commit 是否不同”的布尔值，不是其他命令常用的路径
-数组。单 mount 结果与 batch 结果 shape 也不同。
-
-## 14. `maintenance scope`
-
-```bash
-doctidex-git maintenance scope [PATH ...] [--json]
+```text
+doctidex-git worktree open SOURCE [--root ROOT]
+  (--commit COMMIT | --tag TAG | --branch BRANCH) [--json]
 ```
 
-用途：观察本次输入路径所属的宿主根和挂载源，并给出同 revision scope 复用事实。
+SOURCE 分类顺序：
 
-没有 PATH 时使用宿主根。每个 mount 和宿主根各只返回一次。mounted source 返回
-只读路径、declared revision、base commit、`target_branch`、`root_relation` 与
-`maintenance_reuse`；host root 返回直接可写路径、当前 HEAD、当前 branch 提示和指向
-自身的复用建议。同一 `source`、相同 `base_commit` 的 items 是合并候选，最终是否兼容
-仍由 agent 根据写入权限和交付目标决定。
+1. 现有路径位于受管 presentation：`managed_path`；
+2. 现有目录是 Git working tree 或 bare gitdir：对应 kind；
+3. 现有文件是有效 gitdir pointer：`gitfile`；
+4. 其他字符串是有效 Git URL：`url`；
+5. 否则 `source_invalid`。
 
-一个 item 只表示该次调用观察到的对象，不表示它尚未或已经分配到写入范围。
-scope 不记录 agent 的计划；当新路径进入任务、已有 maintenance root 变化或需要复核边界时，
-可以再次运行它。每次结果都是当时的客观事实，由 agent 自己制定或调整最终写入范围。
+如果任务维护 selected root 的当前宿主 working tree，且基准 selector 等于当前 commit，
+agent 可以直接使用当前路径；open 不是前置要求。需要隔离时仍可显式调用。
 
-`maintenance_reuse.status: recommended` 时，`write_action` 为 null，直接使用返回的
-`write_path`；`selection_required` 时先运行 status 选择已有维护根；`not_available` 时
-`write_action` 才是 open 命令。自引用 source 与当前 HEAD 相同时优先复用 host root。
-比较 scope item 的 `target_branch` 与 `maintenance_reuse.target_branch`：两者都已知且
-不同时 CLI 不会推荐该根；任一侧为 null 时仍需结合用户交付意图判断。选择已有根时以
-scope item 的 `source/base_commit` 对齐 status item，并比较 status item 的
-`target_branch`；无法唯一决定时请求用户选择。`delivery_target_conflict` 默认要求保持
-独立；用户明确选择共同集成结果时，自引用可重新 scope `.` 取得 host write path，开放根
-可运行 status 并按 source/base commit 查找，再选择有授权且符合共同交付意图的根。将具体 mounted
-文件映射到写入根时，从目标路径移除 `read_only_path` 前缀并把其 source-relative suffix
-接到所选写入根，不能从前缀下表达的目标不得猜测映射。选定写入根后，该根就是
-本次执行边界；通过其 mount 发现的其他源目标必须重新进入 scope 决策。
+open 解析显式 selector，在 selected root 的 `/.doctidex` 下创建一个新 detached managed
+worktree。managed path 保留请求目录相对 repository 的 suffix；其他 source suffix 为 `.`。
+即使 SOURCE 位于 install 或 worktree，结果也与它们扁平并列，不递归创建。payload 被宿主
+Git ignore，但不进入 external 恢复清单。URL 在 objects 不足时可联网；其他 kind 离线。
+open 没有 dry-run/apply，不 checkout 用户 branch、不 commit/push/merge。
+相同 source/base commit 的候选不会阻止创建，只令成功 result 为 warning。
 
-副作用：无写入、无网络。输入 PATH 不改变 cwd 所选择的宿主根。
+## 11. `worktree list`
 
-## 15. `maintenance open`
-
-```bash
-doctidex-git maintenance open MOUNT_PATH [--json]
+```text
+doctidex-git worktree list [--root ROOT]
+  [--source SOURCE | --worktree WORKTREE]
+  [--limit N] [--cursor TOKEN] [--json]
 ```
 
-用途：从 mount 有效 commit 创建独立可写维护根。
+离线、只读。显式 `--root` 或 cwd 选择 owner root；两个 filter 互斥，无 filter 列出该 root
+第一页。`--source` 使用 open 的同一分类和
+canonical identity，`--worktree` 要求 exact managed path。无匹配返回空 ok collection。
+列表只给 clean/changed/unavailable 概要；具体 diff 使用原生 Git。
 
-mount 尚无 effective commit 时返回 `maintenance_source_not_prepared` 和 prepare 命令。
-成功返回 `maintenance_root`、base commit、可写边界、目标 branch 提示、
-`root_relation` 和调用前的 `maintenance_reuse`。open 是显式隔离动作：即使调用前已有
-兼容 scope，它仍创建新根，但返回 `status: warning` 和先合并 scope 的提示；调用者应
-确认隔离是有意的，并关闭未使用的 clean 现场。
+## 12. `worktree close`
 
-副作用：创建并登记 maintenance root；不访问远端，不切换调用者 cwd，不改变宿主
-mount。
-
-## 16. `maintenance status`
-
-```bash
-doctidex-git maintenance status [MAINTENANCE_ROOT] [--json]
+```text
+doctidex-git worktree close WORKTREE [--json]
 ```
 
-用途：列出当前开放的 maintenance contexts 及 Git changes。
+close 是显式 destructive lifecycle action，但只允许移除可证明归属且 Git-clean 的受管
+worktree。changed、unavailable、路径不 exact、归属不明或 Git 检查失败均 blocked 并保留。
+它不回收 shared objects、不影响 presentation，也不处理手工 worktree。
 
-不传路径时列出全部；传入时按绝对路径过滤。没有匹配也返回 ok/空 items，而不是
-blocked。每项 state 为 `ready` 或 `has_changes`。显式路径会查找登记该路径的宿主，
-因此不要求 cwd 留在最初宿主；省略路径时仍从 cwd 选择宿主。
+## 13. `cache clean`
 
-副作用：无写入、无网络。
-
-## 17. `maintenance handoff`
-
-```bash
-doctidex-git maintenance handoff [MAINTENANCE_ROOT] [--json]
+```text
+doctidex-git cache clean --url URL [--dry-run | --apply] [--json]
 ```
 
-用途：为一个维护根产生交付前事实。
+- URL 必填，采用 `external install` 相同的 repository locator、credential sanitization 与
+  canonical source identity 规则；结果只公开 sanitized URL 和 opaque cache source ID。
+- 命令不接受 `--root`、scope、filter、limit 或 cursor。它是单结果操作，顶层 `root` 和
+  `collection` 固定为 null；cwd 不影响结果。
+- 命令离线、默认 dry-run。dry-run 与 apply 都在该 canonical source 的 mutation boundary
+  内读取 Git worktree metadata；apply 在删除前重新分类，不能依赖先前 dry-run 的计数。
+- 任一 Git-valid linked worktree 都保留整个 bare source cache，不考虑 clean/dirty、
+  doctidex ownership 或 runtime record，并返回完成的 warning。只有 valid count 为零且其余
+  linked registrations 全部由 Git 判为 prunable 时，dry-run 才报告 planned，apply 才删除
+  该 bare cache。
+- missing/damaged metadata、无法分类的 registration 或复查冲突一律不删除。source cache
+  已不存在时返回 `cache_source_not_found` blocked；因此删除后的重复调用保持无变化，但不
+  伪装为新一次成功删除。
+- 删除范围只有所选 bare source cache。命令不删除或修改 linked worktree filesystem path、
+  install/worktree payload、恢复清单、runtime record、其他 source cache，也不由 close、
+  restore 或其他 operation 隐式触发。
+- 内部 cache path 不进入 human/JSON 输出；即使 apply 成功，公共 `changed` 也为空。后续
+  install/restore/worktree open 如缺 objects，仍按各自网络契约重新取得。
 
-省略路径只在当前恰好登记一个 maintenance context 时成立；否则
-`maintenance_root_ambiguous`。命令返回 Git changes、协议结构、语义候选、插件就绪
-状态和用户 Git 动作提示。显式传入 open 返回的精确路径时，可从任意 cwd 找到其宿主。
+## 14. 读写与网络矩阵
 
-副作用：无写入、无网络；不会 commit/push/merge。
-
-## 18. `maintenance close`
-
-```bash
-doctidex-git maintenance close [MAINTENANCE_ROOT] [--json]
-```
-
-用途：移除一个已经 clean 的 maintenance root。
-
-有任何 porcelain change 时返回 `maintenance_has_changes`，保留路径并要求先 handoff
-和决定 Git 动作。clean 时关闭并移除该维护现场。显式维护根与 handoff 使用
-相同的跨 cwd 选择规则；省略时使用当前宿主且必须恰好选中一个登记。
-
-副作用：只关闭已登记且 Git 状态 clean 的 maintenance context；无网络。
-
-## 19. `check`
-
-```bash
-doctidex-git check [PATH] [--online] [--json]
-```
-
-用途：把协议结构、语义候选和插件就绪状态分开检查。
-
-默认离线。`--online` 对每个 Git mount 使用 refresh 解析 selector，返回当前 effective
-commit、remote commit 和 update_available。online check 不切换可读快照或
-effective commit，但会访问 source 并刷新本地 Git 信息。
-
-check 还读取宿主 Git changes，为非 `index.md`/`log.md` change 添加
-`git_change_review` 候选。任何语义候选、协议 fail 或插件 blocked 都令顶层 status 为
-`warning`；只有 `protocol_structure: fail` 令进程退出码为 1。插件 blocked 本身当前
-仍退出 0。
-
-## 20. `changes`
-
-```bash
-doctidex-git changes [PATH] [--json]
-```
-
-用途：返回 `git status --porcelain=v1 -z` 的结构化列表。
-
-每项有两字符 `status` 和 `path`；rename/copy 另有 `original_path`。第一个状态字符表示
-index/staged 状态，第二个表示 worktree 状态；`??` 表示 untracked。CLI 不加入 diff
-内容，也不判断变更是否合理。
-
-副作用：无写入、无网络。
-
-## 21. 参数与异常边界
-
-未知命令、缺少必需参数、互斥 selector 冲突等命令行语法错误通常退出 2 并写
-stderr，不保证 `--json`。命令开始执行后的预期问题使用统一 blocked schema。执行期间
-Ctrl-C 返回 `interrupted` 和退出 130；未预期异常返回 `unexpected_failure`、
-诊断 ID 和退出 2。
+| 命令 | 根/公开文件 | 持久 Git/state | Network |
+|---|---|---|---|
+| validate | 只读 | 无 | 从不使用 |
+| install dry-run | 无 | 无；只允许可丢弃的调用期状态 | 可能使用 |
+| install apply | 写入 index、`.gitignore`、恢复清单、install path | objects + install record | 可能使用 |
+| link dry-run | 无 | 无 | 从不使用 |
+| link apply | 写入 index、symlink、恢复清单 | link mapping | 从不使用 |
+| restore dry-run | 无 | 只读清单；只允许可丢弃的调用期状态 | 可能使用 |
+| restore apply | 重建 install path | objects + install state | 对象不足时可能使用 |
+| link-parse | 只读 | 只读 | 从不使用 |
+| worktree open | 新建受管 worktree | objects + record | URL source 可能使用 |
+| worktree list | 无 | 只读 | 从不使用 |
+| worktree close | 移除 clean 受管 worktree | 移除 record | 从不使用 |
+| cache clean dry-run | 无 | 只读单个 bare source cache 的 Git metadata | 从不使用 |
+| cache clean apply | 无 root-owned 变化 | 仅删除满足条件的单个 bare source cache | 从不使用 |

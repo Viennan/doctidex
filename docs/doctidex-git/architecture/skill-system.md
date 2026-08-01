@@ -1,89 +1,142 @@
-# Skill 系统设计
+# 已发布 Skill 系统
 
-Skill 是 `doctidex-git` 面向 agent 的公开使用层。它们为已安装产品编写，目标是让
-agent 不读源码、不读 implementation docs、也不靠命令试错即可完成工作。
+本篇只设计三个 Published Skills 的职责、阅读链、命令说明充分性和用户/内部信息边界。
+产品工作流以 [用户工作流](workflows.md)为准，精确 public command contract 由
+[CLI](interfaces/cli.md) 和 [JSON Schema](interfaces/cli-schema.md) 负责；Skill 应完整转述 agent
+完成任务所需的信息，但不能成为另一份 Architecture 权威。
 
-## 1. 分层
+## 1. 三 Skill 结构
 
-| Skill | 职责 | 典型结果 |
-|---|---|---|
-| Guide | 共享心智模型、术语、CLI 语法、结果、网络和安全基线；路由专项工作流 | agent 能选择正确的下一 Skill。 |
-| Setup | 创建、接管或修正一个 Git 管理的根 | 最小结构、候选语义工作和验证。 |
-| Read | 渐进导航、link/path 辅助和 lazy mount 恢复 | 原生工具可读路径和来源上下文。 |
-| Mount | 声明、列出、准备、移除和显式同步 Git mounts | 声明与 effective commit 状态。 |
-| Maintain | 在一个明确根中维护内容、index 和 log | 单根 diff、语义决定和验证。 |
-| Workspace | 复用同 revision scope、按需打开 mounted source 维护根并协调多根任务 | 兼容 scope 分组、逐 scope 边界和 handoff。 |
-| Validate | 分离结构、语义候选和插件就绪检查 | 三个独立结果域。 |
-| Review | 只读审阅单根或多根结果 | findings、语义结论和用户 Git 动作。 |
+| Skill | 负责 | 不负责 | CLI |
+|---|---|---|---|
+| `doctidex-git-overview` | 共同心智模型、术语、根选择、输出/失败约定、安全边界和任务路由。 | 重复专项步骤或要求每次重读。 | 说明共享语法，不独占命令。 |
+| `doctidex-git-read` | index/link 渐进阅读、原生搜索、边界/unsafe/结构化注释，以及不可访问 symlink 的按需解析。 | 强制阅读顺序、替代文件工具、自动安装依赖或修改外部内容。 | 按需 `external link-parse`。 |
+| `doctidex-git-maintenance` | protocol/product 分层、validation、可选 external presentation 和 worktree 多根维护。 | 强制使用受管工作流、替用户写语义正文、判断权限或执行 Git 交付。 | `validate`、`external`、`worktree`。 |
 
-实际使用文本位于
-[`impls/agent-plugins/doctidex-git/skills/`](../../../impls/agent-plugins/doctidex-git/skills/)。
-Architecture 只定义分工和约束，不复制具体 Skill 的完整命令教程。
+旧 Setup、Mount、Workspace、Validate、Review 和 Maintain 的仍有效用户信息分别并入这
+三个 Skill；mount/filter/projection 和旧 maintenance scope planning 的专属内容删除，
+不作为兼容教程保留。新的 validation `--scope` 只表示本次关注目录集合，不建立持久维护
+计划或写入边界。
+
+`doctidex-git cache clean` 是面向 human/program operator 的已安装 CLI 管理接口，当前明确
+排除在三个 Published Skills 之外。Overview 不把它列为共享命令或路由目标，Read 与
+Maintenance 不提及、推荐或调用它；Skill 也不因 close、restore 或 objects 缺失暗示隐式
+cleanup。
 
 ## 2. 阅读链
 
 ```text
-Guide (条件性读取一次)
-  -> 一个任务专项 Skill
-      -> 仅在工作流跨界时路由另一个专项 Skill
+选择专项 Skill
+  -> 尚未加载 Overview？只加载一次
+  -> 返回已选择的专项 Skill
+  -> 仅在任务确实跨越工作流边界时路由到另一个专项 Skill
 ```
 
-阅读链必须显式、无环。共享内容只在 Guide 定义；专项 Skill 定义自己新增的术语和
-工作流。Guide 与一个相关专项 Skill 应足以完成单一支持场景。
+Overview 只向专项 Skill 路由，不反向要求重读；专项之间不能互相形成强制循环。已加载的
+Overview 在同一任务中不重复打开。Overview 加一个相关专项 Skill 必须足以完成单一受支持
+场景。
 
-## 3. 用户信息充分性
+## 3. 已安装产品措辞
 
-专项 Skill 引入一条命令时，必须说明：
+Published Skills 面向已安装产品，不能要求 agent 阅读本仓库源码、Architecture、Details、
+tests、repository-local path 或开发命令。当前三个 Skills 只引用 `1.0.0` 安装后可用的命令
+和用户路径；未来也不得先于对应命令实现发布目标 Skill 文本。
 
-- 精确调用形式和占位符类型；
-- 必填、可选、互斥和重复参数；
-- 省略值、cwd 和根选择行为；
-- 读写、联网、dry-run/apply 和 batch 影响；
-- agent 决策所需的输出字段和 collection 行为；
-- 常见 blocked code、可执行恢复和必须升级给用户的情况。
+## 4. 命令充分性
 
-Skill 不能要求 agent 通过 `--help` 试错、阅读 Python 代码或查看内部 state 才理解这些
-信息。可以链接 Guide 避免重复，但不能省略本工作流特有的约束。
+每个被 Published Skill 引入的命令都必须写明：
 
-## 4. 用户信息边界
+- 精确 invocation、参数类型、必填/可选/互斥关系；
+- 省略行为、cwd/ROOT 选择和嵌套根歧义；
+- read/write/network、dry-run/apply 与生命周期效果；
+- selector、default branch provenance 与固定 commit 的区别；
+- install 无 target、稳定 `/.doctidex` 路径、payload Git ignore、可版本化 manifest、可追踪
+  relative symlink，以及 restore 不改 link 的区别；
+- install key 由 root/source/selector 组成；不同 selector 不共用目录；`--dependency-of`
+  表示从哪个 install 发现依赖，dependency 扁平、不递归、不进 manifest，环命中既有 key
+  即停止，建立 durable link 前需提升为 direct；
+- worktree open 对所有 source 选择 owner root，并把现场扁平放在其 `/.doctidex`；list 以
+  root 为范围，close 只处理 exact managed path；
+- agent 决策所需字段、默认 limit、cursor 和过滤方式；
+- validate 的可重复根绝对 `--scope`、省略时全根、规范化/去重规则、必要支持闭包，以及
+  scoped pass 不能作为全根符合结论；
+- restore 的 filter、bounded collection、dry-run/apply、exact commit 与 cursor identity；
+- link-parse 的 PATH 输入、owner/content root 区别、current-owner/installed-repository mapping、
+  target state，以及 broken symlink 不需要 target 存在；
+- 常见 blocked code、保留结果、恢复动作和需要用户输入的边界。
 
-Skill 可以说明逻辑 root、mount、revision、effective commit、working path、maintenance
-root、root relation、maintenance reuse、状态和动作。不得说明 source key、缓存布局、
-worktree 管理命令、锁、projection 或仓库比较算法。实现技术变化不应迫使 Skill 用户
-改变心智模型。
+Overview 与专项 Skill 合起来不得要求 agent 通过 `--help`、错误试探或实现文档补全语法。
+该充分性要求覆盖 Skills 实际暴露的命令；已安装 CLI 可以另有未被 Skills 路由、但仍由
+Architecture 和 CLI/JSON schema 稳定定义的 human/program 管理命令。当前唯一这种命令是
+`cache clean`。
 
-“维护根路径”是用户完成工作所需的信息，因此可以公开；“它在内部如何创建和登记”
-不属于 Skill。
+## 5. Read 的不可访问 Symlink 引导
 
-## 5. 原生工具自由
+Read Skill 保持原生工具优先，但必须为无法访问的 symlink 提供确定的升级路径：
 
-Skill 不提供仅仅包装成熟 `read/tree/find/git diff` 能力的工具，也不要求所有浏览经过
-CLI。CLI 可以提供 doctidex 特有的 root、scope、link、mount、revision、validation 和
-bounded collection 事实；agent 再用自身工具读写现场。
+1. 在任一按 doctidex 规范阅读的主仓库或 install 内容中，原生读取遇到 symlink target 不存在
+   或无法进入时，对 symlink 自身运行：
 
-Read Skill 尤其是导航建议而非访问网关。普通同根路径可以直接推导，`resolve` 只在
-link root、mount namespace 或 lazy 状态需要消歧时使用。
+   ```text
+   doctidex-git external link-parse PATH --json
+   ```
 
-## 6. 客观 CLI 与主观 Agent
+2. 先读取 `mapping_origin`、`target_state`、`root` 和 `content_root`：
+   - `available`：使用 `working_path` 继续原生读取；
+   - `owner_install_missing`：路由到 Maintenance Skill，按返回 install ID 执行 restore；
+   - `dependency_not_installed`：说明这是 install 仓库 portable link 的合法未展开状态，展示
+     source、selector、fixed commit 和 `dependency_parent_install_id`，由 agent 决定是否
+     路由到 Maintenance；若安装，使用 `--commit resolved_commit`，不得重新解析作为
+     provenance 返回的 branch/tag；
+   - `not_applicable`：回到普通文件系统/Git 诊断，不把未受管状态当作产品失败；
+   - `unavailable`：按 finding 修复真实 manifest/mapping damage。
+3. Read Skill 不自动调用 install/restore，不改写 broken symlink，也不要求在只读 install
+   内递归创建依赖。依赖安装完成后重新 link-parse，并从外层 `working_path` 继续读取。
 
-CLI 必须确定性且不调用 AI。agent 负责：
+该引导是访问失败时的按需辅助，不把每个 symlink 或普通目录都变成 CLI 前置检查，也不把
+产品 target state 当作 protocol validation 结论。
 
-- 决定任务相关内容和维护顺序；
-- 撰写 index 描述、目录摘要和 log 记录；
-- 判断 semantic candidate 是否构成真实缺口；
-- 审阅内容质量、Git diff 和交付影响。
+## 6. 维护决策顺序
 
-CLI 可以解析、校验、格式化调用方已提供的内容或报告候选，但不能替 agent 生成这些
-语义结论。
+Maintenance Skill 先帮助 agent 选择工作方式，再介绍命令：
 
-## 7. 输出与失败
+1. 任务维护当前宿主 working tree 且 selector 等于当前 commit 时，优先直接使用当前路径和
+   原生 Git；不要求 open。
+2. 现有 changes 需要隔离、目标是其他 source/revision 或用户要求独立现场时，可以选择
+   doctidex-git worktree，也可以选择手工/原生 Git 方案。
+3. 在 install 内容中发现进一步依赖且决定继续使用 doctidex-git 时，使用当前 install ID
+   作为 `--dependency-of`；不要在只读 install 内运行嵌套 checkout。
+4. 只需临时阅读 dependency 时保留 dependency-only；需要提交 external link 或恢复时，
+   以相同 source/selector 普通 install 将其提升为 direct。
 
-Skill 应默认选择精确 PATH 或单个 mount，检查 `collection` 后再分页，不能习惯性把
-limit 提到最大。失败指引必须说明未完成操作、受影响对象、已保留结果、当前动作和
-是否需要用户输入；不可恢复错误应直接向用户反馈，而不是暴露内部诊断过程。
+“优先”表达默认建议，不是禁止隔离；“受管”表达产品承诺，不是协议符合性或工具排他性。
 
-## 8. 发布校验
+## 7. 用户界面与内部信息
 
-每次 Skill 变化都应检查 frontmatter、agent metadata、阅读链、命令契约、内部术语
-泄漏和 containing plugin。实现文档可以用于维护者验证 Skill 准确性，但发布后的
-Skill 不能依赖实现文档存在。
+Skill 应暴露：direct/dependency 区别、parent install ID 输入、selector 隔离、fixed commit、
+root-internal install/worktree path、manifest inclusion、symlink 可恢复性、read/write/network
+效果、mapping origin、owner/content root、target state 和下一步。Skill 不暴露：宿主
+`.git` 快速路径、object store 共享、install key 编码、portable mapping 查找算法、
+环检测数据结构、cache cleanup、record/lock/storage 布局。自依赖只需说明返回独立只读快照，不会折叠到
+当前可写 working tree；实际 objects 来源由 CLI 的 network 与 source relation facts 表达。
+
+## 8. 原生工具与客观性
+
+Skills 保留 agent 的原生文件、搜索、shell、编辑和 Git 工具自由。CLI helper 只增加
+doctidex/Git 交叉处无法可靠从普通工具直接得到的事实。CLI 确定性且不调用 AI；agent
+负责语义内容、任务相关性、unsafe 范围是否合适、diff 质量和交付决定。
+
+## 9. 输出与失败
+
+Skill 默认使用精确 ROOT、PATH、SOURCE 或 WORKTREE；validation 只在任务确实聚焦
+部分目录时使用 scope，并先读 coverage/scopes 与 collection 统计再分页，不得习惯性提高
+limit。失败步骤必须说明 operation、affected、preserved result、下一动作
+与 `requires_user`；credentials、network、revision、link target、manifest/Git tracking、
+dirty worktree 和 Git
+交付决定不能用无限重试代替用户输入。
+
+## 10. 发布验证
+
+每次 Skill 或 metadata 变化都验证 frontmatter、`agents/openai.yaml`、无环阅读链、命令
+契约、用户/内部信息边界、bounded output 和 containing plugin。复杂工作流需用只含公开
+artifacts 的独立 agent forward test，不能泄漏预期 finding 或修复。

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Doctidex Git Validate"
-  short_description: "Validate doctidex structure and plugin readiness"
-  default_prompt: "Use $doctidex-git-validate to check protocol structure, semantic candidates, and plugin readiness."

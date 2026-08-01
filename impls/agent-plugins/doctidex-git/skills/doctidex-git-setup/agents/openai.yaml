@@ -1,4 +1,0 @@
-interface:
-  display_name: "Doctidex Git Setup"
-  short_description: "Create or adopt doctidex roots in Git trees"
-  default_prompt: "Use $doctidex-git-setup to create or adopt a doctidex root in this Git working tree."

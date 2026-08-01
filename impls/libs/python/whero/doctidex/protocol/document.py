@@ -90,17 +90,6 @@ class DoctidexDocument:
         newline = "\r\n" if "\r\n" in raw[: match.end()] else "\n"
         return cls(path, parsed, raw[match.end() :], newline=newline)
 
-    @classmethod
-    def new_root(cls, path: Path) -> DoctidexDocument:
-        data = CommentedMap()
-        data["type"] = "index"
-        doctidex = CommentedMap()
-        doctidex["type"] = "index"
-        doctidex["root"] = True
-        doctidex["excludes"] = [CommentedMap({"path": ".doctidex/mounts"})]
-        data["doctidex"] = doctidex
-        return cls(path, data, "")
-
     @property
     def doctidex(self) -> CommentedMap | None:
         value = self.data.get("doctidex")

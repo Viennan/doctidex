@@ -4,30 +4,22 @@ doctidex:
   type: index
 ---
 
-# Python 参考实现导航
+# Python `1.0.0` 实现地图
 
-本目录面向维护 `whero-doctidex` Python 包的人和 agent。它提供稳定的代码阅读地图，
-但不把包内类和函数声明为公共兼容 API。
+本目录映射 `whero-doctidex` `1.0.0` 的当前代码，不承诺 Python import API 稳定性。程序稳定
+集成面是 [CLI JSON `schema_version: "1.0"`](../../architecture/interfaces/cli-schema.md)。
 
-| 主题 | 文档 | 主要代码范围 |
+| 页面 | 代码所有权 | 对应设计 |
 |---|---|---|
-| 包结构、依赖和模块关系 | [包与模块地图](package-and-module-map.md) | `whero.doctidex` 全包 |
-| Markdown、路径、目录树与校验 | [协议实现](protocol.md) | `protocol/` |
-| Git context、内部 state 和命令边界 | [Git context 与 state](git-context-and-state.md) | `git/context.py`、`git/state.py`、`git/runner.py` |
-| 根自引用与 scope 复用关系 | [Repository relation](repository-relations.md) | `git/relations.py` |
-| source、revision、mount 和可读呈现 | [Source 与 mount](sources-mounts-and-projection.md) | `git/repository.py`、`git/mounts.py`、`git/projection.py`、`git/setup.py` |
-| 独立维护根与多根结果 | [Maintenance](maintenance.md) | `git/maintenance.py` |
-| 参数分发、预算、结果和渲染 | [CLI 与 rendering](cli-and-rendering.md) | `cli/main.py`、`cli/render.py`、`errors.py` |
-| 完整生命周期与内部布局 | [Git runtime](git-runtime.md) | Git 运行时整体 |
-| 本地开发与测试 | [开发和测试](development-and-testing.md) | `pyproject.toml`、`tests/` |
-| 已知代码限制 | [当前限制](known-limitations.md) | 跨模块现状 |
+| [Package、结果与 CLI](package-results-and-cli.md) | packaging、错误/result、pagination、parser、dispatch、render、diagnostic | [CLI](../../architecture/interfaces/cli.md)、[程序集成](../../architecture/interfaces/programmatic-integration.md) |
+| [协议解析与校验](protocol-validation.md) | UTF-8/YAML/Markdown、root、最近负责制、link、可达性、scope | [领域模型：校验](../../architecture/domain-model.md#10-校验结果) |
+| [Git 来源与状态](git-source-and-storage.md) | Git subprocess、selector、bare objects、root storage、manifest、lock | [子系统与生命周期](../../architecture/subsystems-and-lifecycles.md) |
+| [External 工作流](external.md) | install/link/restore/link-parse 与 portable mapping | [External 生命周期](../../architecture/subsystems-and-lifecycles.md#3-外部安装生命周期) |
+| [Worktree、清理与测试](worktrees-cache-and-testing.md) | open/list/close、单来源清理、平台和测试证据 | [Worktree/清理生命周期](../../architecture/subsystems-and-lifecycles.md#7-受管-worktree-生命周期) |
+| [Architecture 追踪矩阵](traceability.md) | 设计页到 producer、consumer、Details 与测试的落实关系 | [Architecture 入口](../../architecture/index.md) |
 
-精确 CLI 语法和结果字段属于公共接口，分别见
-[CLI 用户接口](../../architecture/interfaces/cli.md) 和
-[CLI 结果契约](../../architecture/interfaces/cli-schema.md)。
+总体依赖是 `cli -> protocol/git -> errors/results`。`protocol` 不导入 Git；source provider 不
+依赖 doctidex root；renderer 不产生领域事实。旧 mount、projection、filter 与 maintenance
+scope 模块已经从 package 删除。
 
-## 模块文档约定
-
-每个模块说明：职责与非职责、上游调用者、依赖、主要类型或函数、全部数据属性、
-副作用和错误边界、典型使用方式、测试证据。示例用于说明模块协作方式，不代表新增
-稳定公共 API。
+实现依据为 [DX-REQ-0008.2](../../../requirements/0008-doctidex-git-v1-0-0-alignment/02-python-details-and-implementation.md)。

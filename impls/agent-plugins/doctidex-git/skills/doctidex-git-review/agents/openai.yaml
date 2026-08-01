@@ -1,4 +1,0 @@
-interface:
-  display_name: "Doctidex Git Review"
-  short_description: "Review Git changes across doctidex maintenance roots"
-  default_prompt: "Use $doctidex-git-review to review doctidex-aware Git changes before handoff."

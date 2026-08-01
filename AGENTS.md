@@ -95,6 +95,10 @@ and minimal format constraints.
 
 ## Implementation Documentation Design
 
+- Organize documents under `docs/` primarily in Chinese. Use English where it is the established
+  and more precise expression for technical terms, identifiers, schemas, commands, or content that
+  cannot be translated accurately; do not force awkward translations. This language rule does not
+  apply to `AGENTS.md`, Skill documents, or other repository files outside `docs/`.
 - Lead architecture documentation with the user surface. For every supported
   workflow, state the concrete problem and scenario, why the design exists, how
   a human, agent, or program uses the interface, what remains observable after
@@ -153,6 +157,14 @@ and minimal format constraints.
   the user then changes the requirement or solution, move it back to `draft`,
   incorporate the reviewed change, and implement again. Do not create false
   historical finality around normal pre-approval iteration.
+- When the user directly requests a change to a non-Requirement document that is an artifact of a
+  corresponding active Requirement (`draft` or `implemented`), update that Requirement record
+  before modifying the artifact. Record the feedback and resulting design intent, implementation
+  impact, and acceptance criteria; apply the normal lifecycle and large-Requirement aggregate rules,
+  then implement the document change. For a large Requirement, update the narrowest applicable
+  sub-requirement and synchronize its overview. Do not skip the Requirement history because the
+  request names an Architecture, Details, or other artifact directly, and do not create a new
+  Requirement solely from artifact feedback when no corresponding active record exists.
 - During `draft`, improve the record from the user's intent without adding
   unrequested features or requirements. Use `<question>...</question>` blocks
   only for decisions that genuinely need discussion. A user may answer in an

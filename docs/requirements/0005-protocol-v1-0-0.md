@@ -395,8 +395,9 @@ doctidex-git 对齐需求创建时，必须与本记录建立双向依赖或后�
 
 ## 9. Requirement 关系与落实结果
 
-当前尚未建立对其他 Requirement 的正式依赖、细化或取代关系。doctidex-git 对齐工作将
-作为后续 Requirement 单独创建，并在两份记录中补充可导航的双向关系。
+doctidex-git 对齐工作现由后续大型 Requirement
+[DX-REQ-0008](0008-doctidex-git-v1-0-0-alignment/overview.md) 承接；0008 依赖本记录发布的
+协议 `v1.0.0`，并负责补充延期范围的具体需求与方案。
 
 协议修订已实施。当前 Draft `v1.0.0` 权威正文见
 [`spec/overview.md`](/spec/overview.md)，其中：

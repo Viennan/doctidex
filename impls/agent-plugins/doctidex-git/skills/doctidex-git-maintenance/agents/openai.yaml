@@ -1,0 +1,4 @@
+interface:
+  display_name: "Doctidex Git Maintenance"
+  short_description: "Validate and maintain doctidex Git content"
+  default_prompt: "Use $doctidex-git-maintenance to validate or maintain doctidex Git content safely."

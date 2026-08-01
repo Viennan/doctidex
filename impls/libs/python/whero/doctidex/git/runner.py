@@ -51,7 +51,9 @@ def _git_error(result: GitResult, operation: str) -> DoctidexError:
             operation=operation,
             actions=["Obtain repository access.", "Retry the explicit operation after access is available."],
             requires_user="repository_access",
-            code="git_auth_required",
+            code="source_access_failed",
+            domain="external",
+            network=True,
         )
     if any(
         fragment in lowered
@@ -70,7 +72,9 @@ def _git_error(result: GitResult, operation: str) -> DoctidexError:
                 "Retry when network access is available.",
             ],
             requires_user="network_access",
-            code="git_network_unavailable",
+            code="source_access_failed",
+            domain="external",
+            network=True,
         )
     if any(
         fragment in lowered
@@ -81,11 +85,13 @@ def _git_error(result: GitResult, operation: str) -> DoctidexError:
             operation=operation,
             actions=["Confirm the commit, tag, or branch and retry."],
             requires_user="revision",
-            code="git_revision_unavailable",
+            code="revision_not_found",
+            domain="external",
         )
     return DoctidexError(
         "Git could not complete the requested source operation.",
         operation=operation,
         actions=["Inspect the repository state and retry the explicit operation."],
-        code="git_failed",
+        code="source_access_failed",
+        domain="external",
     )

@@ -1,7 +1,7 @@
 {
   "name": "doctidex-git",
-  "version": "0.1.0",
-  "description": "Create, navigate, mount, maintain, validate, and review doctidex directory trees in Git repositories.",
+  "version": "1.0.0",
+  "description": "Read, validate, and optionally manage external Git content and writable worktrees for doctidex directory trees.",
   "author": {
     "name": "whero"
   },
@@ -9,14 +9,14 @@
   "interface": {
     "displayName": "Doctidex Git",
     "shortDescription": "Work with doctidex directory trees in Git.",
-    "longDescription": "A general doctidex Git workflow with Codex discovery metadata and prompts. Files remain available to native agent tools.",
+    "longDescription": "Installed workflows for native-first reading, protocol validation, fixed-commit external presentations, and optional isolated maintenance worktrees.",
     "developerName": "whero",
     "category": "Productivity",
     "capabilities": ["Read", "Write"],
     "defaultPrompt": [
-      "Set up doctidex in this Git working tree.",
-      "Navigate this doctidex tree and restore only required mounts.",
-      "Review doctidex-aware Git changes before handoff."
+      "Navigate this doctidex tree and diagnose an inaccessible external link.",
+      "Validate selected doctidex directories without changing the tree.",
+      "Maintain external doctidex content in an isolated writable worktree."
     ]
   }
 }

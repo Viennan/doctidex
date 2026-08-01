@@ -43,6 +43,21 @@ authorization to create the next numbered `draft` record in `docs/requirements/`
 initial intent during the same task; do not return only a proposed outline or require a second,
 formulaic authorization message.
 
+Treat `draft` and `implemented` records as active. When the user directly requests a change to an
+Architecture, Details, or another non-Requirement document produced by a corresponding active
+Requirement, update the Requirement before editing that artifact:
+
+1. Identify the narrowest corresponding Requirement or sub-requirement.
+2. Record the feedback, resulting design intent, implementation impact, and acceptance criteria;
+   move `implemented -> draft` when the request changes the requirement or solution, and synchronize
+   a large-Requirement overview.
+3. Only then modify the requested artifact and any other affected layers.
+4. Validate the completed work before returning the Requirement to `implemented`.
+
+Do not bypass Requirement history because the user names an artifact directly. If no corresponding
+active Requirement exists, do not create one solely from artifact feedback; follow the normal
+requirement-creation rule only when the user expresses that intent.
+
 ## Structure Large Requirements
 
 Use a single numbered Markdown file by default. When the user selects a directory for a large
@@ -91,6 +106,11 @@ unless the user expresses intent to create or record one. A design-only response
 future layout without creating it.
 
 ## Classify Before Writing
+
+Organize prose under `docs/` primarily in Chinese. Preserve exact identifiers, CLI syntax, schemas,
+and code, and use English for established technical terms or other content that cannot be translated
+accurately. Do not force translations that reduce precision. This language rule does not apply to
+`AGENTS.md`, Skill documents, or other files outside `docs/`.
 
 Place each fact in exactly one primary layer:
 

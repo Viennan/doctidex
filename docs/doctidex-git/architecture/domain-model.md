@@ -1,246 +1,247 @@
 # 领域模型
 
-本文定义 `doctidex-git` 用来连接目录树语义、Git revision 和用户工作流的语言无关
-模型。每个属性标明其含义和可见性。精确 CLI 字段见[结果契约](interfaces/cli-schema.md)。
+本文负责定义支撑 v1.0.0 user surface 的语言无关概念、全部属性、关系和不变量。精确
+JSON spelling 见 [CLI Schema](interfaces/cli-schema.md)，operation 的执行顺序见
+[子系统与生命周期](subsystems-and-lifecycles.md)；本篇不充当命令教程。
 
-## 1. 可见性标记
+## 1. 可见性
 
 | 标记 | 含义 |
 |---|---|
-| Public | 用户、agent 或程序集成完成任务需要理解。 |
-| Public conditionally | 只在相关工作流出现，例如 maintenance root。 |
-| Internal | 支撑公开语义，但不能成为 Skill 或普通 CLI 的前置知识。 |
+| Public | Human、agent 或 program 完成任务必须理解。 |
+| Conditional | 只在 external/worktree/validation 场景出现。 |
+| Internal | 支撑公开不变量，不得成为 Skills 或调用 CLI 的前置知识。 |
 
-## 2. Directory Tree Context
+## 2. 命令上下文
 
-### 2.1 Doctidex Root
-
-| 属性 | 可见性 | 含义与约束 |
+| 属性 | 可见性 | 语义与约束 |
 |---|---|---|
-| root path | Public | 根的文件系统路径；其直接 `index.md` 声明 `doctidex.root: true`。 |
-| root index | Public | 默认导航入口、根级过滤配置和唯一 mount declaration table。 |
-| containing Git worktree | Public conditionally | 提供 status、revision 和协作现场；可以大于 root，也可以包含多个 roots。 |
-| child indexes | Public | 把索引责任分层委托给子目录；不改变 root identity。 |
-| applicable logs | Public | 可选的最近变更背景，不是每次读取的强制入口。 |
-| filters | Public | atomic、excluded、protected 条件及由它们形成的索引/维护边界。 |
+| cwd | Public | 解析相对文件系统路径和部分省略 root 的调用期默认值；不持久化。 |
+| explicit root | Conditional | 调用方给出的 exact doctidex root；不能是普通子目录。 |
+| selected root | Conditional | 本次 operation 实际解释协议路径和 root-owned presentation 的根；回显于结果。 |
+| content root | Conditional | link-parse 输入实际位于的 doctidex root；在受管 install 中可以与拥有依赖安装的 selected root 不同。 |
+| operation | Public | 决定参数、schema、副作用和退出码。 |
+| target | Public | 本次读取、创建、解析或关闭的 path/source/worktree。 |
+| output mode | Public | human 或 JSON；不改变 domain operation。 |
+| page request | Conditional | limit 与 opaque cursor；只影响输出，不改变扫描或状态。 |
+| validation scopes | Conditional | validate 的规范化根绝对目录集合；省略表示 `/`，仅限制结论 coverage 与返回信息，不改变 selected root。 |
 
-### 2.2 Command Context
+不变量：root 必须唯一；cwd 不构成权限；同一 process 的前一次选择不影响下一次调用。
 
-| 属性 | 可见性 | 含义与约束 |
+## 3. 修订选择器与提交
+
+| 属性 | 可见性 | 语义与约束 |
 |---|---|---|
-| cwd | Public | 默认上下文来源。它减少常见调用参数，不构成文件访问限制。 |
-| selected root | Public | 当前命令用于解释 root-owned state 和 mount namespace 的根。 |
-| operation | Public | 决定参数、结果 schema、副作用和退出行为。 |
-| operation target | Public | 命令实际检查或修改的 PATH/MOUNT_PATH；可以与选择根的输入不同。 |
-| link document | Public conditionally | `resolve --from` 的来源文件；只提供 link 语义，不要求扫描文档。 |
-| maintenance selector | Public conditionally | open 返回的 exact maintenance root；可恢复其所属宿主上下文。 |
+| kind | Public | commit、tag 或 branch。 |
+| value | Public | 调用方输入；省略 install revision 时归一化为 full commit。 |
+| default branch | Conditional | 初次省略 revision 时 remote HEAD 的 branch name，只是 provenance。 |
+| resolved commit | Public | install 固定的 immutable full commit ID。 |
+| base commit | Conditional | maintenance worktree 创建基准；同样 immutable。 |
 
-选根必须确定。嵌套根没有被 cwd 或 exact path 明确选择时返回 `root_ambiguous`，而不是
-自动采用最近祖先。
+selector 不等于 commit：显式 branch/tag 可以是移动 ref，但任何已创建 install、link 或
+worktree 只跟踪 resolved/base commit。既有 install 重试不得重新解析 ref；worktree open
+每次按本次显式输入解析。
+install 的 normalized selector 对 commit 使用 full object ID，对 tag/branch 保留不同 kind
+及规范化 ref name；省略 revision 首次解析后变为 commit selector。identity 比较 selector，
+不以 resolved commit 反向合并不同 selector。
 
-### 2.3 Path Context
+## 4. 外部来源
 
-| 属性 | 可见性 | 含义与约束 |
+| 属性 | 可见性 | 语义与约束 |
 |---|---|---|
-| host root | Public | 计算当前上下文的 doctidex 根。source view 中可为 mounted source root。 |
-| path | Public | 被检查的文件系统路径，可以尚不存在。 |
-| internal path | Public | path 相对于 host root 的 `/` 开头逻辑路径，不是 OS absolute path。 |
-| source | Public | `local` 或 `mount`。 |
-| host scope | Public | `included` 或 `excluded`；mount 在宿主语义中始终 excluded。 |
-| attributes | Public | atomic、excluded、protected、mount 的集合；不是互斥枚举。 |
-| responsible index | Public | 对 included local path 负责的最近 index；其他情况为空。 |
-| applicable log | Public | 路径范围内最近可用 log；不存在时为空。 |
-| boundary index | Public | 建立 excluded 边界的 index。 |
-| boundary condition | Public | 命中的 path/regex 条件。 |
-| mount path | Public conditionally | path 命中的完整 mount declaration root。 |
+| input locator | Public at call | install 的 Git URL；可以临时含 credentials。 |
+| public source URL | Public | 去除 credentials 后可报告的 identity。 |
+| canonical source identity | Internal | 判断同 source、复用 objects 和串行化操作的稳定 identity；不证明镜像/fork 等价。 |
+| revision selector | Public | 创建时的显式 selector，或省略时固定 commit selector。 |
+| default branch | Conditional | 省略 revision 的初次来源；后续不用于选择内容。 |
+| resolved commit | Public | external content 的唯一读取基准。 |
+| object availability | Internal | 本地是否已有构成该 commit 所需 Git objects。 |
 
-## 3. Link Resolution
+职责：说明内容来源与固定基准。非职责：证明协议符合、信任、写权限、remote 最新状态或
+Git 交付目标。
 
-### 3.1 Internal Path
+### 4.1 共享 Bare 来源缓存与清理结果
 
-| 属性 | 可见性 | 含义与约束 |
+shared bare source cache 是按 canonical source identity 跨 root 复用的内部 Git object
+provider，不是 checkout、presentation 或恢复清单。清理接口只公开调用方作决定所需的
+source facts：sanitized source URL、opaque cache source ID、linked/valid/prunable worktree
+counts，以及 planned、removed 或 preserved state；物理 cache path、identity 编码和
+worktree metadata layout 均为 Internal。
+
+一个 linked registration 只能被分类为 Git-valid 或 Git-prunable。存在任何 valid worktree
+时，cache 完整保留，不考虑其 clean/dirty、doctidex ownership 或 runtime record；存在无法
+安全分类的 registration 时，清理不产生正常 state，而是 blocked 并保留。只有 valid 数量
+为零且全部其余 registration 都由 Git 判为 prunable 时，cache 才具备删除资格。apply 删除
+前必须在同一 source mutation boundary 内重查资格。
+
+清理职责仅是回收一个已具备资格的 bare source cache。它不删除 linked worktree path、
+install/worktree payload、manifest、runtime record 或其他 source cache，不修改 root，也不
+替代 Git worktree 生命周期管理；其他 operation 不能隐式触发该清理。
+
+## 5. 受管安装
+
+| 属性 | 可见性 | 语义与约束 |
 |---|---|---|
-| raw input | Public | 调用者提供的 `/` 开头路径部分，不包含 anchor。 |
-| normalized path | Public | 折叠空段、`.`、`..` 和重复 mount namespace 后的路径。 |
-| link root | Public | 绝对内部 link 的实际基准，可以是 host root 或 mounted source root。 |
-| link root kind | Public | `host_root` 或 `mounted_source`，用于解释 root 与 link root 可能不同。 |
-| working path | Public | 原生文件工具可以尝试访问的文件系统路径。 |
-| relevant mount | Public conditionally | 路径命中或来源依赖的 mount state。 |
-| root relation | Public conditionally | 涉及 mount 时，对 source 是否可确认为当前根仓库及 commit 是否相同的保守判断。 |
-| maintenance reuse | Public conditionally | 若随后需要写入，可否复用已有 scope 的有界建议；不改变 working path。 |
+| root | Public | install 所属 doctidex 根。 |
+| install key | Public by components | selected root、canonical source identity 与 normalized revision selector 的组合。 |
+| install ID | Public | 在 root 内稳定标识该 install key 的不透明值。 |
+| install path | Public | 工具分配的 `/.doctidex` 内稳定路径；调用方不能选择。 |
+| working path | Public | 原生工具读取 repository 根的文件系统路径。 |
+| source | Public | 外部来源事实。 |
+| host repository | Public | 包含 selected root 并承担 payload ignore 与 manifest tracking 的 Git 根。 |
+| payload tracking | Public | 必须是 ignored 且 untracked；已有 tracked entry 时不能自动修复。 |
+| Git exclusion file/state | Public | 宿主根 `.gitignore` 及 absent、tracked、modified 或 untracked 状态。 |
+| recovery manifest/state | Public | portable 恢复清单路径及 absent、tracked、modified 或 untracked 状态。 |
+| role | Public | `direct` 或 `dependency`；direct 进入恢复清单，dependency-only 不进入。 |
+| dependency of | Public | 请求该 key 的 parent install ID 有界摘要；direct 也可以同时具有 parents。 |
+| responsible index | Public | 负责内部受管命名空间 boundary/unsafe 声明的 index。 |
+| managed state | Public | complete、missing 或 damaged。 |
+| publication mechanism | Internal | 让 install path 指向逻辑只读 Git state 的实现选择。 |
 
-路径规范化不得越过 link root。一次从 host 开始的 mount namespace 不嵌套：mounted
-source 中再次出现 `/.doctidex/mounts/...` 时回到原 host namespace。
+不变量：一个 install key 只有一个 install；同 source 的不同 selector 即使解析到相同 commit
+也拥有不同 ID/path；内容始终对应记录的 resolved commit；payload 被宿主 Git 忽略，manifest
+不被该精确规则忽略。dependency 可以提升为 direct 但 direct 不降级；恢复只处理 direct。
+逻辑只读不承诺安全沙箱，内部子路径命名属于 Details。
 
-## 4. Git Mount
+依赖关系是 root-owned 的有向图，不是目录嵌套。parent/child 都直接位于 owner root 的
+`/.doctidex` 下；命中既有 install key 即复用并停止展开，因此 self edge 与 cycle 都是有限
+记录。CLI 不解析依赖文档或自动递归。宿主 repository 作为依赖时仍使用独立 install；是否
+复用其本地 Git objects 是 Internal，不改变公开路径和 fixed commit。
 
-### 4.1 Mount Declaration
+## 6. 外部链接
 
-| 属性 | 可见性 | 含义与约束 |
+| 属性 | 可见性 | 语义与约束 |
 |---|---|---|
-| type | Public | 插件处理的值为 `git`；其他扩展不由本插件解释。 |
-| source URL | Public | 完整 Git repository URL 或本地路径；输出不得泄漏 embedded credentials。 |
-| mount path | Public | `/.doctidex/mounts` 的规范化严格后代；同根 declarations 不得重叠。 |
-| revision selector | Public | exactly one commit、tag 或 branch。 |
-| source tree scope | Public | URL checkout root 必须是完整 doctidex root；不支持 source subtree selector。 |
+| owner root | Public | link 所属 selected root。 |
+| install ID/path | Public | link 最终引用的稳定 direct 安装。 |
+| source path | Public | 调用时选择的受管 install/link 内目录。 |
+| target path | Public | 用户选择的 root-relative POSIX symlink 路径。 |
+| presentation path | Public | symlink 的文件系统入口。 |
+| relative symlink target | Public as observable path | 从 target 指向 install path 或其子目录，不依赖宿主绝对路径。 |
+| repository-relative base | Public | link 根对应外部 repository 内的位置。 |
+| safe state | Public | safe 或 unsafe 的产品接入分类。 |
+| responsible index | Public | 声明该 link boundary/unsafe 的最近负责 index。 |
+| tracking state | Public | link 必须可被宿主 Git 追踪；是否已 stage/commit 由用户决定。 |
+| managed state | Public | managed、unmanaged 或 damaged；不改变协议事实。 |
 
-### 4.2 Revision Selector
+不变量：link 必须是相对 symlink，禁止目录复制 fallback；suffix 必须词法映射到同一
+repository 且不得越出；target 不重叠；restore 不修改 link。内部 install 恢复到稳定路径后，
+既有 link 自动恢复可读。dependency-only install 必须先提升为 direct 才能成为 link source。
 
-| 属性 | 可见性 | 含义与约束 |
+## 7. 恢复清单与恢复项
+
+恢复清单位于同一 `/.doctidex` 受管命名空间中、与被忽略的安装载荷互为 sibling，因而
+可以由精确 ignore 规则保留为可追踪状态；具体子路径命名属于 Details。它保存 portable
+状态，只记录 direct installs 及其 durable links。属性包括 schema version、install ID、
+sanitized source identity、revision selector、default branch provenance、resolved commit、
+stable root-internal install path，以及每个 link 的 target 与 repository-relative base。它不
+包含 dependency-only install、dependency edges、credentials、宿主绝对路径、cache path、
+lock 或临时下载状态。
+
+该清单随宿主 repository 提交后，也会作为普通版本化内容出现在其 install 快照中。此时
+其中的 link record 是 installed-repository portable mapping：它不授权在只读 install 内
+restore，也不要求原 stable path 在快照内存在，而是为当前外层 owner root 提供 dependency
+source/selector/commit 和 repository-relative base。原 symlink target 缺失是依赖尚未在
+owner root 展开的合法产品状态，不等同于 portable mapping 损坏。
+
+恢复项公开 install ID/path、source provenance、exact commit、
+`planned|restored|unchanged|blocked` 状态和 item findings；`planned` 只表示 dry-run 已确认
+可重建。恢复集合还公开规范化 filter、manifest identity、分页与模式。restore
+重建载荷和必要的内部 install/link mapping，不改变清单 identity、既有 link、frontmatter 或
+Git index；单项失败不撤销其他项。
+
+## 8. 外部路径映射
+
+| 属性 | 可见性 | 语义与约束 |
 |---|---|---|
-| kind | Public | `commit`、`tag` 或 `branch`。 |
-| value | Public | declaration 中的非空原始值。 |
+| input path/kind | Public | link-parse 接收的可读目录或 symlink 自身；broken symlink 仍是合法输入。 |
+| managed | Public | 是否识别到 current-owner 或 installed-repository 受管 mapping 身份；完整性和可用性由 target state 表达。 |
+| owner root | Public | 拥有当前 install/dependency namespace 的 selected root；所有新依赖都在这里扁平展开。 |
+| content root | Conditional | input 所在 doctidex root；主仓库通常等于 owner root，install 内容中可以不同。 |
+| mapping origin | Public | owner_root、installed_repository 或 null。 |
+| matched presentation | Public | current-owner presentation，或 install 内匹配的 portable symlink。 |
+| target state | Public | available、owner_install_missing、dependency_not_installed、unavailable 或 not_applicable。 |
+| target install ID/path | Conditional | 当前 owner root 中实际提供 source/selector 的 install；尚未安装时为空。 |
+| dependency parent install ID | Conditional | portable mapping 所在的当前外层 install；供 `--dependency-of` 使用。 |
+| relative suffix | Internal | input 相对 matched presentation 的词法 suffix。 |
+| repository-relative path | Public | portable/current base 加 suffix，规范化后仍位于 target repository。 |
+| source/selector/default/commit | Public | 从 current record 或 portable manifest 恢复的 target source facts。 |
+| working path | Conditional | target install 已在 owner root 时映射出的原生工具路径；不返回 install 内 broken target。 |
+| integrity state | Public through status | complete、合法未展开、可恢复缺失或真实 mapping damage。 |
 
-selector 表达用户意图，不等于已读取对象，也不证明远端当前可解析。
+mapping 只提供客观路径和 dependency facts。它不运行 validation、不联网、不自动安装依赖，
+也不授权维护。PATH 位于受管 install 时，外层 presentation ownership 优先确定 owner root；
+install 中的 `doctidex.root: true` 只确定 content root，不能使命令在只读树内递归展开。
 
-### 4.3 Mount Runtime State
+current-owner link 指向缺失 install 时是 `owner_install_missing`，由 restore 恢复原稳定路径；
+installed-repository portable link 没有匹配外层 install 时是正常 `dependency_not_installed`。
+后者找到匹配 install 后，即使物理 symlink 仍 broken，也以外层 install 和
+repository-relative path 返回 available working path。source/selector/commit 或 link record
+不能互相验证时才是 damage。调用方决定安装 portable dependency 时使用 exact resolved
+commit 构造 commit selector；portable branch/tag 只保留 provenance，不重新解析。
 
-| 属性 | 可见性 | 含义与约束 |
+## 9. 维护工作区（Worktree）
+
+| 属性 | 可见性 | 语义与约束 |
 |---|---|---|
-| declared revision | Public | 当前 declaration selector。 |
-| effective commit | Public | 当前读取的不可变 Git commit；首次 prepare 前可以未知。 |
-| state | Public | `not_prepared` 或 `ready`。 |
-| readable | Public | 逻辑 mount path 当前是否可由原生工具访问。 |
-| next action | Public | 未准备时精确的 prepare 动作，ready 时为空。 |
-| source identity | Internal | 用于复用同源数据；不能替代 public URL。 |
-| revision snapshot | Internal | effective commit 对应的只读源视图。 |
-| host presentation | Internal | 把 snapshot 映射到逻辑 mount path 的机制。 |
-| persisted selection | Internal | 关联 declaration 与 effective commit 的运行状态。 |
+| source kind | Public | managed_path、url、working_tree、bare_gitdir 或 gitfile。 |
+| owner root | Public | 拥有 CLI-created worktree 的 selected doctidex root。 |
+| source identity | Public/Internal | 输出 sanitized URL；内部 canonical identity 支持候选比较。 |
+| revision selector | Public | open 的显式 commit/tag/branch。 |
+| base commit | Public | detached worktree 的 immutable 创建基准。 |
+| root-internal path | Public | owner root 的 `/.doctidex` 下扁平、唯一的受管路径。 |
+| worktree path | Public | repository root 的 exact writable filesystem path。 |
+| repository-relative path | Public | 最初 source target 在 repository 内的位置。 |
+| working path | Public | 对应调用目标的 writable path。 |
+| state | Public | clean、changed 或 unavailable。 |
+| managed identity | Internal | 证明 list/close ownership 的不可猜测 identity。 |
 
-`not_prepared` 是正常 lazy 状态，不代表 source 或目标文件不存在。`ready` 只说明当前
-effective commit 可读，不说明 branch/tag 已与远端同步。
+职责：在 owner root 下提供独立可写 Git 现场和安全 close 边界。非职责：强制调用方创建
+现场、创建交付 branch、决定权限、自动复用、commit/push/merge/reset 或删除 dirty work。
+相同 source/base commit 只是候选事实。
 
-### 4.4 Root Relation
+不变量：CLI-created worktree 不位于 install、另一个 worktree 或 root 外部；即使 SOURCE
+来自这些位置，也在 owner root 的 `/.doctidex` 下作为 sibling 创建并被宿主 Git ignore。
+当前宿主 working tree/current commit 可由 agent 直接维护，不属于受管 worktree record。
 
-| 属性 | 可见性 | 含义与约束 |
+## 10. 校验结果
+
+| 属性 | 可见性 | 语义与约束 |
 |---|---|---|
-| source | Public conditionally | `same_repository` 表示可可靠确认 source 对应当前 checkout root；否则为 `unknown`，不作否定断言。 |
-| revision | Public conditionally | source 相同时为 `same_commit`、`different_commit` 或 `unknown`；source 未确认时固定为 `unknown`。 |
-| evidence | Internal | 本地 checkout、已配置 source 地址和 Git 元数据；不在普通结果或 Skills 中展开。 |
+| coverage | Public | full 或 scoped；界定结果能否作为全根结论。 |
+| scopes | Public | 规范化、排序、去重且无祖先/后代冗余的根绝对目录集合；full 固定为 `/`。 |
+| support closure | Internal | 为正确解释 scopes 必须读取的 root/祖先 index、配置、可达导航与必要 link targets。 |
+| protocol structure | Public | pass/fail；只由当前 coverage 及支持闭包中的协议强制规则决定。 |
+| scan complete | Public | 当前 coverage 及支持闭包的应检查 safe 内容是否全部判断。 |
+| findings | Public | scopes 内或直接阻止其验证的可机械确认 protocol errors。 |
+| semantic review | Public | clear/required；不改变协议结果。 |
+| semantic candidates | Public | scopes 内需要阅读判断的建议性事项。 |
+| collection | Public | 每个列表的 total/page/truncation/cursor。 |
 
-相同 commit 不能单独证明 source 相同。当前 doctidex 根不是 Git checkout root 时不得把
-同仓库 URL 当作根自引用。判断不联网，不承诺识别所有等价 URL、镜像或 fork；未知关系
-保持普通 mount 行为。
+validation 不含 plugin readiness、Git status、remote、registry integrity、source trust 或
+维护授权。scoped pass 不能提升为 full pass；scope 也不能阻止 interpreter 读取形成正确
+结论所需的支持内容。一个结果不能用 status 或 exit code 代替上述独立属性。
 
-## 5. Maintenance
+## 11. 结果、问题项与集合
 
-### 5.1 Maintenance Scope Item
+Result envelope 的每个字段都属于 Public。`status` 只描述 operation；`result` 描述完成与
+保留；`changed` 是实际公开路径变化；`network` 是实际效果；`affected` 和
+`requires_user` 界定 blocked 决策；`next_actions` 面向已完成结果。
 
-| 属性 | 可见性 | 含义与约束 |
-|---|---|---|
-| kind | Public | `host_root` 或 `mounted_source`。 |
-| identity | Public | host root path 或 exact mount path；用于在本次返回中去重观察对象。 |
-| base commit | Public | host HEAD 或 mounted source effective commit；可以未知。 |
-| declared revision | Public conditionally | mounted source 的 commit、tag 或 branch selector。 |
-| target branch | Public conditionally | host 当前 symbolic branch 或 mounted source 的 branch selector；detached、未知、tag/commit selector 时为 null。 |
-| read path | Public conditionally | mounted source 在 host 中的只读入口。 |
-| write path/action | Public | host 直接写路径，或 mounted source 的 open 动作。 |
-| root relation | Public conditionally | mounted item 与当前 host root 的 source/revision 关系。 |
-| maintenance reuse | Public | 可复用 host/maintenance scope，或没有唯一兼容 scope 的原因。 |
+Finding 的 domain、severity、code、message、path、actions 全部 Public。code 用于稳定
+分支，message 不稳定且只解释用户层原因。Collection 的 limit、list counts、truncated
+与 cursor 全部 Public；cursor 内容 Internal，不可解析或构造。
 
-scope item 是本次命令对 host root 或 mounted source 的观察，不是分配状态。
-item 可以是 agent 首次观察的对象，也可以已在现有计划中；返回结构不区分这两种
-情况。scope 按 host 和 exact mount 分类去重，不创建或覆盖 agent 的工作计划。
+## 12. 内部支持概念
 
-agent 根据每次返回的当前事实，把同 source、同 base commit 且写入与交付目标兼容的
-items 纳入同一选定写入范围。新目标或现场变化时可以重新运行 scope 并复核这个决定。
-scope 会排除已知 branch 冲突，但不替 agent 完成权限与完整交付意图判断；它不打开写入
-环境，也不形成跨范围事务。
+| 概念 | 必需属性 | 责任 | 非责任 |
+|---|---|---|---|
+| source object provider | canonical source、available objects、proven host relation、linked worktree registrations、cleanup eligibility | 从受管 bare store 或已匹配宿主 Git 复用 immutable objects，并在 source mutation boundary 内为显式 cleanup 提供 Git-derived 分类。 | 向 Skill 暴露 `.git`/cache 路径、保存 credentials、承载 checkout view、推断 root ownership 或清理仍有 valid/unknown worktree 的 source。 |
+| install record | owner root、install key/ID/path、source、selector、commit、role、parents、host Git、manifest relation | 让 install/restore 幂等、截止 dependency cycle 并维持固定路径与 commit。 | 递归解析依赖、充当协议配置、保存 credentials 或代替版本化清单。 |
+| link record | owner root、target、install、repository-relative base、safe state | 让 link-parse 与幂等 link 恢复路径事实，并作为安装快照中的 portable mapping。 | 充当读取授权、要求内层 restore 或替用户 stage symlink。 |
+| recovery manifest | schema、portable installs、portable links、identity | 支持 clone/clean 后恢复 exact installs，并让外层 owner 解释 install 内 dependency link。 | 保存主机路径、移动 ref 当前值、运行期锁或要求递归恢复。 |
+| worktree record | managed identity、source、base、exact path | 证明 list/close ownership。 | 替代 Git status 或保存 agent 计划。 |
+| mutation plan | inspected state、planned paths、expected commit/index version | 支持 dry-run、冲突检测和部分成功报告。 | 跨 Git/filesystem/frontmatter 的总事务。 |
+| diagnostic record | opaque ID、bounded internal failure context | 支持实现排障。 | 出现在正常 workflow 或泄漏 traceback。 |
 
-### 5.2 Selected Write Scope
-
-| 属性 | 可见性 | 含义与约束 |
-|---|---|---|
-| selected root | Public | agent 实际执行维护的 host root 或 maintenance root。 |
-| covered items | Public in workflow | agent 已决定在该根处理的一个或多个兼容 scope items；CLI 不持久化该集合。 |
-| write boundary | Public | 所有写入必须位于 selected root 下；mount read path 不得成为写入入口。 |
-| maintenance basis | Public | 被覆盖 items 共享的 source/base commit；不同或未确认基准不得合并。 |
-| result boundary | Public | 以 selected root 产生的 index/log 决策、Git diff、校验和交付动作。 |
-
-一旦进入选定范围执行，原生工具可以自由浏览该根，但不得沿其 mount 将其他源
-直接纳入写入边界。遇到这类目标时，agent 将它作为新的 scope 观察对象，再决定复用
-已有范围还是打开独立范围。
-
-### 5.3 Maintenance Context
-
-| 属性 | 可见性 | 含义与约束 |
-|---|---|---|
-| maintenance root | Public | 独立、可写 source root；后续命令应原样传回。 |
-| owning host root | Public indirectly | 由 exact maintenance root 恢复；正常输出无需解释登记机制。 |
-| source/mount path | Public | 说明结果来自哪个 host mount。 |
-| base commit | Public | open 时的 effective commit，作为 diff 和交付基准。 |
-| target branch | Public conditionally | branch selector 的交付提示；不表示已 checkout 该 branch。 |
-| writable boundary | Public | 允许 source 修改的根。host mount 保持 read-only。 |
-| state | Public | `ready` 或 `has_changes`，由当前 Git status 得出。 |
-| changes | Public | Git porcelain entries，不包含 line-level diff。 |
-| lifecycle identifier | Internal | 区分并发或重复 open 的 context。 |
-| owner registration | Internal | 支持从任意 cwd 使用 exact maintenance root。 |
-
-### 5.4 Maintenance Reuse
-
-| 属性 | 可见性 | 含义与约束 |
-|---|---|---|
-| status | Public | `recommended`、`selection_required` 或 `not_available`。 |
-| scope kind | Public conditionally | recommended 时为建议根类型；selection required 时为 `maintenance_root`；not available 时为 null。 |
-| write path | Public conditionally | 唯一建议的可写文件系统根；必须按该 scope 自身边界使用。 |
-| target branch | Public conditionally | 唯一建议根的 branch 提示；没有唯一建议或无法识别时为 null。 |
-| candidate count | Public | 当前已知兼容 scope 数量；不枚举大量内部路径。 |
-| reason | Public | 稳定原因枚举，解释当前根复用、已有同 commit scope、多候选或不可复用。 |
-
-当 item 与候选的 target branch 都已知且不同，候选不进入复用建议；任一侧为 null 时，
-工具保留候选，由 agent 根据任务交付意图判断。`recommended` 不替 agent 判断任务权限；
-`selection_required` 要求先查看已有 maintenance status。`not_available` 表示当前没有
-已知兼容写入入口，不表示 mount 不可读。
-
-## 6. Validation and Result
-
-### 6.1 Validation Domains
-
-| 对象 | 属性/值 | 含义 |
-|---|---|---|
-| protocol structure | `pass` / `fail` | 可由明确规则确定的协议结构。 |
-| semantic review | `clear` / `required` | 是否有必须由 agent 阅读判断的候选。 |
-| plugin readiness | `ready` / `blocked` / `not_applicable` | Git mount 操作前置是否满足。 |
-
-三个域相互独立。semantic required 不是结构错误，plugin blocked 也不是协议失败。
-
-### 6.2 Result Envelope
-
-| 属性 | 可见性 | 含义与约束 |
-|---|---|---|
-| status | Public | `ok`、`warning` 或 `blocked`，只表达本次操作级结果。 |
-| operation | Public | 稳定 schema discriminator。 |
-| root | Public conditionally | 当前命令选择的 root。 |
-| result | Public | 已完成或已保留结果的简短说明。 |
-| changed | Public conditionally | operation-specific；可能是 path list 或 commit comparison boolean。 |
-| findings | Public | 客观问题或 blocked 原因。 |
-| semantic candidates | Public | 需要 agent 判断的提示，不是 confirmed findings。 |
-| next actions | Public | 非 blocked 结果的建议步骤。 |
-| affected | Public conditionally | blocked 操作受影响对象。 |
-| requires user | Public conditionally | 所需用户输入或授权类别。 |
-| collection | Public conditionally | 每个有界列表的计数、分组和 continuation。 |
-| diagnostic details | Public conditionally | 仅有限诊断 ID 或安全计数；不能泄漏内部布局。 |
-
-### 6.3 Finding
-
-| 属性 | 含义与约束 |
-|---|---|
-| domain | protocol、semantic 或 readiness；通用 blocked finding 可省略。 |
-| severity | 当前为 `error` 或 `info`。 |
-| code | 稳定机器分支标识。 |
-| message | 用户层原因，不能依赖内部术语。 |
-| actions | 有序、可执行的下一步。 |
-| path/index | 适用时定位文件、逻辑路径或负责 index。 |
-
-### 6.4 Collection
-
-| 属性 | 含义与约束 |
-|---|---|
-| total | 预算前项目数。 |
-| returned | 当前页项目数。 |
-| collapsed directories | 当前页结构分组数量。 |
-| groups | 按路径父目录得到的客观计数。 |
-| truncated | 是否存在未返回项目。 |
-| next cursor | opaque continuation token；无下一页时为空。 |
-
-collection summary 只由结构和计数产生，不包含 AI 生成的内容摘要。
+具体 storage path、serialization、lock primitive 和 cleanup 算法由 Python Details 决定。
