@@ -1,7 +1,7 @@
 # CLI 用户接口
 
 本文是 doctidex-git `v1.0.0` 命令、参数、省略行为和副作用的权威说明。结果字段见
-[JSON Schema](cli-schema.md)，任务步骤见 [用户工作流](../workflows.md)。本篇不重复 JSON
+[JSON Schema](cli-schema.md)，任务步骤见 [Architecture workflows](../index.md#系统与-workflow)。本篇不重复 JSON
 字段类型或内部发布算法。当前 `1.0.0` 可执行程序实现本篇命令 surface。
 
 `external` 与 `worktree` 命令定义可选受管工作流；`validate` 直接检查可观察目录树，不以
@@ -62,8 +62,8 @@ envelope；未请求 JSON 时可以使用标准 stderr usage，但退出码仍�
 
 | 占位符 | 类型与约束 |
 |---|---|
-| `ROOT` | 现有、可读取、直接包含 `doctidex.root: true` index 的文件系统目录；相对值以 cwd 为基准。必须是根本身，不接受任意子路径。 |
-| `INTERNAL_DIRECTORY` | `/` 或 `/docs/api` 形式的 doctidex 根绝对 POSIX 目录路径，不是宿主文件系统路径，也不接受 anchor；词法规范化不得越出所选根，结果必须是现有可读目录。 |
+| `ROOT` | 现有、可读取且直接包含 `doctidex.root: true` index 的文件系统目录；相对值以 cwd 为基准。必须是根本身，不接受任意子路径。 |
+| `INTERNAL_DIRECTORY` | `/` 或 `/docs/api` 形式的 doctidex 根绝对 POSIX 目录路径，不是宿主文件系统路径，也不接受 anchor；重复 `/`、`.` 与可在 root 内消去的 `..` 先词法规范化，结果不得越 root 且必须是现有可读目录。 |
 | `TARGET_PATH` | 只用于 external link；所选根下的非空 POSIX relative path，不得以 `/` 开头，不得含空段、`.` 或 `..`，最终目标是 symlink。 |
 | `SOURCE_DIRECTORY` | 现有可读文件系统目录，必须位于所选 root 及其完整受管 external mapping 内；相对值以 cwd 为基准。 |
 | `PATH` | external link-parse 的现有可读目录或 symlink；symlink target 可以不存在。相对值以 cwd 为基准；其他不存在路径不接受。 |
@@ -82,7 +82,9 @@ envelope；未请求 JSON 时可以使用标准 stderr usage，但退出码仍�
 | cache clean | 不接受，也不选择 root | cwd 与 doctidex root 均不参与 source identity 或清理范围。 |
 
 没有候选返回 `root_not_found`；多个候选返回 `root_ambiguous` 和候选路径，不采用“最近
-祖先”猜测。显式 ROOT 与操作路径不匹配返回 `root_mismatch`。
+祖先”猜测。显式 ROOT 与操作路径不匹配返回 `root_mismatch`。显式或自动选择都只接受有效
+root；初始 index/marker 不可用时返回 `root_not_found` blocked。已经选中的 root 在扫描期间变得
+不可读或结构失效时，validation 通过 finding 与 `scan_complete` 表达观察结果。
 
 ## 4. Revision 选择
 
@@ -93,9 +95,10 @@ envelope；未请求 JSON 时可以使用标准 stderr usage，但退出码仍�
 - tag peel 后、branch tip 和 commit object 都必须唯一解析为 commit；
 - 输出的 selector 保留显式 kind/value，读取或维护基准另以完整 commit 返回。
 
-install identity 使用 normalized selector，而不是 resolved commit：commit value 规范为 full
-object ID；tag/branch 保留各自 kind 和规范化 ref name；省略 revision 在首次解析后使用 full
-commit selector。kind 或 normalized value 不同就是不同 install，即使最终 commit 相同。
+install identity 使用 selected root、canonical source 与 normalized fixed selector，而不是只使用
+resolved commit：commit value 规范为 full object ID；tag/branch 保留各自 kind 和规范化 ref name；
+省略 revision 在首次解析后固定为 commit selector，并另存 default provenance 供后续省略调用
+优先复用。Default provenance 是否形成额外 physical key 维度由 Impls 定义。
 
 install 可以省略 selector。首次创建时读取 remote default branch，将分支名保存为 provenance，
 同时把有效 selector 归一化为 full commit。后续省略调用复用该 commit。worktree open
@@ -138,9 +141,10 @@ doctidex-git external install --url URL [--root ROOT]
 - URL 必须是完整 repository locator；允许凭据只作为调用期输入，禁止写入 mapping 或输出。
 - dry-run 可以访问 network，并只能使用可丢弃的调用期 Git 数据；持久 objects、恢复清单、
   root index、`.gitignore` 和 install path 均不改变。
-- 每个 selected root/canonical source identity/normalized selector 只有一个 install。工具
+- 每个 selected root/canonical source identity/normalized fixed selector 只有一个稳定 install key。工具
   分配稳定不透明 `install_id`，并由它确定 `/.doctidex` 下的稳定 `install_path`；调用方不
-  提供 target。同 source 不同 selector 即使解析到同 commit 也不共用路径。
+  提供 target。同 source 的不同 normalized selector 通常不共用路径；default provenance 的 key
+  处理见对应 Impls。
 - apply 持久取得 fixed commit，维护内部受管命名空间的边界/unsafe 结构、精确宿主
   `.gitignore` 规则和不被忽略的恢复清单，再发布逻辑只读 install。它不生成 prose 或
   Markdown link，也不执行 Git stage/commit/`rm --cached`。
@@ -196,8 +200,9 @@ doctidex-git external restore [--root ROOT] [--install INSTALL_ID]...
   现场并给出恢复动作。
 - 从 manifest 重建必要的内部 install/link mapping，但不重写、重建或 stage 已有 external
   link symlink。恢复成功后 symlink 因固定目标路径重新可用。
-- cursor 绑定 root、恢复清单 identity、规范化 install filter、limit 和 dry-run/apply mode；
-  清单变化令 cursor invalid，恢复载荷本身不令 cursor 失效。
+- cursor 绑定 root、恢复清单 identity、规范化 install filter、排序后的 install-ID selection、limit
+  和 dry-run/apply mode；清单变化令 cursor invalid，恢复载荷本身不令 cursor 失效。每次调用只
+  dry-run/apply 当前页，调用方以 next cursor 继续后续项。
 
 ## 9. `external link-parse`
 
@@ -212,8 +217,9 @@ doctidex-git external link-parse PATH [--root ROOT] [--json]
 - PATH 位于当前 owner root 的 install/link 时，解析最内层 current-owner mapping。PATH
   位于受管 install 的 doctidex content root 中且自身是 external symlink 时，还读取该
   content root 随 Git 版本化的 portable manifest/link mapping。
-- 外层受管 presentation 的 owner root 始终是结果 `root` 和依赖安装位置；安装内容自身的
-  doctidex root 单独返回为 `content_root`，不能成为递归 install/restore 位置。
+- 外层受管 presentation 的 owner root 始终是结果 `root` 和依赖安装位置；实际解释 repository
+  suffix 的 installed repository root（或 mapping 指向的其中 doctidex root）单独返回为
+  `content_root`，不能成为递归 install/restore 位置。
 - 显式 `--root` 必须选择该 owner root；把 install 内 `content_root` 作为 `--root` 返回
   `root_mismatch` 和 owner root candidate，不在只读嵌套根建立新的受管 namespace。
 - portable mapping 完整但 target 尚未在 owner root 安装时，返回正常
@@ -243,7 +249,8 @@ doctidex-git worktree open SOURCE [--root ROOT]
 SOURCE 分类顺序：
 
 1. 现有路径位于受管 presentation：`managed_path`；
-2. 现有目录是 Git working tree 或 bare gitdir：对应 kind；
+2. 现有目录位于 Git working tree 内，或自身是 bare gitdir：对应 kind；working-tree subdirectory
+   保留相对 Git top-level 的 suffix；
 3. 现有文件是有效 gitdir pointer：`gitfile`；
 4. 其他字符串是有效 Git URL：`url`；
 5. 否则 `source_invalid`。

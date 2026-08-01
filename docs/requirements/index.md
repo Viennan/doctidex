@@ -10,7 +10,7 @@ doctidex:
 并用双向链接保存依赖、细化、取代和后续关系。Requirements 解释意图与演进，不替代
 当前接口权威；doctidex-git 的当前行为见
 [Architecture](../doctidex-git/architecture/index.md) 和
-[实现细节](../doctidex-git/details/index.md)。
+[Python Impls](../doctidex-git/impls/python/index.md)。
 
 状态只允许使用以下小写值：
 
@@ -39,6 +39,8 @@ overview 才可成为 `approved`。详见 [DX-REQ-0006](0006-large-requirement-d
 | 0006 | [大型 Requirement 目录与聚合状态](0006-large-requirement-directories.md) | 大型需求的目录形式、子需求独立状态与 overview 聚合门槛。 | `approved` |
 | 0007 | [Requirement 用户评论块](0007-requirement-comment-blocks.md) | 用户在需求文档中插入的评论、question/answer 配合与完成门槛。 | `approved` |
 | 0008 | [doctidex-git 与协议 v1.0.0 对齐](0008-doctidex-git-v1-0-0-alignment/overview.md) | 分阶段完成三 Skill Architecture，以及 Python validation、外部 Git 与 worktree 实现。 | `approved` |
+| 0009 | [Architecture 与 Impls 文档维护规则调整](0009-architecture-and-details-maintenance-rules.md) | 建立 Architecture / Impls 基准，并将 Requirement、Architecture、Impls 维护规则拆分为专用 Skills。 | `approved` |
+| 0010 | [修复 restore 生成无效 runtime record](0010-fix-restore-runtime-record.md) | 修复 restore 遗漏 `requested_default` 后产生不可读 runtime state 的 Python bug。 | `approved` |
 
 新记录按全项目连续编号。`draft` 中可使用 `<question>` 与紧邻的 `<answer>` 块协作；
 用户也可以用 `<comment>...</comment>` 在相关位置留下评论。agent 不得代用户创建评论，

@@ -2,7 +2,7 @@
 
 本篇定义 CLI 的 JSON、人读格式和全部公共字段。字段不是每次都出现；每个命令的精确
 字段集合在后半部分列出。序列化、预算和渲染如何实现见
-[Python CLI 与 rendering](../../details/python/cli-and-rendering.md)。
+[Python CLI 与 rendering](../../impls/python/cli-and-rendering.md)。
 
 ## 1. JSON 格式
 

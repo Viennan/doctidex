@@ -1,142 +1,83 @@
 # Independent Review Lenses
 
-Use only the lenses applicable to the frozen review scope. Each lens must inspect raw artifacts
-independently and must distinguish normative requirements from implementation preferences.
+Select only lenses applicable to the frozen scope. Read each named authoring Skill completely rather
+than reconstructing its rules here.
 
 ## Protocol Compliance
 
-Authority: read `spec/overview.md` completely. Background under `spec/refs/`, Requirements,
-Architecture, implementation documents, and existing code are not protocol authority, but they are
-required review evidence when the scope includes an implementation variant.
+Authority: `spec/overview.md`, read completely. Requirements, Architecture, Impls, references, and
+code are evidence but cannot create protocol obligations.
 
-Check both materialized directory trees and the implementation design, code, configuration, CLI,
-and tests that can produce, accept, interpret, validate, resolve, traverse, mutate, or report those
-trees. Determine whether any supported input, lifecycle transition, failure path, or partial result
-can yield behavior or observable state that violates protocol requirements. Cover frontmatter,
-root/index/log semantics, filters, links, reserved paths, mounts, and conformance claims; the absence
-of a currently nonconforming fixture is not evidence that the implementation conforms.
+Review every scoped interface and path that can produce, accept, interpret, validate, traverse,
+mutate, or report a doctidex tree. Trace each finding to an exact normative rule and observable
+failure. Protocol silence permits implementation choice; a valuable new rule is at most an
+`advisory`/`recommended` specification suggestion unless another authority is violated.
 
-Also check that an implementation-specific rule is not mislabeled as protocol and that a protocol
-placeholder is not silently expanded into a requirement. Trace each suspected implementation defect
-to the exact protocol rule and the design or execution path that can expose the violation.
-
-Report the exact protocol section and affected behavior. Do not report a different implementation
-choice as a violation when the protocol leaves it open.
-
-The absence of a protocol rule is not evidence of nonconformance. An implementation may add
-observable features in unspecified areas provided they do not violate an existing rule or falsely
-claim normative status. When standardizing such a feature would have substantial future value,
-report a specification suggestion as `advisory` and `recommended`; do not classify it as `high` or
-`must_fix` on the basis of unspecified behavior alone.
-
-Apply these adjudication boundaries:
-
-- Protocol mount and maintenance semantics do not prescribe a CLI, source-identity algorithm,
-  revision-comparison method, writable-root construction, scope command, reuse policy, replanning
-  procedure, or agent scheduling strategy. Review those choices against the implementation's
-  accepted Requirements and current Architecture. Report them under this lens only when their
-  observable result violates an actual protocol boundary, such as writing through a mount path.
-- Treat `protected` as the default authority boundary for ordinary tree-scoped maintenance, not as
-  irreversible storage. Explicit user direction may authorize an exact protected target or a
-  protection-configuration change. Report silent, inferred, or over-broad writes, but do not report
-  the existence of this explicit override path as a protocol violation.
-- `atomic_entries` defines how the responsible index organizes a directory. It does not create a
-  separate content or link root and does not require links inside the unit to remain below the
-  atomic directory. Evaluate a link against the document's actual doctidex link root and applicable
-  mount rules; leaving the atomic directory alone is not an escape, while crossing that actual link
-  root remains subject to the general protocol rule.
+Do not infer CLI, source-identity, revision, scope, reuse, scheduling, or implementation requirements
+from protocol concepts. `protected` permits an exact user-authorized override; report silent or
+over-broad writes, not the existence of that path. `atomic_entries` changes responsible-index
+organization, not content/link roots; evaluate links against their actual protocol root.
 
 ## Agent-Facing Skill Surface
 
-Authority: the `Agent-Facing Skill Design` section of `AGENTS.md`, the changed Skills and metadata,
-and the public CLI behavior those Skills claim. Use `$write-doctidex-agent-skills` when deeper
-authoring guidance is needed.
+Authority: `$write-doctidex-agent-skills`, the changed Skills and metadata, and the public behavior
+they claim.
 
-Check installed-product wording; user-only information; explicit acyclic reading chains; term
-definitions; exact commands, arguments, defaults, root selection, effects, network, batch and
-pagination behavior; native-tool freedom; deterministic non-AI CLI boundaries; bounded output;
-actionable failures; and metadata/plugin validation. A foundational plus specialized Skill must be
-sufficient without source code, implementation docs, `--help` trial and error, or repository-local
-debug instructions.
+Classify each Skill as published or repository-local. Apply installed-product information boundaries
+only to published Skills. Verify trigger precision, audience, acyclic reading, workflow and command
+completeness, native-tool freedom, deterministic helpers, bounded output, actionable failures,
+metadata, validation, and proportionate forward-test evidence. Treat style preferences as advisory
+unless they create ambiguity, unsafe action, or a false surface.
 
-Treat stylistic preferences as advisory unless they cause ambiguity, unsafe action, repeated
-guessing, or a false description of the public surface.
+## Requirement Fulfillment and Lifecycle
 
-## Requirement Fulfillment and Architecture Alignment
+Authority: the applicable record under `docs/requirements/` and
+`$write-doctidex-requirement-docs`.
 
-Apply this lens when the user request introduces or changes behavior, or when a Requirements record
-is part of the review scope.
+Trace reviewed intent and acceptance criteria to authorized artifacts and evidence. Check negative
+requirements and failures, not only happy paths. Verify status and explicit approval provenance,
+active-artifact update order, question/answer handling, live user comments, dependency links,
+large-Requirement aggregate gates, scope, and protected approved history. Do not invent missing
+historical wording or infer authority to repair another layer.
 
-Authority order:
+Use current Architecture, Impls, code, tests, and public surfaces as realization evidence in their
+normal authority order; they do not rewrite the Requirement.
 
-1. The applicable record under `docs/requirements/`.
-2. Current related documents under `docs/<implementation>/architecture/`.
-3. Concrete implementation and tests.
-4. `docs/<implementation>/details/` as a code map, not as authority over current Architecture.
+## Architecture Design
 
-Build a trace from each requirement statement to observable behavior, implementation, tests, and
-public documentation. Verify the result actually solves the stated scenario instead of merely
-adding a command, field, or placeholder. Check negative requirements and failure behavior as well
-as the happy path.
+Authority: `$write-doctidex-architecture-docs`, the current Architecture, applicable Requirement,
+and normative protocol dependencies explicitly claimed by the Architecture.
 
-Flag deviation from Architecture unless the Requirement explicitly changes that design. When it
-does, require the current Architecture to be updated while preserving the historical Requirement.
-If a new requirement lacks a corresponding record where the repository expects one, report the
-traceability gap without inventing historical wording.
+Check user-surface coverage, key common models and dependencies, mechanism and policy closure,
+workflow derivation, observable semantics, language neutrality, public/internal separation, current
+authority uniqueness, and authorized structural replacement. Apply the Architecture Skill's bounded
+cold-read and materiality rules exactly; do not demand byte-level implementation detail without an
+explicit interoperability contract.
 
-Verify that every reviewed Requirement uses exactly `draft`, `implemented`, or `approved`; that
-agent-completed but unconfirmed work is `implemented`; and that `approved` or any rollback from it
-has explicit user provenance. Check every inter-Requirement dependency from both ends. During
-`draft`, unresolved `<question>` blocks may remain, with an immediately adjacent `<answer>` when the
-user answered in-document; resolved pairs should be incorporated and removed unless explicitly
-retained.
+## Impls Realization
 
-Treat every live `<comment>` block as unresolved user feedback. Verify that the agent did not author
-or fabricate it, that it does not split a question/answer pair, and that a non-approved record
-remains `draft`.
-A comment is resolved only when substantive requirement text reflects the requested change or the
-user's explicit decision not to change it, with resulting questions and impacts settled; deletion or
-acknowledgement alone is insufficient. No target may transition to `implemented` or `approved` with
-a live comment. A comment in approved history does not by itself authorize rewrite or rollback;
-report the protected unresolved state and require the user's reopening or follow-up decision.
+Authority: `$write-doctidex-impls-docs`, the applicable Architecture and Requirement, current Impls,
+and the variant source, tests, packaging, and public surfaces as evidence.
 
-For a directory-form Requirement, verify that `overview.md` links every child and reports each
-child's ID and status accurately. The overview must remain `draft` while any child is `draft`, may
-be `implemented` only when all children are `implemented` or `approved`, and may be `approved` only
-when all children are `approved` and explicit user approval exists. Child statuses remain
-independent; an overview transition must not silently rewrite them.
+Check applicability, variant user entry, key capability coverage, concrete component and physical
+state design, flows, side effects, failure/concurrency/recovery boundaries, code ownership, source
+and test traceability, and material limitations. Do not require prose for every helper or accept a
+code map as the whole design. A required Architecture gap cannot be hidden as an Impls choice.
 
-## Implementation Design Documents
+## Cross-Layer Consistency
 
-Authority: `Implementation Documentation Design` in `AGENTS.md`, plus the current document tree.
-These principles apply to every implementation under `docs`, not only `doctidex-git`. Use
-`$write-doctidex-design-docs` for the full authoring contract.
-
-Check that Architecture starts from concrete user problems, mental models, workflows, observable
-results, and failures before internal models; remains language-neutral except where explicitly
-authorized; and defines subsystem responsibilities, non-responsibilities, constraints, concepts,
-and every property. Check that Requirements preserve source wording, intent, decisions, outcomes,
-and implementation impact without retroactive rewriting. Check that Details explain how current
-code realizes Architecture, including module callers, dependencies, types/functions, attributes,
-side effects, errors, concurrency, examples, tests, and known limitations.
-
-Verify current design, historical intent, and implementation fact are visibly distinct but linked
-into a useful knowledge network. Look for duplicate authorities, orphan documents, stale links,
-language-specific leakage into Architecture, source listings without design explanation, and
-published Skill tutorials duplicated in Details.
+When more than one documentation lens applies, check that Requirements preserve historical intent,
+Architecture owns common current design, and Impls owns concrete realization. Verify useful links,
+no duplicate authority, no language-specific leakage upward, and no current compatibility shim kept
+solely for history. Do not apply current completeness rules retroactively to archives or approved
+history.
 
 ## General Engineering
 
-Apply to code, configuration, scripts, runtime behavior, and tests. Check:
+Apply to code, configuration, scripts, runtime behavior, and tests. Check correctness, regressions,
+boundary inputs, error classification, authorization, destructive effects, credentials, concurrency,
+partial success, interruption, cleanup, retry, security, performance, bounded output, portability,
+schema compatibility, code/document drift, and tests proportional to risk.
 
-- correctness, behavioral regressions, boundary inputs, and error classification;
-- preserved results, destructive actions, write authorization, network and credential handling;
-- concurrency, atomicity, partial success, interruption, cleanup, and retry behavior;
-- security, path traversal, secret exposure, trust boundaries, and unsafe subprocess use;
-- performance, unbounded output, context-window pressure, repeated remote work, and scalability;
-- portability and explicit environment assumptions;
-- public schema compatibility and code/document drift;
-- tests proportional to blast radius, including failure and non-action cases.
-
-Prioritize user-visible bugs and irreversible risk. Do not inflate refactoring preferences into
+Prioritize observable bugs and irreversible risk. Do not inflate refactoring preferences into
 correctness findings.

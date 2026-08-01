@@ -1,4 +1,0 @@
-interface:
-  display_name: "Write doctidex Design Docs"
-  short_description: "Author structured implementation design documents"
-  default_prompt: "Use $write-doctidex-design-docs to design or revise implementation documentation for this repository."

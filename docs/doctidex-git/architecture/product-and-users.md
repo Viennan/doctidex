@@ -1,8 +1,9 @@
 # 用户界面
 
-本篇是产品定位、使用者场景和共同心智模型的权威入口。具体任务步骤见
-[用户工作流](workflows.md)，命令及字段见 [CLI](interfaces/cli.md) 与
-[JSON Schema](interfaces/cli-schema.md)；本篇不重复参数表或内部生命周期。
+本篇是产品定位、使用者场景和共同心智模型的权威入口。具体任务分别见
+[Validation](system/validation-workflow.md)、[External](system/external-workflows.md)与
+[Worktree/cache](system/worktree-and-cache-workflows.md)，命令及字段见
+[CLI](interfaces/cli.md) 与 [JSON Schema](interfaces/cli-schema.md)。
 
 ## 1. 产品定位
 
@@ -31,7 +32,31 @@ Git 现场和用户偏好选择原生 Git、手工 worktree、submodule、symlin
 Python import、内部 registry、Git object store、锁、worktree 布局和 presentation 技术不是
 公共 API。程序不得读取内部状态来绕过 CLI。
 
-## 3. 场景与问题
+## 3. 前置概念与预期使用画面
+
+所有使用者先区分三件事：doctidex root 是协议解释边界，Git repository 是版本控制边界，
+managed owner root 是可选 external/worktree 状态的所有权边界。三者可以重合，也可以嵌套；
+任何一个都不能推导另外两个。
+
+| 使用者 | 开始前必须理解 | 预期使用画面 |
+|---|---|---|
+| Human | exact root、dry-run/apply、固定 commit、Git tracking 与 managed/unmanaged 的区别 | 在 shell 中审阅 human/JSON 结果，决定 network、写入、冲突和 Git delivery；需要时仍可直接用 Git。 |
+| Agent | Overview 的共同心智模型、所选 specialist 的命令契约、原生工具自由和 user-decision boundary | 从 Skill 路由到一个工作流，用 JSON 获得客观事实，用原生文件/Git 工具完成阅读、编辑、审阅和交付准备。 |
+| Program | CLI invocation、JSON schema major、exit code、root selection 和 cursor identity | 以 subprocess 调用稳定 CLI，验证 schema，分页消费 collection，并按 stable code 选择下一步。 |
+
+典型交互不是“进入 doctidex-git session”，而是短生命周期循环：调用方观察当前文件/Git
+现场，选择原生工具或一个 CLI operation，读取完整结果，作出下一项决定。省略参数只使用
+本次 cwd 或输入路径，不保存为后续默认；warning、managed state 或 previous dry-run 都不
+构成下一次 apply 的隐式授权。
+
+Agent 的正常画面是 Published Skill 与原生工具共同工作，不是阅读 repository Architecture
+或 Python Impls。Human 可以使用 human output，但需要精确自动化时与 program 一样使用
+`--json`。Program 的稳定边界是 CLI/JSON，不是当前 Python package 的 private imports。
+
+完整模型和依赖从 [Architecture index](index.md#模型层)进入；组件协作见
+[组件、责任与依赖](system/components-and-dependencies.md)。
+
+## 4. 场景与问题
 
 | 场景 | 具体问题 | 入口 | 操作后可观察状态 |
 |---|---|---|---|
@@ -47,15 +72,16 @@ Python import、内部 registry、Git object store、锁、worktree 布局和 pr
 | 协调多个根 | 多 repository 结果没有跨 Git 事务。 | Maintenance Skill + 每根独立命令/原生 Git | 每根分别保留 diff、validation、交付或 blocked 状态。 |
 | 回收共享来源缓存 | human/program operator 需要回收不再被任何有效 linked worktree 使用的 bare source cache，又不能误删仍被其他根使用的 objects。 | `cache clean`；不经 Published Skills 路由 | 单个 source 被报告为 planned、removed 或 preserved；任何 root-owned 状态不变。 |
 
-## 4. 用户心智模型
+## 5. 用户心智模型
 
 1. **根是协议解释边界**：`/` 表示 doctidex 根，不是宿主文件系统根。
 2. **安装与入口分开**：install path 由工具稳定分配且被宿主 Git 忽略；external link 是
    用户选择、可追踪的相对 symlink，二者都可由原生文件工具读取。
 3. **source selector 与读取 commit 分开**：branch/tag 记录调用输入，install 始终固定
    到 resolved commit；省略 revision 时默认分支只作为首次解析来源。
-4. **selector 决定安装 identity**：同 source 的不同 normalized selector 使用不同路径，
-   即使 resolved commit 相同；同 selector 才幂等复用。
+4. **固定 selector 决定安装 identity**：owner root、canonical source 与 normalized fixed
+   selector 形成稳定 key；省略 revision 的 default provenance 用于后续 lookup，具体 physical
+   key 是否额外区分该 provenance 由 Impls 定义。
 5. **依赖在宿主根扁平展开**：`--dependency-of` 只建立有限关系边，不在 install 内递归；
    dependency-only install 不恢复，direct install 才进入清单。
 6. **safe/unsafe 不是信任或权限**：它们只描述协议严格规则是否获得例外。
@@ -71,7 +97,7 @@ Python import、内部 registry、Git object store、锁、worktree 布局和 pr
 12. **共享 cache 不从 root 推断存活性**：清理只依据目标 bare repository 的 Git worktree
     metadata；任何有效或无法安全分类的 linked worktree 都令 source cache 保留。
 
-## 5. 责任与非责任
+## 6. 责任与非责任
 
 doctidex-git 负责：
 
@@ -97,7 +123,7 @@ doctidex-git 不负责：
 - 为跨 repository 工作制造原子提交或自动决定依赖顺序；
 - 强制 agent 使用 doctidex-git 的 install/worktree，而排除原生或第三方工作流。
 
-## 6. 设计来源与实现状态
+## 7. 设计来源与实现状态
 
 本设计由 [DX-REQ-0008.1](../../requirements/0008-doctidex-git-v1-0-0-alignment/01-doctidex-git-alignment.md)
 确定，依赖协议 [DX-REQ-0005](../../requirements/0005-protocol-v1-0-0.md)。Python 实现、

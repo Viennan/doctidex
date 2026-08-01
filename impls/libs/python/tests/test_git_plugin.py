@@ -416,6 +416,40 @@ def test_link_restore_and_current_owner_parse(cli_env: dict[str, str], tmp_path:
     restored = run(["external", "restore", "--root", str(root), "--apply"], tmp_path, cli_env)
     assert restored["items"][0]["state"] == "restored"
     assert presentation.exists()
+    restored_parse = run(["external", "link-parse", str(presentation), "--root", str(root)], tmp_path, cli_env)
+    assert restored_parse["mapping_origin"] == "owner_root"
+    assert restored_parse["target_state"] == "available"
+
+
+@pytest.mark.parametrize("explicit_selector", [False, True])
+def test_restore_rebuilds_requested_default_provenance(
+    cli_env: dict[str, str], tmp_path: Path, explicit_selector: bool
+) -> None:
+    root = create_repository(tmp_path / "host")
+    source = create_repository(tmp_path / "source")
+    original_commit = add_source_content(source)
+    install_command = ["external", "install", "--url", str(source), "--root", str(root)]
+    if explicit_selector:
+        install_command.extend(["--commit", original_commit])
+    install = run([*install_command, "--apply"], tmp_path, cli_env)
+
+    install_path = Path(install["working_path"])
+    common = Path(git(install_path, "rev-parse", "--path-format=absolute", "--git-common-dir"))
+    make_writable(install_path)
+    git(common, "worktree", "remove", "--force", str(install_path))
+
+    restored = run(["external", "restore", "--root", str(root), "--apply"], tmp_path, cli_env)
+    assert restored["items"][0]["state"] == "restored"
+    runtime_install = RootStorage(root).read_runtime()["installs"][install["install_id"]]
+    assert runtime_install["requested_default"] is not explicit_selector
+    assert runtime_install["revision_selector"] == install["revision_selector"]
+    assert runtime_install["resolved_commit"] == original_commit
+
+    if not explicit_selector:
+        add_source_content(source, "later.md")
+    retried = run(install_command, tmp_path, cli_env)
+    assert retried["install_id"] == install["install_id"]
+    assert retried["resolved_commit"] == original_commit
 
 
 def test_portable_broken_link_dependency_can_be_flattened(

@@ -459,6 +459,7 @@ class ExternalService:
                 runtime_record = {
                     **record,
                     "canonical_source": canonical,
+                    "requested_default": record.get("default_branch") is not None,
                     "role": "direct",
                     "parents": [],
                     "managed_state": "complete",

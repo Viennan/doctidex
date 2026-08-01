@@ -12,5 +12,5 @@ projection 与 maintenance scope 行为，仅用于解释尚未被 0008.2 替换
 | 层面 | 入口 |
 |---|---|
 | 语言无关设计 | [Architecture](architecture/index.md) |
-| Python 代码地图 | [Implementation Details](details/index.md) |
+| Python 代码地图 | [Implementation Details](impls/index.md) |
 | 替代需求 | [DX-REQ-0008](../../../requirements/0008-doctidex-git-v1-0-0-alignment/overview.md) |

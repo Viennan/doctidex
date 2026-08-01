@@ -2,7 +2,7 @@
 
 本篇描述 `doctidex-git` 0.1.0 当前接受的命令和副作用。返回字段的逐字段说明见
 [CLI 结果契约](cli-schema.md)。Python 参考实现如何完成参数分发和渲染见
-[CLI 与 rendering](../../details/python/cli-and-rendering.md)。
+[CLI 与 rendering](../../impls/python/cli-and-rendering.md)。
 
 ## 1. 命令总览
 

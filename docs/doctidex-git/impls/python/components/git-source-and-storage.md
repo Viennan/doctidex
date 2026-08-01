@@ -1,13 +1,13 @@
 # Git 来源与状态
 
-## `git/runner.py`
+## [`git/runner.py`](../../../../../impls/libs/python/whero/doctidex/git/runner.py)
 
 `GitResult(stdout, stderr, returncode)` 是内部 subprocess 结果。`git(arguments, cwd, operation,
 check)` 使用参数数组和 `GIT_TERMINAL_PROMPT=0`，不经 shell；`check=False` 供调用者客观分类，
 否则 `_git_error` 把认证/网络/revision/其他失败清理为 user-level Finding。stderr 和含凭据的
 argv 不进入正常结果。
 
-## `git/source.py`
+## [`git/source.py`](../../../../../impls/libs/python/whero/doctidex/git/source.py)
 
 调用者为 External/Worktree coordinator；它不读取 doctidex frontmatter 或分配 root path。
 
@@ -17,8 +17,10 @@ argv 不进入正常结果。
 
 主要函数：
 
-- `sanitize_url` 移除 URL userinfo；`canonical_source` 只合并可证明的 scheme/host/local
-  path 等价，不推断 mirror/fork；
+- `sanitize_url` 移除 scheme URL userinfo；`canonical_source` 对 local/file URL 使用
+  `Path.resolve(strict=False)`，对 scheme URL lower-case scheme/host、移除 fragment/trailing slash，
+  对 SCP-like 只移除 trailing slash；query 与其他未归一化 spelling 保持 identity 的一部分，
+  不推断 mirror/fork；
 - `resolve_source` 校验 selector，首次省略时读取 HEAD/default branch 并转为 commit selector；
   remote full commit 以临时 bare fetch 验证，tag/branch 以 remote ref 解析；
 - `ensure_source_cache` 创建/更新用户级 bare repository；`ensure_exact_commit_cache` 为既有
@@ -28,7 +30,7 @@ argv 不进入正常结果。
   `make_logically_read_only` 清除普通写权限，失败时尽力而为且不构成 sandbox；
 - `source_relation` 只在 common gitdir 或 canonical origin 足以证明时报告宿主关系。
 
-## `git/storage.py`
+## [`git/storage.py`](../../../../../impls/libs/python/whero/doctidex/git/storage.py)
 
 `cache_root()` 按 `DOCTIDEX_GIT_CACHE`、Windows `LOCALAPPDATA`、macOS Caches 或 Linux
 `XDG_CACHE_HOME` 选择用户 cache。`source_id` 是 opaque hash；`source_cache` 只返回 bare
@@ -50,6 +52,20 @@ manifest/runtime schema 当前只接受 `1.0`；未知或损坏文件 blocked，
 JSON 使用排序键和结尾换行，manifest identity 对完整规范 JSON 求摘要；写入前使用同一校验器，
 避免发布 CLI 自身无法重新读取的 portable facts。
 
-证据：Git fixture 覆盖 local/file URL、默认/branch 固定、跨 root identity、自依赖、tracked/
-ignored boundary、restore 和 cache metadata。网络认证场景依赖 Git 错误分类，CI 不需要真实
-远端凭据。
+`manifest_identity` 使用 Python `json.dumps(sort_keys=True, separators=(",", ":"))` 的完整 logical
+object 摘要；validator 要求 known fields 自洽并允许 unknown fields 保留为无本版本语义的数据。
+
+Host Git Coordinator 没有单独 class，ownership 分布为：`git.external._host_repository` 用
+`git rev-parse --show-toplevel` 选择唯一 host；`RootStorage.ensure_host_layout` 再验证 host、更新
+root index 与 exact `.gitignore` entries；`git.storage.git_file_state` 产生 tracked/modified/untracked；
+`git.external._assert_payload_untracked`、`_assert_manifest_trackable`、`_git_ignored` 与 link target
+checks 执行 tracking/ignore preflight。`ExternalService.install/link/restore` 是这些 helpers 的唯一
+产品 coordinator，并在 root lock 内重新读取相关 facts。
+
+证据：[tests/test_git_plugin.py](../../../../../impls/libs/python/tests/test_git_plugin.py) 中
+`test_default_revision_is_fixed_and_self_dependency_is_bounded`、
+`test_explicit_branch_retry_stays_fixed_and_root_is_part_of_identity`、
+`test_install_blocks_an_ignored_recovery_manifest`、
+`test_cache_cleanup_accepts_prunable_registration` 与
+`test_manifest_rejects_duplicate_and_inconsistent_portable_facts`。网络认证场景依赖 Git 错误分类，
+CI 不需要真实远端凭据。

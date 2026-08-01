@@ -1,6 +1,6 @@
-# Worktree、清理与测试
+# Worktree 与 cache
 
-## `git/worktrees.py`
+## [`git/worktrees.py`](../../../../../impls/libs/python/whero/doctidex/git/worktrees.py)
 
 `WorktreeSource` 属性为 `kind`、common `gitdir`、canonical `identity`、可公开 `source_url`、
 `repository_relative_path`、实际 `network` 和可选 `ResolvedSource`。`WorktreeService` 属性为
@@ -23,7 +23,8 @@ path/state/findings 属性。
 
 `close` 只匹配 exact record path；unavailable/changed 以顶层 WorktreeItem blocked 并保留。
 clean path 在 source/root lock 中调用 `git worktree remove`，成功后删除 record；不触碰其他
-presentation。
+presentation。若 remove 后在 record deletion 前中断，下一次 close 把 absent path 分类为
+unavailable 并保留 record，不从缺失 path 推导自动清理授权。
 
 ## `CacheService`
 
@@ -35,22 +36,17 @@ source lock 内有任一 valid 时返回 preserved warning。否则 dry-run 返�
 重查相同计数后只删除 bare source directory，公开 changed 仍为空。它不清理 root payload、
 manifest、runtime 或其他来源。该 operator command不进入 Published Skills。
 
-## 平台与测试
+## Effects、concurrency 与 evidence
 
-平台机制使用 `pathlib`、`tempfile`、`os.replace`、`subprocess`、`chmod` 和 mkdir lock；不在
-import 时依赖 POSIX-only module。cache root 分平台选择；symlink capability不足由
-`symlink_unsupported` 表达而不复制。Git path 输出通过 `--path-format=absolute` 获取。
+Open/remove/cleanup 通过 source lock 串行；worktree record publication 另进入 root lock。List
+只读且每次重新观察 Git。Close/cleanup 的任一 ownership 或 metadata 不确定都会完整保留对象。
 
-`tests/test_protocol.py` 使用纯目录 fixture；`tests/test_git_plugin.py` 使用调用真实 console
-module 的本地 Git repositories。当前场景覆盖 parser/schema、nested root、ignore、selector
-固定、自/cycle edge、restore/mapping、manifest damage、symlink capability/篡改、gitfile、
-dirty/unmanaged orphan 保留、active/prunable clean、protocol scope、reference link 与 cursor。
-Ruff 负责 Python 3.11 语法和静态规则。
-
-跨平台 CI 在 Linux、macOS 与 Windows 的 Python 3.11/3.12 运行 editable install、Ruff 和
-pytest。无法创建 symlink 的 runner 跳过需要成功 symlink 的端到端场景；独立的错误路径由
-实现捕获 OSError 并保持 Architecture failure contract。
-
-已知实现边界：没有稳定 Python import API；逻辑只读是普通权限的尽力约束而非 sandbox；
-外部 Git/network 错误依赖 Git 可观察消息分类；中断发生在 worktree 创建与 record 发布之间
-时，孤立现场只作为 namespace/Git metadata 证据保留，不自动 adopt 或删除。
+[`tests/test_git_plugin.py`](../../../../../impls/libs/python/tests/test_git_plugin.py) 的
+`test_worktree_dirty_preservation_and_close`、`test_worktree_open_accepts_a_linked_worktree_gitfile`、
+`test_unrecorded_worktree_namespace_path_is_preserved`、
+`test_interrupted_worktree_publication_leaves_orphan_evidence`、
+`test_worktree_source_kinds_managed_bare_and_submodule`、
+`test_cache_cleanup_preserves_active_then_removes_eligible` 与
+`test_cache_cleanup_accepts_prunable_registration` 提供证据。跨平台与 suite 入口见
+[Platform](../platform-package-and-dependencies.md)和
+[Architecture coverage](../architecture-coverage-and-tests.md)。

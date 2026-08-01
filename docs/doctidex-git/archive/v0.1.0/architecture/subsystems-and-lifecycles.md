@@ -1,7 +1,7 @@
 # doctidex-git 0.1.0 子系统与生命周期
 
 本文说明语言无关的职责划分，以及公开操作如何跨子系统完成。Python 模块映射见
-[Python 包与模块地图](../details/python/package-and-module-map.md)。
+[Python 包与模块地图](../impls/python/package-and-module-map.md)。
 
 ## 1. 子系统职责
 

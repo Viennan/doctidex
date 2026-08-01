@@ -23,7 +23,7 @@ Git 管理的目录中创建、读取、查询、维护和审阅 doctidex 目录
 
 本文档形成时用于描述目标 surface。当前语言无关设计以
 [Architecture](../doctidex-git/architecture/index.md) 为准；当前 Python 代码、CLI 字段及已知限制见
-[Python Details](../doctidex-git/details/python/index.md)。当前设计或实现与本记录不同时，不修改本记录
+[Python Details](../doctidex-git/impls/python/index.md)。当前设计或实现与本记录不同时，不修改本记录
 来掩盖演进结果。
 
 ## 1. 设计目标

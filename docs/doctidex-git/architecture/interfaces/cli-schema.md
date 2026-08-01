@@ -1,7 +1,7 @@
 # CLI JSON Schema 契约
 
 本文是 doctidex-git `v1.0.0` 稳定 JSON surface 的权威说明。调用语法和副作用见
-[CLI](cli.md)，概念关系见 [领域模型](../domain-model.md)。本篇只定义可观察数据结构，
+[CLI](cli.md)，概念关系从 [Architecture models](../index.md#模型层)进入。本篇只定义可观察数据结构，
 不重复用户步骤或内部 storage。未知 optional field 可以忽略；本篇标为 required 的字段
 缺失或类型变化是兼容失败。
 
@@ -13,17 +13,20 @@ required；空值使用 null 或空 collection，不依赖 key 缺失表达状�
 | 字段 | 类型 | 含义 |
 |---|---|---|
 | `schema_version` | string | 固定 `1.0`；不是 doctidex 协议版本。 |
-| `operation` | string | 本篇定义的 operation discriminator。 |
+| `operation` | string | 本篇定义的 operation discriminator；在 command/subcommand 尚未成功解析时固定为 `command`。 |
 | `status` | `ok`/`warning`/`blocked` | 当前请求完成、完成但有需关注结果，或请求未完成。 |
 | `result` | string | 已完成与已保留结果的简短说明。 |
 | `root` | absolute path/null | 已选择的 doctidex 根；link-parse 为拥有外层安装/依赖的 owner root，cache clean 固定为 null，选择前 blocked 时也为 null。 |
-| `changed` | array[absolute path] | 本次实际创建、修改、替换或移除的公开路径；dry-run/只读/blocked 为空。 |
+| `changed` | array[absolute path] | 本次可可靠确定的公开路径 effects；dry-run/只读以及 publication 前 blocked 为空。Blocked 无法完整重建 effects 时可为空，调用方再依据 `affected` 重读现场。 |
 | `network` | boolean | 本次是否实际访问 network。 |
 | `findings` | array[Finding] | 客观问题、warning 或保留原因；默认空。 |
 | `next_actions` | array[string] | 已完成结果的建议后续；默认空。 |
 | `affected` | array[string] | blocked/partial result 影响对象；默认空。 |
 | `requires_user` | string/null | 继续所需的用户输入类别；无需用户时 null。 |
 | `collection` | Collection/null | validate/external restore/worktree list 的分页事实；其他 operation 为 null。 |
+
+Blocked unexpected failure 可额外提供 `details: {"diagnostic_id": string}`；其他 details fields
+不是 stable public contract。Diagnostic ID 只用于报告内部诊断，不是 path、authorization 或 cursor。
 
 `status` 不替代 operation domain：validate 的 `protocol_structure: fail` 是已完成的 warning，
 worktree dirty 是 list item state，只有当前请求无法按契约完成时才是 blocked。
@@ -38,7 +41,7 @@ worktree dirty 是 list item state，只有当前请求无法按契约完成时�
 | `severity` | `error`/`warning`/`info` | error 影响操作或协议结果；warning 表示可用但需处理；info 是客观提示。 |
 | `code` | string | 稳定机器分支标识，不匹配 message。 |
 | `message` | string | 不依赖内部 cache、lock、module 或 traceback 的说明。 |
-| `path` | absolute/root-relative path/null | 能定位时给出用户可访问路径。 |
+| `path` | absolute path/null | 能定位时统一给出 normalized filesystem absolute path；validation 也不返回 root-relative spelling。不能公开 internal cache/lock path 的 domain 固定为 null。 |
 | `actions` | array[string] | 有序、可执行恢复动作；不能以无限重试代替用户决定。 |
 
 ### 2.2 语义候选项
@@ -64,9 +67,20 @@ candidate 不进入 `findings`，也不改变 `protocol_structure`。
 
 cursor 与 operation、root、规范化 scope/filter、limit 及命令定义的模式绑定。validate 的 scope 输入次序、
 重复项或被祖先覆盖的后代不同，只要规范化后集合相同，就属于同一 cursor identity。
-无效、过期或上下文不同返回
-`cursor_invalid` blocked；不能静默回到第一页。集合按规范化 path、code、稳定 identity
-排序，重复调用在输入状态不变时顺序相同。
+无效、过期或上下文不同返回 `cursor_invalid` blocked；不能静默回到第一页。排序 key 固定为：
+
+| Collection | Ascending key |
+|---|---|
+| validate findings | `(path-or-empty, code, message)`。 |
+| semantic candidates | `(path, code, message)`。 |
+| restore items | `install_id`。 |
+| worktree items | `worktree_path`。 |
+
+同 key item 必须保持 deterministic order。Observed-state identity 由 Impls 根据该 operation 可
+可靠观察的 query/state facts 形成，用于拒绝明显不属于同一结果现场的 continuation；它不是跨实现
+wire identity，也不要求特定 canonical JSON/hash。Restore 使用 recovery manifest identity 与
+normalized filter/install-ID selection，不包含 invocation 时观察到的 payload state，因此前页
+apply 不使后页 cursor 失效。Cursor encoding 可以因实现而异。
 
 ## 4. RevisionSelector
 
@@ -92,8 +106,9 @@ repository object format 的完整 commit ID。
 | `semantic_review` | `clear`/`required` | candidate 是否非空。 |
 | `semantic_candidates` | array[SemanticCandidate] | 需要人或 agent 判断的候选。 |
 
-`coverage: scoped` 的支持闭包可以包含 scopes 外的 root/祖先负责 index、适用局部配置、
-可达导航文档和 scopes 内 link 的必要目标。`findings` 与 `semantic_candidates` 只包含 scope
+`coverage: scoped` 的支持闭包按 [tree model](../models/doctidex-tree-and-configuration.md#5-reachability-与-scope)
+包含 scopes 外的 root/祖先负责 index、适用局部配置、必要 navigation support 和 scopes 内 link
+的必要目标。`findings` 与 `semantic_candidates` 只包含 scope
 内事项，或直接阻止解释/验证 scope 的支持路径事项；collection totals 对该结果集合计数，
 不是对整个根计数。
 
@@ -113,7 +128,7 @@ repository object format 的完整 commit ID。
 | `path_unreachable` | 负责 index 无有效 Markdown link path 到达必达目标。 |
 | `link_path_invalid` | doctidex 文件路径 link 越根、目标不可读或无法形成有效路径边。 |
 | `link_annotation_invalid` | doctidex 注释结构、重复、必需字段、boundary point 或 unsafe 值错误。 |
-| `reserved_name_conflict` | `.doctidex` 中存在与协议/明确扩展冲突的语义。 |
+| `reserved_name_conflict` | 仅供显式启用且提供 machine-readable reserved-name contract 的 protocol extension；base `v1.0.0` 没有这类 registry，当前 validation 不得靠内容语义猜测或发射此 code。 |
 
 同一 code 可通过 path/message 区分多个位置；实现不为每个 YAML 子错误发明不稳定 code。
 
@@ -160,8 +175,9 @@ pagination，因为 agent 建立或判断当前 edge 不需要枚举整个依赖
 
 首次省略 revision 的 `revision_selector.kind` 必须为 commit，且 value 等于
 `resolved_commit`。remote default branch 后续移动不能改变任何现有 result。install identity
-由 root、canonical source 和 normalized selector 构成；不同 selector 不因 resolved commit
-相同而合并。同 key 重试保持 `install_id`/`install_path`，dependency-only 可提升为 direct。
+由 root、canonical source 和 normalized fixed selector 构成；default provenance 用于后续省略
+selector 的 lookup，是否形成额外 physical key 维度由 Impls 定义。同 key 重试保持
+`install_id`/`install_path`，dependency-only 可提升为 direct。
 
 ### 6.2 `external_link`
 
@@ -207,11 +223,11 @@ RestoreItem：
 | 字段 | 类型 | 含义 |
 |---|---|---|
 | `install_id` | opaque string | 恢复清单中的稳定安装标识。 |
-| `install_path` | root-absolute POSIX path | 必须恢复到的原内部路径。 |
-| `source_url` | sanitized string | 获取缺失 objects 的 portable source identity。 |
-| `revision_selector` | RevisionSelector | 原安装的 selector provenance；不用于重新解析 moving ref。 |
+| `install_path` | root-absolute POSIX path/null | 必须恢复到的原内部路径；未知 filter ID 为 null。 |
+| `source_url` | sanitized string/null | 获取缺失 objects 的 portable source identity；未知 filter ID 为 null。 |
+| `revision_selector` | RevisionSelector/null | 原安装的 selector provenance；不用于重新解析 moving ref；未知 filter ID 为 null。 |
 | `default_branch` | string/null | 原安装省略 revision 时的来源信息。 |
-| `resolved_commit` | full commit ID | 唯一允许恢复的 exact commit。 |
+| `resolved_commit` | full commit ID/null | 唯一允许恢复的 exact commit；未知 filter ID 为 null。 |
 | `state` | `planned`/`restored`/`unchanged`/`blocked` | dry-run 可重建、apply 已重建、原内容已匹配，或该项未完成。 |
 | `findings` | array[Finding] | item-level 阻塞与恢复动作；正常为空。 |
 
@@ -226,8 +242,10 @@ RestoreItem：
 | `install_filter` | array[opaque string] | 规范化、排序并去重后的 filter；省略时为空。 |
 | `items` | array[RestoreItem] | 当前有界页。 |
 
-restore items 只来自 manifest 中的 direct installs；dependency-only install 和 dependency
-edges 不在集合中。任一 item blocked 令顶层 status 至少为 warning，但其他 item 可以成功。整体清单缺失、schema
+省略 filter 时 items 只来自 manifest 中的 direct installs。提供 filter 时，每个 normalized ID
+在排序与 pagination 中占一项；未知 ID 产生字段为 null、`state: blocked`、code
+`install_not_found` 的 RestoreItem，因此 total 与请求集合一致。Dependency-only install 和
+dependency edges 不在无 filter 集合中。任一 item blocked 令顶层 status 至少为 warning，但其他 item 可以成功。整体清单缺失、schema
 不可识别或无法选择宿主 repository 时，operation blocked。`collection.lists.items` 对 filter
 后的记录计数；恢复载荷不改变 manifest identity，也不使后续 cursor 失效。
 
@@ -241,7 +259,7 @@ edges 不在集合中。任一 item blocked 令顶层 status 至少为 warning�
 | `managed` | boolean | 是否识别到 PATH 的 current-owner 或 installed-repository 受管 mapping 身份；不表示 target 可用或 mapping 完整。 |
 | `mapping_origin` | `owner_root`/`installed_repository`/null | mapping 由当前 owner root 的受管记录提供，还是由 install 内 portable manifest 提供。 |
 | `created_by` | `install`/`link`/null | 最内层 mapping 的创建 operation；portable external symlink 为 link。 |
-| `content_root` | absolute path/null | PATH 所在的 doctidex root；安装仓库内可与顶层 `root` 不同。 |
+| `content_root` | absolute path/null | 可确定时用于解释 repository-relative suffix 的 content root。Current-owner mapping 没有更内层 doctidex root 时可回退 owner root；portable/unmanaged input 无法确定时可为 null。 |
 | `input_path` | absolute path | 规范化 PATH；broken symlink 保留 symlink 自身路径。 |
 | `input_kind` | `directory`/`symlink` | 输入路径自身的种类，不跟随 symlink target 分类。 |
 | `presentation_path` | absolute path/null | 命中的 install/link presentation；portable mapping 时为 install 内 symlink。 |
@@ -261,8 +279,9 @@ edges 不在集合中。任一 item blocked 令顶层 status 至少为 warning�
 | `safe_state` | `safe`/`unsafe`/null | 该 presentation 入口分类。 |
 | `responsible_index` | absolute path/null | 在 content root 中拥有 link boundary/unsafe 条目的 index。 |
 
-顶层 `root` 始终是 owner root。`mapping_origin: installed_repository` 时，`content_root` 是
-正在阅读的安装仓库 doctidex root，`dependency_parent_install_id` 是包含它的当前 install。
+顶层 `root` 始终是 owner root。`mapping_origin: installed_repository` 时，`content_root` 优先是
+正在解释的 doctidex root；实现无法从当前 facts 可靠恢复 repository root 时可以为 null。
+`dependency_parent_install_id` 是包含它的当前 install。
 
 `target_state: dependency_not_installed` 是正常 `ok`：portable mapping 完整，但匹配依赖尚未
 在 owner root 扁平安装；`install_id`、`install_path`、`install_role` 和 `working_path` 为
@@ -275,9 +294,11 @@ null，source/selector/commit/repository-relative path 仍完整。匹配 instal
 current-owner durable link 的目标 install 缺失时 state 为 `owner_install_missing`，status 为
 warning，并提供 restore next action。managed false 时 mapping origin 为 null、target state
 为 `not_applicable`，mapping/source/install fields 为 null，`content_root` 在可确定时仍可
-返回，status 为 ok。已识别但损坏的 current-owner/portable mapping 保持 managed true，使用
-`unavailable`、warning/blocked 和 `mapping_damaged` finding；可靠字段保留，不能伪装成
-unmanaged 或 dependency_not_installed。
+返回，status 为 ok。已识别但损坏的 current-owner/portable mapping 保持 managed true：identity/
+record/path 仍自洽、只是当前 target/working path 不可用时，以 `unavailable` + warning 完成诊断；
+schema、identity、path containment、record reference 或 owner 证据不自洽，无法安全形成 mapping
+时才 blocked。两者都使用 `mapping_damaged` finding 并保留仍可靠字段，不能伪装成 unmanaged 或
+dependency_not_installed。
 
 ## 8. WorktreeItem
 
@@ -294,6 +315,12 @@ unmanaged 或 dependency_not_installed。
 | `working_path` | absolute path | `worktree_path` 加 repository-relative suffix。 |
 | `state` | `clean`/`changed`/`unavailable` | 当前客观 Git/文件系统状态。 |
 | `findings` | array[Finding] | item-level 问题；正常为空。 |
+
+Worktree ID 是 runtime-internal；public identity 是 `(owner_root, root_internal_path,
+worktree_path)`，list/close filter 使用 exact worktree path。Local source 的 `source_url: null` 不
+丢失 CLI identity：同一 item 仍由 source kind、repository-relative suffix 和 public worktree
+paths 描述；跨调用按 source 过滤时调用方再次提供原 local path/gitdir，由实现规范化后比较
+internal source identity，JSON 不承诺公开该 host-internal value。
 
 ### 8.1 `worktree_open`
 
@@ -324,8 +351,9 @@ status warning，不阻断其他 items。
 | `operation` | `worktree_close` | 操作判别字段。 |
 | `worktree` | WorktreeItem/null | 能识别时为关闭前/被保留状态；无法识别 exact path 时 null。 |
 
-成功时 `changed` 包含已移除 worktree path；dirty/unavailable blocked 时 changed 为空且
-worktree 保留。
+普通 clean close 成功时 `changed` 包含已实际移除的 worktree path；dirty/unavailable blocked 时
+changed 为空且 worktree 保留。Path 或 exact Git registration 已 absent 时，当前操作返回
+unavailable/blocked 并保留 ownership record；实现不从“path 不存在”推导删除授权。
 
 ## 9. `cache_clean`
 

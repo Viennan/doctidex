@@ -14,7 +14,7 @@
 source cache、Git worktree 或仓库身份判定等内部机制。
 
 本文是需求历史，不是当前接口事实。当前实际行为以
-[Architecture](../doctidex-git/architecture/index.md)、[Python Details](../doctidex-git/details/python/index.md)和已发布
+[Architecture](../doctidex-git/architecture/index.md)、[Python Details](../doctidex-git/impls/python/index.md)和已发布
 Skills 为准。
 
 ## 1. 需求来源摘要
@@ -157,10 +157,10 @@ agent 对写入现场的选择。合并后的变更使用所选 scope 自己的 
 | Published Skills | Guide 定义共享术语；Read、Maintain、Workspace 分别说明只读路径、当前根直写和 scope 复用决策。 |
 | Python 实现 | `git.relations` 保守判断本地关系并排除已知 branch 冲突；resolve/scope/open 返回同一关系 object，路径选择和 maintenance 生命周期保持不变。 |
 | 测试 | 已覆盖同/different commit 自引用、branch 交付冲突、SCP/local 地址歧义、nested root unknown、已有同 source/base commit scope 复用和普通 mount 回归。 |
-| Details | [Repository Relation](../doctidex-git/details/python/repository-relations.md)与[Maintenance](../doctidex-git/details/python/maintenance.md)记录模块、字段生产和限制。 |
+| Details | [Repository Relation](../doctidex-git/archive/v0.1.0/impls/python/repository-relations.md)与[Maintenance](../doctidex-git/archive/v0.1.0/impls/python/maintenance.md)记录模块、字段生产和限制。 |
 
-相关当前设计入口包括 [User Surface](../doctidex-git/architecture/user-surface.md)、
-[工作流](../doctidex-git/architecture/workflows.md)、[领域模型](../doctidex-git/architecture/domain-model.md)、
+相关当前设计入口包括 [User Surface](../doctidex-git/architecture/product-and-users.md)、
+[工作流](../doctidex-git/architecture/index.md#系统与-workflow)、[领域模型](../doctidex-git/architecture/index.md#模型层)、
 [CLI 结果契约](../doctidex-git/architecture/interfaces/cli-schema.md)和
 [Skill 系统](../doctidex-git/architecture/skill-system.md)。这些页面现已作为当前行为的权威说明。
 

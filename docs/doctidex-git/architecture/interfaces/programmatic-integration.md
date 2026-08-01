@@ -77,8 +77,8 @@ dry-run/apply mode；manifest 内容改变会令 cursor invalid，而已恢复�
 
 - validate、link-parse、list 是 read-only，可在 state 不变时安全重复；dependency install 后
   重跑同一 link-parse 可以从 `dependency_not_installed` 变为 available，并返回外层路径。
-- install apply 的同 root/source/normalized selector 重试复用稳定 install ID/path；不同
-  selector 即使 commit 相同也使用不同 install。link apply 的同 target/同 mapping 重试复用
+- install apply 的同 root/source/normalized fixed selector 重试复用稳定 install ID/path；default
+  provenance 的 physical key 处理见对应 Impls。link apply 的同 target/同 mapping 重试复用
   已完成状态。
 - install 同 key 永不重新解析已记录 branch/default branch；dependency-only 可由普通 install
   原地提升为 direct，direct 不降级。

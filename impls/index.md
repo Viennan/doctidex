@@ -19,5 +19,5 @@ artifacts; their maintained design documentation lives in the repository-level
   operational guidance.
 - [`libs/`](libs/) contains shared implementation source libraries. It is
   indexed atomically; use
-  [doctidex-git Details](../docs/doctidex-git/details/index.md) as the current
-  code-reading map.
+  [doctidex-git Python Impls](../docs/doctidex-git/impls/python/index.md) as the
+  current variant user surface, implementation design, code map, and coverage.

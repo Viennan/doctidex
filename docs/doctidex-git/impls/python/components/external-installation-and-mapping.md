@@ -1,21 +1,26 @@
 # External 实现
 
-`git/external.py::ExternalService` 由 CLI 以一个 `RootContext` 构造，属性为 context、owner
+[`git/external.py::ExternalService`](../../../../../impls/libs/python/whero/doctidex/git/external.py)
+由 CLI 以一个 `RootContext` 构造，属性为 context、owner
 `root`、`RootStorage` 和唯一宿主 Git repository。它组合 source/storage/protocol，不能递归
 读取依赖文档，也不决定 agent 是否采用受管方案。
 
 ## Install
 
 `install(url, selector, dependency_of, apply, cwd)` 先从 runtime 查找相同 canonical source 与
-normalized selector；省略 revision 只匹配首次已记录的 default key。install ID 对
-root/source/selector 求 hash，决定 `/.doctidex/git/installs/<id>`。parent 必须是当前 root 的
-complete install；role 只允许 dependency 提升为 direct。
+normalized selector；省略 revision 优先匹配已记录的 `requested_default` install。Install ID 对
+root/source/fixed selector 求 hash，因此 default intent 与显式 commit 解析到同一 fixed selector
+时使用同一 physical key；`requested_default` 仍保留 lookup provenance。该 ID 决定
+`/.doctidex/git/installs/<id>`。Parent 必须是
+当前 root 的 complete install；role 只允许 dependency 提升为 direct。
 
 dry-run 解析并验证 source/commit、manifest trackability 与计划路径，但不写持久 cache/root。
 apply 在 source lock 中保证 exact objects，再在 root lock 中核对 payload untracked、写
 frontmatter/ignore、创建 detached readonly worktree、发布 runtime；direct 另原子写 manifest。
-既有 path 必须仍是记录 commit。重试既有 branch/tag 使用 record 和 exact commit，不 fetch
-moving ref。公开 `network` 合并解析与 object 获取的实际访问。
+既有 path 要求 `HEAD` 仍是记录 commit；不会以 `git status --porcelain` 阻止幂等重用，因此
+logical read-only 不是修改检测或 security boundary。
+重试既有 branch/tag 使用 record 和 exact commit，不 fetch moving ref。公开 `network` 合并解析
+与 object 获取的实际访问。
 
 ## Link
 
@@ -31,6 +36,11 @@ portable source、既有 mapping/symlink target，并在目标文件系统探测
 portable link manifest。平台 symlink 失败不回退 copy/junction。幂等只接受完全相同
 target/mapping 与 symlink target。
 
+Python publication 顺序是 frontmatter -> symlink -> runtime -> manifest。Capability preflight 令
+常规 platform failure 在持久改动前发生，但 process interruption 仍可能留下已建 symlink、mapping
+未发布的窗口；后续解析把不自洽现场作为 damaged 保留，并要求以同 mapping 重试或人工修复。
+Link result 不重复提示通用 Markdown navigation；Published Skill/human workflow 负责语义导航编辑。
+
 ## Restore
 
 `restore(filters, apply, limit, cursor)` 只枚举 manifest direct installs。manifest identity、
@@ -38,6 +48,12 @@ target/mapping 与 symlink target。
 对匹配 path 返回 unchanged，对占用 path 保留并 blocked；dry-run 用 `verify_exact_commit`，apply
 用 exact-commit cache 在原稳定 path 重建 readonly worktree，并从 manifest 重建必要 direct/
 link runtime mapping。它不更改 manifest、frontmatter、symlink 或 Git index。
+
+Restore 沿用 portable `source_relation` 作为原安装 provenance，并从 portable
+`default_branch` 重建 Python runtime 的请求来源标记：non-null 写入
+`requested_default: true`，null 写入 `false`。因此恢复后的 direct install record 可立即通过
+`RootStorage.read_runtime()` 校验；default-intent lookup 继续复用原 selector/commit，不重新解析
+已经移动的 default branch。
 
 单项失败不撤销其他项；page 中任一 blocked 令顶层 warning。后续页只在 manifest identity
 未变时继续，恢复 payload 本身不使 cursor 失效。
@@ -58,6 +74,20 @@ damage。返回 working path 总是外层 dependency path，不跟随 install �
 `mapping_damaged`；没有
 mapping 返回 unmanaged ok。输入 content root 不获得 owner 写入权。
 
-证据：端到端测试覆盖 direct/dependency、default/branch 固定、self edge、相对 link、missing
-install restore、portable broken link 的缺失/展开、wrong content root、broad ignore 冲突、
-manifest 重复/路径损坏、symlink 篡改和 capability preflight。
+Generic current mapping 在没有可发现 doctidex root 时把 owner root 填入 `content_root`；portable
+或 unmanaged input 无法可靠恢复 repository root 时可返回 null。该字段只表示当前实现可证明的
+解释起点，不授予 owner authority。
+
+Portable install 直接保存 `ResolvedSource.public_url`；relative/symlink-spelled local locator 的
+跨 cwd/host 可恢复性有限，调用方应优先使用稳定 locator。Mapping damage 的 warning/blocked
+分界由 current/portable helper 能否形成自洽 mapping 决定；当前 `requires_user` 只使用代码实际
+产生的 root、revision、repository/network、target、tracking、manifest 与 Git-action categories。
+
+证据：[tests/test_git_plugin.py](../../../../../impls/libs/python/tests/test_git_plugin.py) 中
+`test_link_restore_and_current_owner_parse`、
+`test_restore_rebuilds_requested_default_provenance`、
+`test_portable_broken_link_dependency_can_be_flattened`、
+`test_restore_preserves_blocked_item_and_restores_other_item`、
+`test_link_retry_rejects_a_changed_symlink_target`、
+`test_link_classifies_only_a_complete_doctidex_root_as_safe` 与
+`test_link_reports_symlink_unsupported_before_persistent_changes`。

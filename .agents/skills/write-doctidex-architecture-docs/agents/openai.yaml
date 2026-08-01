@@ -1,0 +1,4 @@
+interface:
+  display_name: "Write doctidex Architecture Docs"
+  short_description: "Author current cross-implementation Architecture"
+  default_prompt: "Use $write-doctidex-architecture-docs to create or revise Architecture documentation for this repository."

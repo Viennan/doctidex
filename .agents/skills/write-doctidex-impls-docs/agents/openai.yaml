@@ -1,0 +1,4 @@
+interface:
+  display_name: "Write doctidex Impls Docs"
+  short_description: "Author condition-specific realization designs"
+  default_prompt: "Use $write-doctidex-impls-docs to create or revise Impls documentation for this repository."

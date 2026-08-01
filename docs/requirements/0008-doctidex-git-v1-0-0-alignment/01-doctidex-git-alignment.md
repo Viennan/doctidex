@@ -592,11 +592,11 @@ Architecture 已定义以下公开概念及全部属性：
 实现状态出现在 doctidex 可见树内，最终可观察结果仍必须满足 `unsafe`、可达入口和 link
 注释等协议规则。
 
-字段与可见性的权威定义见 [领域模型](../../doctidex-git/architecture/domain-model.md)，
+字段与可见性的权威定义见 [领域模型](../../doctidex-git/architecture/index.md#模型层)，
 命令、JSON、生命周期和失败分别见 [CLI](../../doctidex-git/architecture/interfaces/cli.md)、
 [JSON Schema](../../doctidex-git/architecture/interfaces/cli-schema.md)、
-[子系统与生命周期](../../doctidex-git/architecture/subsystems-and-lifecycles.md)和
-[约束与失败](../../doctidex-git/architecture/constraints-and-failures.md)。本记录中的表只
+[子系统与生命周期](../../doctidex-git/architecture/system/components-and-dependencies.md)和
+[约束与失败](../../doctidex-git/architecture/models/operation-result-and-failure.md)。本记录中的表只
 保存这些设计对象为何属于需求范围，不再充当第二份接口权威。
 
 ## 3. 文档与实现影响

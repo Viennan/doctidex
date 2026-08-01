@@ -1,13 +1,11 @@
-# Package、结果与 CLI
+# CLI、results 与 rendering
 
-## Package 与调用关系
+Package、runtime 与 dependency direction 由
+[Platform、package 与 dependencies](../platform-package-and-dependencies.md)统一定义。本篇只
+负责 Architecture Surface Adapter、Result Budgeter 和 failure presentation 的 Python mapping。
 
-`pyproject.toml` 发布 `whero-doctidex==1.0.0`、Python `>=3.11` 和 `doctidex-git` console
-script。运行时依赖 `markdown-it-py` 与 `ruamel.yaml`；Git 是外部可执行依赖。顶层
-`whero.doctidex.__version__` 报告 package 版本；`protocol.__init__` 和 `git.__init__` 只导出
-当前解析/服务入口，不保留 v0 类。
-
-## `errors.py` 与 `results.py`
+## 1. [`errors.py`](../../../../../impls/libs/python/whero/doctidex/errors.py) 与
+[`results.py`](../../../../../impls/libs/python/whero/doctidex/results.py)
 
 调用者：protocol、Git domain 与 CLI。它们不决定业务事实，只统一可序列化结构。
 
@@ -28,7 +26,8 @@ traceback。
 cursor 没有签名，属于调用期一致性 token 而非授权凭据；root fingerprint 或查询 identity
 变化即拒绝。分页发生在完整领域结果排序之后。
 
-## `cli/main.py` 与 `cli/render.py`
+## 2. [`cli/main.py`](../../../../../impls/libs/python/whero/doctidex/cli/main.py) 与
+[`cli/render.py`](../../../../../impls/libs/python/whero/doctidex/cli/render.py)
 
 `main(argv)` 是 console 入口。`Parser.error` 把 argparse 失败转成 `argument_invalid` JSON；
 `_parser` 只注册 v1 command；`_dispatch` 选择 root、构造 selector、调用领域 service。
@@ -39,10 +38,16 @@ cursor 没有签名，属于调用期一致性 token 而非授权凭据；root f
 `git/diagnostics.py::write_diagnostic` 写入用户 cache 的内部 traceback，只把随机 diagnostic ID
 放进结果。`render_json` 稳定输出 UTF-8 JSON；`render_human` 是非稳定摘要，不参与程序契约。
 
+Python 不建立独立 `CommandContext` 或 `Plan` class。Architecture Command Context 由 argparse
+`Namespace`、`main` 的 cwd/output mode 与 `_dispatch` 的 selected `RootContext`/selector/path/
+apply/limit/cursor locals 共同实现；每个 service 的 planned paths、frontmatter plan、expected
+record/mapping 与 first classification dict 构成 operation-specific Plan。Plan 不序列化、不跨调用
+复用；apply 重新调用 service 并在 lock 内复查，而不是提交 dry-run token。
+
 读写与并发：parser/renderer 无持久副作用；dispatch 的副作用由领域 service 决定。`--json`
 在解析前识别且最多一次，因此语法错误仍能返回 envelope。
 
-典型程序集成：
+## 3. 典型调用
 
 ```python
 completed = subprocess.run(
@@ -53,5 +58,13 @@ completed = subprocess.run(
 payload = json.loads(completed.stdout)
 ```
 
-证据：`tests/test_git_plugin.py` 覆盖旧 surface/重复 JSON 拒绝、operation dispatch、退出码和
-blocked schema；`tests/test_protocol.py` 覆盖双列表分页和 cursor 失效。
+## 4. Effects、concurrency 与 evidence
+
+Parser、renderer 与 result helpers 不持有 persistent state；dispatch 的 effect 和 lock 由被调用
+service 决定。典型失败在 `main` 边界转为 envelope，unexpected exception 只额外写 diagnostic。
+
+证据：[tests/test_git_plugin.py](../../../../../impls/libs/python/tests/test_git_plugin.py) 的
+`test_parser_rejects_old_surface_with_json`、`test_validate_cli_and_nested_host_gitignore` 与
+`test_root_lock_conflict_is_bounded_and_preserves_owner`；
+[tests/test_protocol.py](../../../../../impls/libs/python/tests/test_protocol.py) 的
+`test_scoped_validation_filters_output_and_cursor_is_state_bound`。

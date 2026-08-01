@@ -27,6 +27,6 @@ doctidex:
 - 描述场景、接口、可观察结果、概念模型、职责和不变量。
 - 不绑定 Python 模块、类、函数、XDG 路径或具体文件系统映射技术。
 - CLI 语法与 JSON schema 属于公共接口，因此可以精确记录。
-- Python 如何解析、持久化或呈现这些概念见 [Python Details](../details/python/index.md)。
+- Python 如何解析、持久化或呈现这些概念见 [Python Details](../impls/python/index.md)。
 
 文档中的“用户”包括直接操作的人、执行 Skill 的 agent，以及消费 JSON 的程序。

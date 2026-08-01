@@ -1,7 +1,7 @@
 # 已发布 Skill 系统
 
 本篇只设计三个 Published Skills 的职责、阅读链、命令说明充分性和用户/内部信息边界。
-产品工作流以 [用户工作流](workflows.md)为准，精确 public command contract 由
+产品工作流以 [Architecture system](index.md#系统与-workflow)为准，精确 public command contract 由
 [CLI](interfaces/cli.md) 和 [JSON Schema](interfaces/cli-schema.md) 负责；Skill 应完整转述 agent
 完成任务所需的信息，但不能成为另一份 Architecture 权威。
 
@@ -38,7 +38,7 @@ Overview 在同一任务中不重复打开。Overview 加一个相关专项 Skil
 
 ## 3. 已安装产品措辞
 
-Published Skills 面向已安装产品，不能要求 agent 阅读本仓库源码、Architecture、Details、
+Published Skills 面向已安装产品，不能要求 agent 阅读本仓库源码、Architecture、Impls、
 tests、repository-local path 或开发命令。当前三个 Skills 只引用 `1.0.0` 安装后可用的命令
 和用户路径；未来也不得先于对应命令实现发布目标 Skill 文本。
 
@@ -52,7 +52,8 @@ tests、repository-local path 或开发命令。当前三个 Skills 只引用 `1
 - selector、default branch provenance 与固定 commit 的区别；
 - install 无 target、稳定 `/.doctidex` 路径、payload Git ignore、可版本化 manifest、可追踪
   relative symlink，以及 restore 不改 link 的区别；
-- install key 由 root/source/selector 组成；不同 selector 不共用目录；`--dependency-of`
+- install key 由 root/source/normalized fixed selector 组成；default provenance 供后续省略调用
+  lookup，physical key 细节由 Impls 定义；`--dependency-of`
   表示从哪个 install 发现依赖，dependency 扁平、不递归、不进 manifest，环命中既有 key
   即停止，建立 durable link 前需提升为 direct；
 - worktree open 对所有 source 选择 owner root，并把现场扁平放在其 `/.doctidex`；list 以
