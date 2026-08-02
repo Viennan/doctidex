@@ -95,7 +95,20 @@ Filesystem discovery 不递归枚举 directory symlink。Symlink path 本身可�
 path，后续仍以 root-relative lexical path 去重。这样 external presentation 可被显式导航，目录
 symlink cycle 不会触发递归 enumeration，且不需要用 physical identity 改写协议路径。
 
-## 6. 责任边界
+## 6. Shared tree observations
+
+Tree Interpreter 对同一个 `RootContext` 产生可复用的只读 observations：Markdown document/link
+source、root-relative lexical target、document 的负责 index、effective safe/unsafe 状态、boundary
+membership，以及不跟随 directory symlink 的 filesystem entries。它们是解析和扫描的客观输入，
+不是 protocol finding、reachability conclusion 或写入授权。
+
+Validation 使用这些 observations 应用完整 protocol policy、建立 support closure 和返回 findings；
+external remove 使用同一 observations 发现其已定义范围内的 Markdown/symlink references，再结合
+managed state 选择是否阻断删除。remove 不得调用 validation surface 或把自身的 reference block
+转写为 protocol finding；两者的 scope、exclusion 和结果可以不同，但 link extraction、lexical path
+interpretation 和 directory-symlink scanning 不得形成独立语义。
+
+## 7. 责任边界
 
 Tree Interpreter 负责产生上述客观结构；它不判断内容相关性、信任、用户意图、Git 状态、
 managed install readiness 或是否应修改文件。Git、external、worktree 和 cache 模型只能消费

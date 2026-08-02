@@ -10,12 +10,18 @@
 提供只读视图，`links()` 返回 link，`render()`/`write()` 保留 YAML 注释与原字段并以同目录
 临时文件、`fsync`、`os.replace` 原子发布。YAML 禁止重复键；解析错误转换为结构化错误。
 
-Architecture 的 link source document 由 `_Validator.markdown` 的 dict key 持有，raw destination
-对应 `MarkdownLink.target`，source position 以稳定 `order` 表示；link kind 与 normalized target
-在 `_resolve_link` 中临时产生，不另建持久 object。`_link_annotations` 产生以 link order 关联的
-临时 annotation mapping，normalized path 与 `unsafe` 在 `_validate_links` 中校验后折叠成 finding
-或 `LinkFact`。Reachability edge 的 source 是当前 markdown dict key，target/reachability 位于
-`LinkFact`；boundary/unsafe 状态从 responsible `IndexInfo.entries` 读取，不复制到 edge record。
+`tree_observations(context, excluded_roots=...)` 是供 protocol 以外消费者使用的只读解释入口。
+它返回 `TreeObservations`：不跟随 directory symlink 的 filesystem paths、可读 Markdown raw content、
+由 `MarkdownLink` 提取并以 `_resolve_link` 词法规范化的 `ObservedMarkdownLink`，以及由
+`IndexInfo.entries` 得出的 responsible index、unsafe/boundary membership。`excluded_roots` 与
+`excluded_configuration_fields` 只停止相应目录的递归枚举，仍保留其词法入口；external remove 因此不
+读取 install payload、boundary-set 或 unsafe 内部。
+
+Validation 与 observations 都由同一个 `_Validator` discovery/configuration pass 产生，后者不返回
+protocol findings。`_validate_links` 直接消费 `TreeObservations.links`，再应用 annotation、boundary、
+unsafe 与 reachability policy 生成 `LinkFact`。因此 CommonMark extraction、frontmatter stripping、URI
+拆分、percent decode、root-relative resolution 和 directory-symlink scanning 没有第二套实现；external
+service 只能对 observations 加其自身的删除扫描排除和 reference policy。
 
 `ruamel.yaml` 使用 round-trip loader，`markdown-it-py` 使用 `commonmark` preset；filesystem
 discovery 通过 `os.walk(..., followlinks=False)` 与 `.md` scanning 避免递归 directory symlink。
@@ -39,8 +45,8 @@ structure finding。
 目录、词法规范化、去重并消除已覆盖后代。内部 `IndexInfo` 保存目录、document 和三个局部
 配置的规范化 `Path` 列表；`LinkFact` 保存 target 与是否可作为可达边。
 
-`_Validator` 的属性为 context/root、protocol findings、semantic candidates、index map、
-Markdown 内容、已扫描路径和 `scan_complete`。执行顺序固定为：
+`_Validator` 的属性为 context/root、protocol findings、semantic candidates 和 `TreeObservations`；
+其 discovery pass 填充 index map、Markdown 内容、已扫描路径和 `scan_complete`。执行顺序固定为：
 
 1. full coverage 不跟随目录 symlink 扫描全根；scoped coverage 只扫描 scope 子树、祖先 index
    与从这些 index 可达的必要 Markdown 导航支持；

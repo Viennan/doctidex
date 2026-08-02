@@ -1,6 +1,6 @@
 ---
 name: doctidex-git-maintenance
-description: Validate and maintain doctidex content with optional installed doctidex-git external presentations and isolated worktrees. Use when checking full or directory-scoped protocol structure, installing/linking/restoring external Git content, expanding a dependency discovered in an installed repository, or opening/listing/closing a managed writable worktree; do not require managed workflows when native tools suffice and do not perform Git delivery without user authority.
+description: Validate and maintain doctidex content with optional installed doctidex-git external presentations and isolated worktrees. Use when checking full or directory-scoped protocol structure, installing/linking/restoring/removing external Git content, expanding a dependency discovered in an installed repository, or opening/listing/closing a managed writable worktree; do not require managed workflows when native tools suffice and do not perform Git delivery without user authority.
 ---
 
 # Maintain doctidex Content
@@ -15,8 +15,8 @@ native Git, manual worktrees, submodules, symlinks, or another method instead.
 Read exactly one command reference before invoking its workflow:
 
 - Read [validation.md](references/validation.md) for full or directory-scoped protocol validation.
-- Read [external.md](references/external.md) before install, durable link, restore, dependency
-  expansion, or promotion from dependency to direct.
+- Read [external.md](references/external.md) before install, durable link, restore, reference-free
+  install removal, dependency expansion, or promotion from dependency to direct.
 - Read [worktrees.md](references/worktrees.md) before opening, listing, or closing an isolated
   writable worktree.
 

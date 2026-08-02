@@ -34,6 +34,11 @@ User cache layout 为 `<cache-root>/sources/<source-id>.git`、`locks/<source-id
 | Diagnostic | `git.diagnostics` | opaque-ID traceback file in user cache | best effort bounded write | 仅 ID 公开。 |
 | Locks/temp files | `git.storage` | cache/root lock directories、same-dir temp | bounded acquire、finally cleanup | internal。 |
 
+Remove 不删除 owner-level `installs/` namespace、`.gitignore` entries、root index entries、durable
+presentation 或 source cache。它只删除一个 linked worktree、该 install 的 runtime record，以及 direct
+install 的 manifest install entry；runtime/manifest link record 和 parent edge 是 preflight blocker，
+不是 cleanup target。
+
 ## 2. Runtime schema
 
 读写与校验由

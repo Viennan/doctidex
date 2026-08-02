@@ -219,6 +219,47 @@ def make_logically_read_only(path: Path) -> None:
         pass
 
 
+def remove_detached_worktree(path: Path, *, operation: str) -> None:
+    """Remove an owned linked worktree while preserving its Git registration semantics."""
+
+    if not path.exists():
+        return
+    _make_logically_writable(path)
+    common = git(
+        ["-C", str(path), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        operation=operation,
+        check=False,
+    )
+    if common.returncode != 0:
+        raise DoctidexError(
+            "The managed install path is not a removable Git worktree.",
+            operation=operation,
+            affected=[str(path)],
+            actions=["Preserve the path and repair the managed install before retrying remove."],
+            code="install_damaged",
+            domain="external",
+            path=str(path),
+        )
+    git(
+        ["--git-dir", common.stdout.strip(), "worktree", "remove", "--force", str(path)],
+        operation=operation,
+    )
+
+
+def _make_logically_writable(path: Path) -> None:
+    for item in sorted(path.rglob("*"), key=lambda value: len(value.parts), reverse=True):
+        if item.is_symlink():
+            continue
+        try:
+            item.chmod(item.stat().st_mode | stat.S_IWUSR)
+        except OSError:
+            continue
+    try:
+        path.chmod(path.stat().st_mode | stat.S_IWUSR)
+    except OSError:
+        pass
+
+
 def source_relation(root: Path, canonical: str) -> str:
     source_path = _local_repository(canonical)
     if source_path is not None:

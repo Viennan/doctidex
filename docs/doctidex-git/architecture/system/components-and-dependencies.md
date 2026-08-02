@@ -41,10 +41,10 @@ flowchart TD
 |---|---|---|---|
 | Surface Adapter | command context、public inputs | normalized request、result presentation、exit code | domain rules、内容写作、Git delivery。 |
 | Root Selector | explicit/default/target path | 唯一 RootContext 或 candidates failure | session、source identity。 |
-| Protocol Interpreter | root、scopes、documents | tree/config facts、reachability、validation result | Git/managed state、语义结论。 |
+| Protocol Interpreter | root、scopes、documents | shared tree observations、tree/config facts、reachability、validation result | Git/managed state、external removal policy、语义结论。 |
 | Source Manager | locator、selector、exact commit | canonical source、resolved revision、objects、source relation | owner root、presentation、credentials persistence。 |
 | Host Git Coordinator | owner root、planned paths | unique host repo、tracking/ignore facts | stage/commit/reset、root selection。 |
-| External Coordinator | owner/source/install/link/recovery models | install/link/restore plans 与 publication | 自动递归依赖、moving-ref refresh。 |
+| External Coordinator | owner/source/install/link/recovery models、shared tree observations | install/link/restore/remove plans 与 publication | 自动递归依赖、moving-ref refresh、protocol finding emission。 |
 | Mapping Resolver | input path、runtime/portable state | owner/content/source/repository mapping | network、write、validation、authorization。 |
 | Worktree Coordinator | owner root、source、selector | managed writable worktree lifecycle | branch/delivery、dirty cleanup。 |
 | Cache Cleanup Coordinator | canonical source | Git-derived eligibility 与单 source cleanup | root selection、batch/implicit cleanup。 |
@@ -75,4 +75,7 @@ flowchart TD
 4. Portable state 只保存跨 clone 所需 facts；runtime state 只保存当前 host ownership。
 5. Mapping 只读，不能以“修复方便”为由获得 write authority。
 6. 每个 destructive action 必须由 exact ownership 与当前 observable state 同时证明。
-
+7. Protocol Interpreter 是 Markdown link extraction、lexical path interpretation 与
+   directory-symlink scanning 的唯一共同 authority。External Coordinator 可以用其 observations
+   实施 remove reference preflight，但不得复制 parser/scanner 或反向要求 Interpreter 采用
+   external state/target policy。

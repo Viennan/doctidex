@@ -58,6 +58,27 @@ Restore 沿用 portable `source_relation` 作为原安装 provenance，并从 po
 单项失败不撤销其他项；page 中任一 blocked 令顶层 warning。后续页只在 manifest identity
 未变时继续，恢复 payload 本身不使 cursor 失效。
 
+## Remove
+
+`remove(install_id, apply)` 只接受 selected owner root runtime 中的 exact ID，direct 与 dependency
+record 都可作为 target。它先取得 payload path/role 与 direct manifest inclusion，再调用
+`tree_observations` 并排除 `install_directory`、`boundary-set` 与 `unsafe`。`_remove_references` 只检查 safe、
+non-boundary、non-install Markdown documents 的 normalized file links 和同范围 symlink；它再读取
+runtime/portable durable link mapping 以及其他 install 的 `parents`。reference evidence 去重后作为
+`install_referenced` blocked finding/affected 返回，不改写它所指的 Markdown、symlink 或 mapping。
+
+dry-run 与 apply 使用相同 preflight。apply 在 `source_mutation(canonical_source)` 后进入 root
+`mutation()`，重新读取 record/observations/references；reference-free 时 `remove_detached_worktree`
+先恢复 owner-write permission 并以 Git 删除 exact linked worktree，再删除 direct manifest install
+entry，最后删除 runtime install record。缺失 payload 也允许同 ID retry 继续删除遗留 record，
+但不接受 runtime/manifest identity 或 path 不能自洽的现场。它从不删除 cache、presentation symlink、
+root frontmatter 或 shared layout。
+
+result 固定回显 `applied`、`install_id`、`install_role`、`install_path`、`manifest_included`、
+`state` 和 `planned_changes`；reference-free plan state 为 `planned`，apply state 为 `removed`。
+证据由 `test_external_remove_*` 系列覆盖 direct/dependency、mapping/Markdown/symlink/parent block、
+exclusion、link-parse target 与 cache preservation。
+
 ## Link Parse
 
 `link_parse(path)` 离线读取 owner runtime 和 content root。判定顺序为 current durable link、

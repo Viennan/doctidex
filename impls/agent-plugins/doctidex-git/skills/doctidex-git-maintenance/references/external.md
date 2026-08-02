@@ -101,3 +101,32 @@ identity, filters, limit, and mode; restart on `cursor_invalid`.
 Missing/invalid recovery information blocks the whole operation. Occupied/damaged install paths or
 unknown IDs block only their items. Restore only the reported direct install; never create nested
 state under installed content or repair links by changing their targets.
+
+## Remove a Managed Install
+
+```text
+doctidex-git external remove INSTALL_ID [--root ROOT]
+  [--dry-run | --apply] --json
+```
+
+Use this only after the user has explicitly authorized deletion. `INSTALL_ID` is one exact current
+managed install in the selected owner root; the command has no source URL, path, batch, cursor, or
+pagination alternative. ROOT is the owner root or defaults from cwd. Omission of both mode flags is
+an offline dry-run. The command never contacts a source, stages/commits, changes Markdown,
+presentations, frontmatter, ignore rules, or shared cache.
+
+When the ID is not already known, run `doctidex-git external link-parse PATH [--root ROOT] --json`
+first. Only its non-null current `install_id` may be passed to remove. Do not use
+`dependency_parent_install_id`: it describes a parent edge, not the install at PATH. An unmanaged
+or `dependency_not_installed` result has no current removable target; report that fact and stop.
+
+Read `status`, `findings`, `affected`, `applied`, `install_id`, `install_role`, `install_path`,
+`manifest_included`, `state`, `changed`, and `planned_changes`. A reference-free dry-run returns
+`state: planned`; apply returns `state: removed` and removes only that payload and its per-install
+records. A blocked `install_referenced` result preserves every path and lists the document,
+symlink, mapping, or dependency-parent evidence. Do not delete or rewrite blockers automatically:
+report them, then wait for user direction or a separately authorized edit.
+
+Unknown IDs and damaged managed state are also blocked and preserve the owner root. For an interrupted
+remove whose payload is already absent, repeat the same exact ID after checking its new result; do
+not choose a replacement ID or run cache cleanup. Stop and report persistent Git/state failures.

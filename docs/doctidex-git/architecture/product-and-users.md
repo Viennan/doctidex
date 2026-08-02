@@ -66,6 +66,7 @@ Agent 的正常画面是 Published Skill 与原生工具共同工作，不是阅
 | 展开已安装来源的依赖 | 递归 checkout 会制造嵌套所有权，环状引用还可能无限展开。 | `external install --dependency-of` | 宿主根下扁平 dependency install 和有限关系边；不写恢复清单。 |
 | 建立就近入口 | 同一 source 子目录需要用户选择且可由宿主 Git 追踪的根内入口。 | `external link` | 指向稳定安装路径的相对 symlink、独立 boundary/unsafe 声明和可追溯 mapping。 |
 | 恢复外部安装 | clone 或 clean 后安装载荷缺失，但已提交 symlink 应继续使用。 | `external restore` | 按清单中的 exact commit 和原路径重建；既有 symlink 不变。 |
+| 移除不再需要的外部安装 | 只读 payload 与 per-install metadata 不应永久保留，但仍被文档、symlink、mapping 或 dependency edge 使用的内容不能被误删。 | `external remove INSTALL_ID` | reference-free 时仅移除 exact install payload/metadata；存在可见 reference 时保留全部现场和证据；不处理 shared cache。 |
 | 识别路径或 broken symlink | agent 在主仓库或 install 中需要 source、commit、repository 子路径或不可访问 link 的依赖事实。 | `external link-parse` | 区分 current-owner mapping、installed-repository portable mapping、可恢复缺失、合法未展开 dependency 和真实损坏。 |
 | 维护当前仓库当前 commit | 当前 working tree 已是可写现场，不应强制再开 worktree。 | Maintenance Skill + 原生 Git | 直接保留当前路径与现有 changes；需要隔离时仍可选择 open。 |
 | 修改其他 source/revision | 只读入口不能作为编辑现场，隔离现场也不能递归嵌套。 | `worktree open/list/close` | selected root 的 `/.doctidex` 下扁平、固定 base commit 的可写 worktree。 |

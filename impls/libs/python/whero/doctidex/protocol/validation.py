@@ -3,8 +3,10 @@ from __future__ import annotations
 import hashlib
 import os
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
+from types import MappingProxyType
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
@@ -31,6 +33,41 @@ class IndexInfo:
 class LinkFact:
     target: Path | None
     valid_edge: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ObservedMarkdownLink:
+    document: Path
+    raw_target: str
+    target: Path | None
+    order: int
+    is_file_link: bool
+
+
+@dataclass(frozen=True, slots=True)
+class TreeObservations:
+    """Read-only tree facts shared by protocol and non-protocol policies."""
+
+    root: Path
+    paths: frozenset[Path]
+    markdown: Mapping[Path, str]
+    indexes: Mapping[Path, IndexInfo]
+    links: tuple[ObservedMarkdownLink, ...]
+    scan_complete: bool
+
+    def links_for(self, document: Path) -> tuple[ObservedMarkdownLink, ...]:
+        return tuple(link for link in self.links if link.document == document)
+
+    def responsible_index(self, path: Path) -> IndexInfo | None:
+        return _responsible_index_for(path, self.indexes)
+
+    def is_unsafe(self, path: Path) -> bool:
+        responsible = self.responsible_index(path)
+        return bool(responsible and _matches_entry(path, responsible, "unsafe"))
+
+    def is_within_boundary(self, path: Path) -> bool:
+        responsible = self.responsible_index(path)
+        return bool(responsible and _matches_entry(path, responsible, "boundary-set"))
 
 
 def validate_protocol(
@@ -91,6 +128,27 @@ def validate_protocol(
     )
 
 
+def tree_observations(
+    context: RootContext,
+    *,
+    excluded_roots: tuple[Path, ...] | list[Path] = (),
+    excluded_configuration_fields: tuple[str, ...] | list[str] = (),
+) -> TreeObservations:
+    """Interpret a full root without producing protocol findings.
+
+    Excluded roots and local-configuration scopes remain lexical entries but their contents are not
+    recursively enumerated.
+    """
+
+    engine = _Validator(
+        context,
+        ["/"],
+        excluded_roots=excluded_roots,
+        excluded_configuration_fields=excluded_configuration_fields,
+    )
+    return engine.observe()
+
+
 def normalize_scopes(root: Path, values: list[str]) -> list[str]:
     normalized: list[str] = []
     for value in values:
@@ -120,7 +178,14 @@ def normalize_scopes(root: Path, values: list[str]) -> list[str]:
 
 
 class _Validator:
-    def __init__(self, context: RootContext, scopes: list[str]) -> None:
+    def __init__(
+        self,
+        context: RootContext,
+        scopes: list[str],
+        *,
+        excluded_roots: tuple[Path, ...] | list[Path] = (),
+        excluded_configuration_fields: tuple[str, ...] | list[str] = (),
+    ) -> None:
         self.context = context
         self.root = context.root
         self.scope_paths = (
@@ -133,15 +198,24 @@ class _Validator:
         self.paths: set[Path] = set()
         self.support_paths: set[Path] = set()
         self.scan_complete = True
+        self.excluded_roots = tuple(Path(os.path.abspath(path)) for path in excluded_roots)
+        self.excluded_configuration_fields = tuple(excluded_configuration_fields)
+        self.observations: TreeObservations | None = None
 
     def run(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        self._scan()
-        self._validate_indexes()
-        self._validate_configs()
+        self.observe()
+        assert self.observations is not None
         self._validate_atomic_and_logs()
         edges = self._validate_links()
         self._validate_reachability(edges)
         return self.findings, self.semantic
+
+    def observe(self) -> TreeObservations:
+        self._scan()
+        self._validate_indexes()
+        self._validate_configs()
+        self.observations = self._build_observations()
+        return self.observations
 
     def fingerprint(self) -> str:
         digest = hashlib.sha256()
@@ -155,6 +229,8 @@ class _Validator:
         return digest.hexdigest()
 
     def _scan(self) -> None:
+        self.indexes.setdefault(self.root, IndexInfo(self.root, self.context.index))
+        self._configure_index(self.indexes[self.root], set(self.indexes), report=False)
         if self.scope_paths is None:
             self._scan_tree(self.root)
         else:
@@ -171,16 +247,28 @@ class _Validator:
                     current = current.parent
             self._scan_navigation_support()
 
-        self.indexes.setdefault(self.root, IndexInfo(self.root, self.context.index))
         self.paths.add(self.context.index.path)
 
     def _scan_tree(self, start: Path) -> None:
+        if self._is_excluded(start):
+            self.paths.add(start)
+            return
         for directory, dirnames, filenames in os.walk(start, followlinks=False):
             current = Path(directory)
+            index = current / "index.md"
+            if index.is_file():
+                self._read_markdown(index)
+                info = self.indexes.get(current)
+                if info is not None:
+                    self._configure_index(info, set(self.indexes), report=False)
             all_directories = sorted(dirnames)
             for name in all_directories:
                 self.paths.add(current / name)
-            dirnames[:] = [name for name in all_directories if not (current / name).is_symlink()]
+            dirnames[:] = [
+                name
+                for name in all_directories
+                if not (current / name).is_symlink() and not self._is_excluded(current / name)
+            ]
             for name in sorted(filenames):
                 path = current / name
                 self.paths.add(path)
@@ -222,8 +310,8 @@ class _Validator:
             if path in expanded or path not in self.markdown:
                 continue
             expanded.add(path)
-            for link in markdown_links(_body_without_frontmatter(self.markdown[path])):
-                target = _resolve_link(path, self.root, link.target)
+            for link in self._observed_links_for(path):
+                target = link.target
                 if (
                     target is None
                     or not is_within(target, self.root)
@@ -235,6 +323,45 @@ class _Validator:
                 self._read_markdown(target, support=True)
                 if not was_loaded:
                     pending.append(target)
+
+    def _is_excluded(self, path: Path) -> bool:
+        if any(is_within(path, excluded) for excluded in self.excluded_roots):
+            return True
+        responsible = self._responsible_index(path)
+        return bool(
+            responsible
+            and any(_matches_entry(path, responsible, field) for field in self.excluded_configuration_fields)
+        )
+
+    def _observed_links_for(self, path: Path) -> tuple[ObservedMarkdownLink, ...]:
+        raw = self.markdown.get(path)
+        if raw is None:
+            return ()
+        return tuple(
+            ObservedMarkdownLink(
+                document=path,
+                raw_target=link.target,
+                target=_resolve_link(path, self.root, link.target),
+                order=link.order,
+                is_file_link=_is_file_link(link.target),
+            )
+            for link in markdown_links(_body_without_frontmatter(raw))
+        )
+
+    def _build_observations(self) -> TreeObservations:
+        links = tuple(
+            link
+            for path in sorted(self.markdown)
+            for link in self._observed_links_for(path)
+        )
+        return TreeObservations(
+            root=self.root,
+            paths=frozenset(self.paths),
+            markdown=MappingProxyType(dict(self.markdown)),
+            indexes=MappingProxyType(dict(self.indexes)),
+            links=links,
+            scan_complete=self.scan_complete,
+        )
 
     def _validate_indexes(self) -> None:
         root = self.indexes[self.root].document
@@ -287,11 +414,16 @@ class _Validator:
 
     def _validate_configs(self) -> None:
         takeover_dirs = set(self.indexes)
-        for directory, info in sorted(self.indexes.items()):
-            mapping = info.document.doctidex or {}
-            for field_name in _CONFIG_FIELDS:
-                raw = mapping.get(field_name, [])
-                if not isinstance(raw, list):
+        for _directory, info in sorted(self.indexes.items()):
+            self._configure_index(info, takeover_dirs, report=True)
+
+    def _configure_index(self, info: IndexInfo, takeover_dirs: set[Path], *, report: bool) -> None:
+        info.entries = {name: [] for name in _CONFIG_FIELDS}
+        mapping = info.document.doctidex or {}
+        for field_name in _CONFIG_FIELDS:
+            raw = mapping.get(field_name, [])
+            if not isinstance(raw, list):
+                if report:
                     self.findings.append(
                         _protocol_finding(
                             "local_config_invalid",
@@ -299,10 +431,11 @@ class _Validator:
                             f"doctidex.{field_name} must be a list.",
                         )
                     )
-                    continue
-                seen: set[Path] = set()
-                for item in raw:
-                    if not isinstance(item, dict) or not isinstance(item.get("path"), str) or not item["path"]:
+                continue
+            seen: set[Path] = set()
+            for item in raw:
+                if not isinstance(item, dict) or not isinstance(item.get("path"), str) or not item["path"]:
+                    if report:
                         self.findings.append(
                             _protocol_finding(
                                 "local_config_invalid",
@@ -310,9 +443,10 @@ class _Validator:
                                 f"Every doctidex.{field_name} item must provide a non-empty path string.",
                             )
                         )
-                        continue
-                    target = _normalize_entry_path(directory, self.root, item["path"])
-                    if target is None:
+                    continue
+                target = _normalize_entry_path(info.directory, self.root, item["path"])
+                if target is None:
+                    if report:
                         self.findings.append(
                             _protocol_finding(
                                 "local_config_invalid",
@@ -320,11 +454,14 @@ class _Validator:
                                 f"doctidex.{field_name} contains a path outside the root.",
                             )
                         )
-                        continue
-                    crossed = [
-                        child for child in takeover_dirs if child != directory and _strictly_inside(target, child)
-                    ]
-                    if any(is_within(child, directory) for child in crossed):
+                    continue
+                crossed = [
+                    child
+                    for child in takeover_dirs
+                    if child != info.directory and _strictly_inside(target, child)
+                ]
+                if any(is_within(child, info.directory) for child in crossed):
+                    if report:
                         self.findings.append(
                             _protocol_finding(
                                 "local_config_scope_invalid",
@@ -332,11 +469,12 @@ class _Validator:
                                 f"doctidex.{field_name} cannot declare a target inside a child index scope.",
                             )
                         )
-                        continue
-                    if target in seen:
-                        continue
-                    seen.add(target)
-                    if field_name in {"boundary-set", "atomic-indexing"} and target.exists() and not target.is_dir():
+                    continue
+                if target in seen:
+                    continue
+                seen.add(target)
+                if field_name in {"boundary-set", "atomic-indexing"} and target.exists() and not target.is_dir():
+                    if report:
                         self.findings.append(
                             _protocol_finding(
                                 "local_config_invalid",
@@ -344,17 +482,17 @@ class _Validator:
                                 f"doctidex.{field_name} must identify a directory when the target exists.",
                             )
                         )
-                        continue
-                    info.entries[field_name].append(target)
-                    if field_name == "unsafe":
-                        self.semantic.append(
-                            _semantic_candidate(
-                                "unsafe_scope_review",
-                                target,
-                                info.document.path,
-                                "Review whether the unsafe declaration is as narrow as the content requires.",
-                            )
+                    continue
+                info.entries[field_name].append(target)
+                if report and field_name == "unsafe":
+                    self.semantic.append(
+                        _semantic_candidate(
+                            "unsafe_scope_review",
+                            target,
+                            info.document.path,
+                            "Review whether the unsafe declaration is as narrow as the content requires.",
                         )
+                    )
 
     def _validate_atomic_and_logs(self) -> None:
         for path in sorted(self.paths):
@@ -394,34 +532,35 @@ class _Validator:
                     break
 
     def _validate_links(self) -> dict[Path, list[Path]]:
+        assert self.observations is not None
         graph: dict[Path, list[Path]] = {}
-        for path, raw in sorted(self.markdown.items()):
-            responsible = self._responsible_index(path)
+        for path, raw in sorted(self.observations.markdown.items()):
+            responsible = self.observations.responsible_index(path)
             if responsible is None or self._matches(path, responsible, "atomic-indexing"):
                 continue
             source_unsafe = self._matches(path, responsible, "unsafe")
             facts: list[LinkFact] = []
             annotations = _link_annotations(raw)
-            for link in markdown_links(_body_without_frontmatter(raw)):
-                target = _resolve_link(path, self.root, link.target)
+            for link in self.observations.links_for(path):
+                target = link.target
                 if source_unsafe:
                     if target is not None and target.exists() and os.access(target, os.R_OK):
                         facts.append(LinkFact(target, True))
                     continue
                 if target is None:
-                    if _is_file_link(link.target):
+                    if link.is_file_link:
                         self.findings.append(
                             _protocol_finding(
                                 "link_path_invalid",
                                 path,
-                                f"The link target escapes or cannot be resolved: {link.target}",
+                                f"The link target escapes or cannot be resolved: {link.raw_target}",
                             )
                         )
                     continue
                 if not target.exists() or not os.access(target, os.R_OK):
                     self.findings.append(
                         _protocol_finding(
-                            "link_path_invalid", path, f"The link target is missing or unreadable: {link.target}"
+                            "link_path_invalid", path, f"The link target is missing or unreadable: {link.raw_target}"
                         )
                     )
                     facts.append(LinkFact(target, False))
@@ -532,15 +671,17 @@ class _Validator:
         return required
 
     def _responsible_index(self, path: Path) -> IndexInfo | None:
-        candidate = path if path.is_dir() else path.parent
-        matches = [info for directory, info in self.indexes.items() if is_within(candidate, directory)]
-        return max(matches, key=lambda info: len(info.directory.parts), default=None)
+        if self.observations is not None:
+            return self.observations.responsible_index(path)
+        return _responsible_index_for(path, self.indexes)
 
     @staticmethod
     def _matches(path: Path, info: IndexInfo, field_name: str) -> bool:
-        return any(path == entry or _strictly_inside(path, entry) for entry in info.entries[field_name])
+        return _matches_entry(path, info, field_name)
 
     def _path_is_unsafe(self, path: Path) -> bool:
+        if self.observations is not None:
+            return self.observations.is_unsafe(path)
         responsible = self._responsible_index(path)
         return bool(responsible and self._matches(path, responsible, "unsafe"))
 
@@ -744,6 +885,16 @@ def _directory_route(source: Path, target: Path) -> list[Path]:
 
 def _strictly_inside(path: Path, directory: Path) -> bool:
     return path != directory and is_within(path, directory)
+
+
+def _responsible_index_for(path: Path, indexes: Mapping[Path, IndexInfo]) -> IndexInfo | None:
+    candidate = path if path.is_dir() else path.parent
+    matches = [info for directory, info in indexes.items() if is_within(candidate, directory)]
+    return max(matches, key=lambda info: len(info.directory.parts), default=None)
+
+
+def _matches_entry(path: Path, info: IndexInfo, field_name: str) -> bool:
+    return any(path == entry or _strictly_inside(path, entry) for entry in info.entries[field_name])
 
 
 def _protocol_finding(code: str, path: Path, message: str) -> dict[str, Any]:

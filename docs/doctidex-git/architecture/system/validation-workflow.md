@@ -39,7 +39,9 @@ sequenceDiagram
    任一 scope 规范化为 root-internal directory，非法输入整体 blocked。
 2. **Discover**：读取 root index、scope directories 与建立解释所需 support paths。
 3. **Parse**：解析 UTF-8/frontmatter/Markdown；产生 document/config/link facts，具体 parser
-   profile 与辅助对象由 Impls 定义。
+   profile 与辅助对象由 Impls 定义。这些 tree observations 也可被 external remove 的只读
+   reference preflight 消费；复用 observations 不使 remove 成为 validation，也不把 remove 的
+   target/exclusion policy 反向加入本 workflow。
 4. **Resolve**：应用最近负责制，构造 boundary、atomic、unsafe 与 responsible-index mapping。
 5. **Graph**：建立所需 reachability 和 link-annotation edges，检测不可达、越界与结构冲突。
 6. **Classify**：protocol findings 与 semantic candidates 分离；不可读 safe path 同时影响

@@ -32,9 +32,11 @@ records 和物理 storage path 不承诺兼容。精确 argv 与 schema 分别�
    才进入 restore 路径，available 使用外层 `working_path`。
 5. cache clean 先确认 `root` 为 null，再按 `state` 和三个 worktree counts 分支；planned 才
    能进入授权后的 apply，preserved 是完成的保护结果，不能按 transient error 自动重试。
-6. 读取 findings 的 stable code，不匹配 message。
-7. `requires_user` 非 null 时停止自动重试，向上层请求对应决定。
-8. 重试前保存 `changed`、`result` 和仍可用 paths，不能假设 blocked 已回滚。
+6. external remove 只使用一个 `install_id`；`install_referenced` 时保留 `affected` evidence，
+   不自动删除文档、symlink、mapping 或 parent edge 后重试。
+7. 读取 findings 的 stable code，不匹配 message。
+8. `requires_user` 非 null 时停止自动重试，向上层请求对应决定。
+9. 重试前保存 `changed`、`result` 和仍可用 paths，不能假设 blocked 已回滚。
 
 ## 3. Dry-run 与 apply
 
@@ -64,6 +66,18 @@ cache clean dry-run -> 审阅 source ID、linked/valid/prunable counts 与 plann
 出现有效 worktree 或并发变化时保留 cache。程序集成不得访问内部 cache path，也不得因
 `changed` 为空否认 `state: removed`。
 
+external remove 也使用独立的同 ID 调用对：
+
+```text
+external remove INSTALL_ID dry-run -> 审阅 target、planned effects 与 reference evidence
+                                  -> 获得删除授权
+                                  -> 以同 root/INSTALL_ID apply
+                                  -> 接受 removed，或保留 blocked/affected 后重新决策
+```
+
+dry-run/reference-free 不保留 apply reservation。apply 重新扫描并可因新 reference 或 owner state
+变化 blocked；调用方不得为取得成功自动移除发现的引用。
+
 ## 4. 分页
 
 调用方原样传回 `next_cursor`，保持 operation、root、规范化 scope/filter、limit 与命令模式。validate
@@ -83,6 +97,8 @@ dry-run/apply mode；manifest 内容改变会令 cursor invalid，而已恢复�
 - install 同 key 永不重新解析已记录 branch/default branch；dependency-only 可由普通 install
   原地提升为 direct，direct 不降级。
 - restore 只补齐 manifest 中缺失的 exact install；匹配项 unchanged，既有 link 不被重写。
+- remove 对同一 ID 的 dry-run 在 owner/tree/managed state 不变时可重复；apply 成功后再次调用
+  返回 `install_not_found`，不能把缺失 ID 静默当作第二次成功。
 - worktree open 每次成功都在 selected root 的 `/.doctidex` 下创建新隔离现场，不是幂等命令；调用方先 list 或检查
   reuse_candidate_count。
 - close 对已关闭 path 返回 worktree_unmanaged，不把手工目录当作成功清理。

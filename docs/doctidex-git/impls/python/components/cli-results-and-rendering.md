@@ -30,7 +30,9 @@ cursor 没有签名，属于调用期一致性 token 而非授权凭据；root f
 [`cli/render.py`](../../../../../impls/libs/python/whero/doctidex/cli/render.py)
 
 `main(argv)` 是 console 入口。`Parser.error` 把 argparse 失败转成 `argument_invalid` JSON；
-`_parser` 只注册 v1 command；`_dispatch` 选择 root、构造 selector、调用领域 service。
+`_parser` 只注册 v1 command；`_dispatch` 选择 root、构造 selector、调用领域 service。`external
+remove INSTALL_ID [--root ROOT] [--dry-run | --apply]` 调用 `ExternalService.remove`；它没有 pagination
+或 network phase，top-level blocked 仍由 `main` 以退出码 2 表示。
 `_managed_owner_roots` 与 `_select_path_owner` 防止 install content root 冒充外层 owner；
 `_owner_root_for_worktree` 只接受 exact managed path。
 

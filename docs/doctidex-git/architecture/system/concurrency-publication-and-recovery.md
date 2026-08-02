@@ -48,6 +48,7 @@ ownership 或串行集成。
 | payload 已建、record 缺失 | orphan/incomplete managed evidence | 诊断 identity；不得自动 delete/adopt。 |
 | runtime 已写、manifest 缺失 | direct recovery 不完整 | 重试同 direct publication；保留 payload。 |
 | mapping/symlink 只有一侧已写 | record 与 presentation 不一致 | 保留两侧证据；以同 mapping 重试或由用户修复，不跟随未证实 target。 |
+| remove payload 已移除、per-install record 尚在 | record 指向 missing install，shared cache/root layout 未变 | 以同 Install ID 重试 remove；重新证明没有 target reference 后仅补齐 record removal。 |
 | worktree 已建、record 缺失 | Git registration/orphan path | 保留并报告；用户确认前不 cleanup。 |
 | cache apply 前 eligibility 改变 | source still present | conflict 后重新 dry-run。 |
 

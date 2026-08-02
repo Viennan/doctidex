@@ -62,6 +62,8 @@ tests、repository-local path 或开发命令。当前三个 Skills 只引用 `1
 - validate 的可重复根绝对 `--scope`、省略时全根、规范化/去重规则、必要支持闭包，以及
   scoped pass 不能作为全根符合结论；
 - restore 的 filter、bounded collection、dry-run/apply、exact commit 与 cursor identity；
+- remove 的单一 `INSTALL_ID`、dry-run/apply、reference block 与证据、reference-free 的有限
+  payload/metadata effect、shared cache 不变，以及 ID 不明时先 link-parse；
 - link-parse 的 PATH 输入、owner/content root 区别、current-owner/installed-repository mapping、
   target state，以及 broken symlink 不需要 target 存在；
 - 常见 blocked code、保留结果、恢复动作和需要用户输入的边界。
@@ -109,6 +111,9 @@ Maintenance Skill 先帮助 agent 选择工作方式，再介绍命令：
    作为 `--dependency-of`；不要在只读 install 内运行嵌套 checkout。
 4. 只需临时阅读 dependency 时保留 dependency-only；需要提交 external link 或恢复时，
    以相同 source/selector 普通 install 将其提升为 direct。
+5. 已不需要某个 managed install 且已获删除授权时，先从 link-parse 或之前的 result 取得 exact
+   Install ID，dry-run remove 并阅读 reference evidence；出现 blocked reference 时回到用户决定，
+   不让 Skill 自动删除文档、symlink、mapping 或 dependency edge。
 
 “优先”表达默认建议，不是禁止隔离；“受管”表达产品承诺，不是协议符合性或工具排他性。
 

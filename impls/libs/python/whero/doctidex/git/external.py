@@ -12,7 +12,7 @@ from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from whero.doctidex.errors import DoctidexError
 from whero.doctidex.protocol.document import DoctidexDocument
 from whero.doctidex.protocol.root import RootContext, discover_roots, is_within
-from whero.doctidex.protocol.validation import validate_protocol
+from whero.doctidex.protocol.validation import TreeObservations, tree_observations, validate_protocol
 from whero.doctidex.results import envelope, finding, paginate_lists, query_identity
 
 from .runner import git
@@ -24,6 +24,7 @@ from .source import (
     ensure_exact_commit_cache,
     ensure_source_cache,
     make_logically_read_only,
+    remove_detached_worktree,
     resolve_source,
     source_relation,
     verify_exact_commit,
@@ -470,6 +471,193 @@ class ExternalService:
                 )
                 changed.extend([path, self.storage.runtime_path])
         return _restore_item_payload(record, "restored", []), changed, network
+
+    def remove(self, identifier: str, *, apply: bool) -> dict[str, Any]:
+        preflight = self._remove_preflight(identifier)
+        if preflight["references"]:
+            return self._remove_result(preflight, apply=apply, state="blocked", changed=[])
+        if not apply:
+            return self._remove_result(preflight, apply=False, state="planned", changed=[])
+
+        with source_mutation(preflight["record"]["canonical_source"]):
+            with self.storage.mutation():
+                preflight = self._remove_preflight(identifier)
+                if preflight["references"]:
+                    return self._remove_result(preflight, apply=True, state="blocked", changed=[])
+
+                changed: list[Path] = []
+                path = preflight["path"]
+                if path.exists():
+                    remove_detached_worktree(path, operation="external_remove")
+                    changed.append(path)
+
+                if preflight["manifest_included"] and identifier in preflight["manifest"]["installs"]:
+                    manifest = preflight["manifest"]
+                    del manifest["installs"][identifier]
+                    self.storage.write_manifest(manifest)
+                    changed.append(self.storage.manifest_path)
+
+                self.storage.update_runtime(lambda value: value["installs"].pop(identifier, None))
+                changed.append(self.storage.runtime_path)
+
+        return self._remove_result(preflight, apply=True, state="removed", changed=changed)
+
+    def _remove_preflight(self, identifier: str) -> dict[str, Any]:
+        try:
+            runtime = self.storage.read_runtime()
+        except DoctidexError as exc:
+            raise _remove_damaged(
+                identifier, self.storage.runtime_path, "The managed runtime records are invalid."
+            ) from exc
+        record = runtime["installs"].get(identifier)
+        if not isinstance(record, dict):
+            raise DoctidexError(
+                "The install ID is not managed by the selected owner root.",
+                operation="external_remove",
+                affected=[identifier],
+                actions=[
+                    "Run external link-parse on a managed path when the install ID is unknown.",
+                    "Pass the returned install_id for the selected owner root.",
+                ],
+                code="install_not_found",
+                domain="external",
+            )
+
+        path = self.root.joinpath(*record["install_path"].lstrip("/").split("/"))
+        payload_present = path.exists()
+        if payload_present and (_worktree_head(path) != record["resolved_commit"]):
+            raise _remove_damaged(identifier, path, "The managed install payload does not match its runtime record.")
+
+        try:
+            manifest = self.storage.read_manifest()
+        except DoctidexError as exc:
+            raise _remove_damaged(
+                identifier, self.storage.manifest_path, "The managed external manifest is invalid."
+            ) from exc
+        manifest_included = record["role"] == "direct"
+        manifest_record = manifest["installs"].get(identifier)
+        if manifest_included:
+            expected = _portable_install(record)
+            # A missing portable record is recoverable only after payload deletion was interrupted.
+            if manifest_record != expected and (payload_present or manifest_record is not None):
+                raise _remove_damaged(
+                    identifier, self.storage.manifest_path, "The direct install manifest is inconsistent."
+                )
+        elif manifest_record is not None:
+            raise _remove_damaged(identifier, self.storage.manifest_path, "A dependency install has portable metadata.")
+
+        observations = tree_observations(
+            self.context,
+            excluded_roots=[self.storage.install_directory],
+            excluded_configuration_fields=("boundary-set", "unsafe"),
+        )
+        references = self._remove_references(identifier, path, runtime, manifest, observations)
+        return {
+            "record": record,
+            "path": path,
+            "manifest": manifest,
+            "manifest_included": manifest_included,
+            "references": references,
+        }
+
+    def _remove_references(
+        self,
+        identifier: str,
+        install_path: Path,
+        runtime: dict[str, Any],
+        manifest: dict[str, Any],
+        observations: TreeObservations,
+    ) -> list[tuple[str, str]]:
+        references: list[tuple[str, str]] = []
+        presentations = [
+            self.root.joinpath(*target.split("/"))
+            for target, link in runtime["links"].items()
+            if link.get("install_id") == identifier
+        ]
+        targets = [install_path, *presentations]
+
+        for link in observations.links:
+            if (
+                not link.is_file_link
+                or link.target is None
+                or observations.is_unsafe(link.document)
+                or observations.is_within_boundary(link.document)
+            ):
+                continue
+            if any(is_within(link.target, target) for target in targets):
+                references.append(("Markdown navigation link", str(link.document)))
+
+        for path in observations.paths:
+            if (
+                not path.is_symlink()
+                or observations.is_unsafe(path)
+                or observations.is_within_boundary(path)
+            ):
+                continue
+            try:
+                resolved = path.resolve(strict=False)
+            except (OSError, RuntimeError):
+                continue
+            if is_within(resolved, install_path):
+                references.append(("filesystem symlink", str(path)))
+
+        for target, link in runtime["links"].items():
+            if link.get("install_id") == identifier:
+                references.append(("runtime durable mapping", f"{self.storage.runtime_path}#links/{target}"))
+        for target, link in manifest["links"].items():
+            if link.get("install_id") == identifier:
+                references.append(("portable durable mapping", f"{self.storage.manifest_path}#links/{target}"))
+        for parent_id, record in runtime["installs"].items():
+            if parent_id != identifier and identifier in record.get("parents", []):
+                evidence = f"{self.storage.runtime_path}#installs/{parent_id}/parents"
+                references.append(("dependency parent edge", evidence))
+        return list(dict.fromkeys(references))
+
+    def _remove_result(
+        self,
+        preflight: dict[str, Any],
+        *,
+        apply: bool,
+        state: str,
+        changed: list[Path],
+    ) -> dict[str, Any]:
+        record = preflight["record"]
+        references: list[tuple[str, str]] = preflight["references"]
+        planned = [preflight["path"]]
+        if preflight["manifest_included"]:
+            planned.append(self.storage.manifest_path)
+        planned.append(self.storage.runtime_path)
+        blocked = state == "blocked"
+        return envelope(
+            "external_remove",
+            status="blocked" if blocked else "ok",
+            result=(
+                "The managed install is still referenced."
+                if blocked
+                else ("External install removed." if state == "removed" else "External install removal plan is ready.")
+            ),
+            root=str(self.root),
+            changed=[str(path) for path in _unique_paths(changed)],
+            findings=[
+                finding(
+                    "external",
+                    "error",
+                    "install_referenced",
+                    f"The install is still referenced by {kind}.",
+                    path=evidence,
+                    actions=["Remove or redirect this reference with explicit authority, then retry remove."],
+                )
+                for kind, evidence in references
+            ],
+            affected=[evidence for _, evidence in references],
+            applied=apply,
+            install_id=record["install_id"],
+            install_role=record["role"],
+            install_path=record["install_path"],
+            manifest_included=preflight["manifest_included"],
+            state=state,
+            planned_changes=[str(path) for path in _unique_paths(planned)],
+        )
 
     def link_parse(self, path: Path) -> dict[str, Any]:
         path = path.absolute()
@@ -1120,6 +1308,18 @@ def _mapping_error(operation: str, path: Path) -> DoctidexError:
         operation=operation,
         affected=[str(path)],
         actions=["Preserve the path and repair or recreate the exact mapping."],
+        code="mapping_damaged",
+        domain="external",
+        path=str(path),
+    )
+
+
+def _remove_damaged(identifier: str, path: Path, message: str) -> DoctidexError:
+    return DoctidexError(
+        message,
+        operation="external_remove",
+        affected=[identifier, str(path)],
+        actions=["Preserve the managed state and repair the exact install before retrying remove."],
         code="mapping_damaged",
         domain="external",
         path=str(path),

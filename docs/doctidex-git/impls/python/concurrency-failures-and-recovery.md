@@ -43,6 +43,7 @@ exception 写 diagnostic 后只公开 random ID。Renderer 不改变 domain fiel
 | symlink/record mismatch | lexical target + runtime/manifest validators | `mapping_damaged`，不跟随或覆盖。 |
 | worktree without ownership | Git registrations + namespace | preserve and report；用户决定后 native action。 |
 | cache eligibility changed | second Git classification | conflict，cache 保留。 |
+| remove payload deleted before metadata | exact ID 仍在 runtime/manifest、但 worktree path 已不存在 | same-ID remove 重新检查引用并发布剩余 per-install metadata 删除；它不删除 cache，也不猜测另一个 target。 |
 
 Restore batch 捕获 item-level `DoctidexError` 并继续 independent items；top-level warning 与 totals
 保留所有完成结果。成功恢复的 runtime record 可由后续 operation 立即读取；default-intent 与

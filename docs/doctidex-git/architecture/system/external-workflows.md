@@ -92,7 +92,25 @@ item state 按该 invocation 重新观察，`changed` 只列本页实际恢复�
 Restore 不读取 remote HEAD、不刷新 selector、不改 manifest/frontmatter/symlink/Git index。它可以
 重建必要 runtime ownership；dependency-only 不在 manifest 中，因此不由 restore 创建。
 
-## 4. Link parse
+## 4. Remove
+
+Remove 解决的场景是 owner root 中已不再需要的 managed install。调用者传入单个 Install ID；若只有
+presentation path，先用 `external link-parse` 取得 current `install_id`。它不会从 source URL、selector
+或任意目录猜测 target，也不批量处理 install。
+
+Plan 首先证明 selected root 的 runtime record、stable install path 和 role 可解释；然后使用 shared
+tree observations 扫描 safe Markdown 与 filesystem symlink，并读取 runtime/portable mapping 与 parent
+edges。install payload、boundary-set 和 unsafe 内部不递归扫描。任一 reference、damaged ownership、
+unknown ID 或 revalidation conflict 都 blocked，保留全部 state；`affected` 和 external finding 给出
+document/symlink/managed-record evidence 与下一步。
+
+dry-run 完成相同 preflight 并回显 planned effects，但不修改持久 state。apply 在 source -> root
+mutation order 下重查所有 safety facts；只在 reference-free 时移除 exact Git worktree payload，随后
+删除 per-install runtime record，direct install 再删除 portable manifest record。它不改写 Markdown、
+symlink、frontmatter、ignore 或 shared source cache，也不隐式运行 cache clean。物理 payload 已移除、
+metadata 尚未发布的 interruption 保留可诊断 ownership；以相同 ID 重试只补齐已确认的删除。
+
+## 5. Link parse
 
 ```mermaid
 flowchart TD
@@ -115,7 +133,7 @@ state。Portable dependency target missing 但 records 自洽时返回 exact dep
 parent，不视为 damaged；调用方决定是否扁平 install。Mapping resolver 不写、不联网、不
 validation，也不在 readonly install 内 restore。
 
-## 5. Failure 与 partial publication
+## 6. Failure 与 partial publication
 
 Source locator 使用 `source_invalid`，revision 使用 revision codes；authentication 与 transport
 均使用 `source_access_failed`，分别以 `requires_user: repository_access` 与 `network_access`

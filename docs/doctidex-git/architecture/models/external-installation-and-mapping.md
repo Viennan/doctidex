@@ -112,7 +112,25 @@ Installed symlink target 物理缺失不自动表示损坏：记录自洽且 out
 正常 `dependency_not_installed`。只有 identity/path/record 不一致、越 repository 或 ownership
 无法证明时才是 damaged。
 
-## 5. 状态机
+## 5. Removal reference 与 ownership
+
+Remove 以 selected owner root 内的一个 Install ID 为 target。它同时检查四类阻断 reference：当前
+safe Markdown navigation link、filesystem symlink、runtime/portable durable-link mapping，以及其他
+install runtime record 中指向 target 的 parent edge。Markdown 与 filesystem discovery 复用
+[Tree observations](doctidex-tree-and-configuration.md#6-shared-tree-observations)；managed mapping
+与 parent edge 仍由 external state 解释。
+
+Markdown/symlink discovery 不递归进入 install payload、boundary-set 内部或 unsafe 内部。这个
+external remove 的产品 exclusion 不改变 protocol 对 boundary/unsafe 的解释。所有发现的 target
+reference 都阻断 remove；命令保留 payload、manifest/runtime、presentation 和 root configuration，
+并给出可定位的 reference evidence。它不删除引用来完成 remove。
+
+没有 target reference 时，remove 只处置该 owner root 的 exact install payload 与 per-install
+runtime/portable metadata。target 作为 other install 的 parent 不阻断删除；target 的自身 parent
+edges 随其 runtime record 一同移除。Shared source cache、`.gitignore`、internal namespace
+frontmatter 与其他 root-shared layout 不属于 remove effect。
+
+## 6. 状态机
 
 Install lifecycle 与 link relation 分开：Install role 是 `dependency` 或 `direct`；promotion 只允许
 dependency -> direct。Payload state 是 `planned`、`complete`、`missing` 或 `damaged`，restore 只执行
@@ -128,6 +146,8 @@ stateDiagram-v2
     CompleteDirect --> MissingDirect: payload removed
     MissingDirect --> CompleteDirect: exact restore
     CompleteDirect --> DamagedDirect: identity/status no longer matches
+    CompleteDependency --> Removed: reference-free remove
+    CompleteDirect --> Removed: reference-free remove
 ```
 
 Install、frontmatter、ignore、manifest、runtime、payload 与 symlink 是独立 publication effects，

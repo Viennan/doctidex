@@ -130,6 +130,15 @@ def run(
                 "install_filter",
                 "items",
             },
+            "external_remove": {
+                "applied",
+                "install_id",
+                "install_role",
+                "install_path",
+                "manifest_included",
+                "state",
+                "planned_changes",
+            },
             "external_link_parse": {
                 "managed",
                 "mapping_origin",
@@ -419,6 +428,285 @@ def test_link_restore_and_current_owner_parse(cli_env: dict[str, str], tmp_path:
     restored_parse = run(["external", "link-parse", str(presentation), "--root", str(root)], tmp_path, cli_env)
     assert restored_parse["mapping_origin"] == "owner_root"
     assert restored_parse["target_state"] == "available"
+
+
+def test_external_remove_direct_dry_run_apply_and_cache(cli_env: dict[str, str], tmp_path: Path) -> None:
+    root = create_repository(tmp_path / "host")
+    source = create_repository(tmp_path / "source")
+    add_source_content(source)
+    install = run(
+        ["external", "install", "--url", source.as_uri(), "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    cache = Path(cli_env["DOCTIDEX_GIT_CACHE"]) / "sources"
+    assert any(cache.iterdir())
+    parsed = run(["external", "link-parse", install["working_path"], "--root", str(root)], tmp_path, cli_env)
+    assert parsed["install_id"] == install["install_id"]
+
+    index_before = (root / "index.md").read_bytes()
+    ignore_before = (root / ".gitignore").read_bytes()
+    planned = run(
+        ["external", "remove", parsed["install_id"], "--root", str(root)],
+        tmp_path,
+        cli_env,
+    )
+    assert planned["state"] == "planned"
+    assert planned["applied"] is False
+    assert Path(install["working_path"]).is_dir()
+    assert install["install_id"] in RootStorage(root).read_runtime()["installs"]
+
+    removed = run(
+        ["external", "remove", parsed["install_id"], "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    assert removed["state"] == "removed"
+    assert removed["manifest_included"] is True
+    assert not Path(install["working_path"]).exists()
+    assert install["install_id"] not in RootStorage(root).read_runtime()["installs"]
+    assert install["install_id"] not in RootStorage(root).read_manifest()["installs"]
+    assert (root / "index.md").read_bytes() == index_before
+    assert (root / ".gitignore").read_bytes() == ignore_before
+    assert any(cache.iterdir())
+
+    unknown = run(
+        ["external", "remove", "i-missing", "--root", str(root)],
+        tmp_path,
+        cli_env,
+        expected=2,
+    )
+    assert unknown["findings"][0]["code"] == "install_not_found"
+    assert "link-parse" in unknown["findings"][0]["actions"][0]
+
+
+def test_external_remove_dependency_and_reference_blocks(
+    cli_env: dict[str, str], tmp_path: Path, symlink_capable: None
+) -> None:
+    root = create_repository(tmp_path / "host")
+    parent_source = create_repository(tmp_path / "parent-source")
+    dependency_source = create_repository(tmp_path / "dependency-source")
+    add_source_content(parent_source)
+    add_source_content(dependency_source)
+    parent = run(
+        ["external", "install", "--url", str(parent_source), "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    dependency = run(
+        [
+            "external",
+            "install",
+            "--url",
+            str(dependency_source),
+            "--root",
+            str(root),
+            "--dependency-of",
+            parent["install_id"],
+            "--apply",
+        ],
+        tmp_path,
+        cli_env,
+    )
+    dependency_removed = run(
+        ["external", "remove", dependency["install_id"], "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    assert dependency_removed["manifest_included"] is False
+    assert dependency["install_id"] not in RootStorage(root).read_runtime()["installs"]
+    assert parent["install_id"] in RootStorage(root).read_runtime()["installs"]
+
+    mapped_source = create_repository(tmp_path / "mapped-source")
+    add_source_content(mapped_source)
+    mapped = run(
+        ["external", "install", "--url", str(mapped_source), "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    run(
+        [
+            "external",
+            "link",
+            mapped["working_path"],
+            "external/mapped",
+            "--root",
+            str(root),
+            "--apply",
+        ],
+        tmp_path,
+        cli_env,
+    )
+    mapping_blocked = run(
+        ["external", "remove", mapped["install_id"], "--root", str(root)],
+        tmp_path,
+        cli_env,
+        expected=2,
+    )
+    assert {item["code"] for item in mapping_blocked["findings"]} == {"install_referenced"}
+    assert any("runtime.json#links/external/mapped" in value for value in mapping_blocked["affected"])
+    assert Path(mapped["working_path"]).is_dir()
+
+    markdown_source = create_repository(tmp_path / "markdown-source")
+    add_source_content(markdown_source)
+    markdown = run(
+        ["external", "install", "--url", str(markdown_source), "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    with (root / "index.md").open("a", encoding="utf-8") as index:
+        index.write(f"\n[Managed payload]({markdown['install_path']}/guide.md)\n")
+    markdown_blocked = run(
+        ["external", "remove", markdown["install_id"], "--root", str(root)],
+        tmp_path,
+        cli_env,
+        expected=2,
+    )
+    assert str(root / "index.md") in markdown_blocked["affected"]
+    assert Path(markdown["working_path"]).is_dir()
+
+    symlink_source = create_repository(tmp_path / "symlink-source")
+    add_source_content(symlink_source)
+    symlinked = run(
+        ["external", "install", "--url", str(symlink_source), "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    manual = root / "manual-payload"
+    manual.symlink_to(Path(symlinked["working_path"]), target_is_directory=True)
+    symlink_blocked = run(
+        ["external", "remove", symlinked["install_id"], "--root", str(root)],
+        tmp_path,
+        cli_env,
+        expected=2,
+    )
+    assert str(manual) in symlink_blocked["affected"]
+    assert Path(symlinked["working_path"]).is_dir()
+
+    parent_edge_source = create_repository(tmp_path / "parent-edge-source")
+    child_source = create_repository(tmp_path / "child-source")
+    add_source_content(parent_edge_source)
+    add_source_content(child_source)
+    parent_edge = run(
+        ["external", "install", "--url", str(parent_edge_source), "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    run(
+        [
+            "external",
+            "install",
+            "--url",
+            str(child_source),
+            "--root",
+            str(root),
+            "--dependency-of",
+            parent_edge["install_id"],
+            "--apply",
+        ],
+        tmp_path,
+        cli_env,
+    )
+    parent_blocked = run(
+        ["external", "remove", parent_edge["install_id"], "--root", str(root)],
+        tmp_path,
+        cli_env,
+        expected=2,
+    )
+    assert any("/parents" in value for value in parent_blocked["affected"])
+
+
+def test_external_remove_excludes_unsafe_boundary_and_install_payload(
+    cli_env: dict[str, str], tmp_path: Path, symlink_capable: None
+) -> None:
+    root = create_repository(tmp_path / "host")
+    index = root / "index.md"
+    index.write_text(
+        index.read_text(encoding="utf-8").replace(
+            "  unsafe:\n    - path: .git\n",
+            "  boundary-set:\n    - path: boundary\n"
+            "  unsafe:\n    - path: .git\n    - path: unsafe\n",
+        ),
+        encoding="utf-8",
+    )
+    source = create_repository(tmp_path / "source")
+    add_source_content(source)
+    install = run(
+        ["external", "install", "--url", str(source), "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    for name in ("unsafe", "boundary"):
+        directory = root / name
+        directory.mkdir()
+        (directory / "reference.md").write_text(
+            f"[Managed payload]({install['install_path']}/guide.md)\n", encoding="utf-8"
+        )
+        (directory / "manual-payload").symlink_to(Path(install["working_path"]), target_is_directory=True)
+
+    removed = run(
+        ["external", "remove", install["install_id"], "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    assert removed["state"] == "removed"
+    assert not Path(install["working_path"]).exists()
+
+
+def test_external_remove_retry_completes_after_payload_deletion(
+    cli_env: dict[str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DOCTIDEX_GIT_CACHE", cli_env["DOCTIDEX_GIT_CACHE"])
+    root = create_repository(tmp_path / "host")
+    source = create_repository(tmp_path / "source")
+    add_source_content(source)
+    install = run(
+        ["external", "install", "--url", str(source), "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    context = root_at(root)
+    assert context is not None
+    service = ExternalService(context)
+
+    def interrupted(callback: object) -> dict:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(service.storage, "update_runtime", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        service.remove(install["install_id"], apply=True)
+    assert not Path(install["working_path"]).exists()
+    assert install["install_id"] in RootStorage(root).read_runtime()["installs"]
+    assert install["install_id"] not in RootStorage(root).read_manifest()["installs"]
+
+    retried = ExternalService(context).remove(install["install_id"], apply=True)
+    assert retried["state"] == "removed"
+    assert install["install_id"] not in RootStorage(root).read_runtime()["installs"]
+
+
+def test_external_remove_preserves_a_damaged_direct_manifest(cli_env: dict[str, str], tmp_path: Path) -> None:
+    root = create_repository(tmp_path / "host")
+    source = create_repository(tmp_path / "source")
+    add_source_content(source)
+    install = run(
+        ["external", "install", "--url", str(source), "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    manifest_path = root / ".doctidex" / "git" / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["installs"][install["install_id"]]["resolved_commit"] = "f" * 40
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    blocked = run(
+        ["external", "remove", install["install_id"], "--root", str(root)],
+        tmp_path,
+        cli_env,
+        expected=2,
+    )
+    assert blocked["operation"] == "external_remove"
+    assert blocked["findings"][0]["code"] == "mapping_damaged"
+    assert Path(install["working_path"]).is_dir()
 
 
 @pytest.mark.parametrize("explicit_selector", [False, True])

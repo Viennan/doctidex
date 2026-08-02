@@ -249,6 +249,27 @@ dependency edges 不在无 filter 集合中。任一 item blocked 令顶层 stat
 不可识别或无法选择宿主 repository 时，operation blocked。`collection.lists.items` 对 filter
 后的记录计数；恢复载荷不改变 manifest identity，也不使后续 cursor 失效。
 
+### 6.4 `external_remove`
+
+非 blocked result 的 fields：
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| `operation` | `external_remove` | 操作判别字段。 |
+| `applied` | boolean | 是否实际 apply；dry-run 为 false。 |
+| `install_id` | opaque string | selected owner root 中被移除或计划移除的 install。 |
+| `install_role` | `direct`/`dependency` | preflight 时 record 的 role；direct 也可以具有 parent edges。 |
+| `install_path` | root-absolute POSIX path | exact managed payload path；不是调用方可替换的 path input。 |
+| `manifest_included` | boolean | remove 是否同时删除该 install 的 portable manifest entry。 |
+| `state` | `planned`/`removed` | dry-run 已完成 reference-free plan，或 apply 已移除 payload 与 per-install records。 |
+| `planned_changes` | array[absolute path] | install payload、runtime record，及 direct install 的 manifest record 所在公开文件。 |
+
+此 operation 不是 batch，`collection` 固定 null。成功或 planned result 的 `findings` 为空；target
+reference、unknown/damaged install 或 revalidation conflict 整体 blocked，`changed` 为空。每一个
+reference 的可定位 document/symlink path 或 managed-record identity 都进入 `affected`，并以
+`install_referenced` external finding 说明 remove 未执行。command 不公开或推断 shared cache object
+identity。
+
 ## 7. `external_link_parse`
 
 非 blocked result 的 fields：
@@ -420,6 +441,7 @@ null，不能用该字段泄漏内部 cache 或 Git metadata 路径。
 | `owner_install_missing` | 按当前 owner root 的恢复清单 dry-run/apply restore；不要重写 durable link。 |
 | `recovery_manifest_missing` / `recovery_manifest_invalid` | 恢复版本化清单或修复其 schema/portable facts。 |
 | `install_not_found` | 修正 `--install` ID 或不带 filter 重新列出。 |
+| `install_referenced` | 保留 install 与被列出的 document/symlink/managed record；移除引用后重新 dry-run。 |
 | `install_path_conflict` / `install_damaged` | 保留占用内容并人工判断；确认后再恢复 exact path/commit。 |
 | `index_update_conflict` | 重新 dry-run，审阅并重试 apply。 |
 | `partial_success` | 按 changed/affected/next actions 只补齐缺失步骤。 |

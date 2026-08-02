@@ -40,6 +40,11 @@ Human 不需要 import Python modules，也不应编辑 cache、manifest/runtime
 blocked result。unexpected failure 只公开 diagnostic ID；内部 traceback 位于用户 cache，
 用于实现维护而不是正常操作决策。
 
+要移除已知 install 时，Human/Program 传回精确 `install_id`，先审阅 `external remove INSTALL_ID`
+的 dry-run，再在具备删除授权时使用 `--apply`。只有 presentation path 时应先运行
+`external link-parse PATH --json` 并使用返回的 `install_id`；`dependency_parent_install_id` 是
+dependency installation 的 parent，不是 remove target。
+
 ## 3. Agent 使用画面
 
 Agent 的安装后入口是三个 Published Skills：

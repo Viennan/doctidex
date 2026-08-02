@@ -6,7 +6,7 @@ import pytest
 
 from whero.doctidex.errors import DoctidexError
 from whero.doctidex.protocol.root import root_at
-from whero.doctidex.protocol.validation import normalize_scopes, validate_protocol
+from whero.doctidex.protocol.validation import normalize_scopes, tree_observations, validate_protocol
 
 
 def write_root(root: Path, *, config: str = "", body: str = "# Root\n") -> None:
@@ -195,3 +195,62 @@ def test_scoped_validation_does_not_read_unrelated_subtree(tmp_path: Path) -> No
     full = validate(root)
     assert full["scan_complete"] is False
     assert any(item["code"] == "document_unreadable" for item in full["findings"])
+
+
+def test_tree_observations_share_link_resolution(tmp_path: Path) -> None:
+    root = tmp_path / "knowledge"
+    write_root(root, body="# Root\n\n[Guide](/guide.md#details)\n")
+    (root / "guide.md").write_text("# Guide\n", encoding="utf-8")
+    context = root_at(root)
+    assert context is not None
+
+    observations = tree_observations(context)
+    assert len(observations.links) == 1
+    link = observations.links[0]
+    assert link.document == root / "index.md"
+    assert link.raw_target == "/guide.md#details"
+    assert link.target == root / "guide.md"
+    assert link.is_file_link is True
+    assert validate(root)["protocol_structure"] == "pass"
+
+
+def test_tree_observations_preserve_boundary_unsafe_and_symlink_scan(tmp_path: Path) -> None:
+    root = tmp_path / "knowledge"
+    write_root(
+        root,
+        config="""  boundary-set:
+    - path: boundary
+  unsafe:
+    - path: unsafe
+""",
+        body="# Root\n",
+    )
+    for name in ("boundary", "unsafe", "payload"):
+        (root / name).mkdir()
+    (root / "boundary" / "guide.md").write_text("# Boundary\n", encoding="utf-8")
+    (root / "unsafe" / "guide.md").write_text("# Unsafe\n", encoding="utf-8")
+    (root / "payload" / "nested.md").write_text("# Payload\n", encoding="utf-8")
+    link = root / "payload-link"
+    try:
+        link.symlink_to(root / "payload", target_is_directory=True)
+    except OSError:
+        pytest.skip("This environment cannot create directory symlinks")
+
+    context = root_at(root)
+    assert context is not None
+    observations = tree_observations(context, excluded_roots=[root / "payload"])
+    assert link in observations.paths
+    assert root / "payload" in observations.paths
+    assert root / "payload" / "nested.md" not in observations.paths
+    assert observations.is_within_boundary(root / "boundary" / "guide.md") is True
+    assert observations.is_unsafe(root / "unsafe" / "guide.md") is True
+
+    safe_observations = tree_observations(
+        context,
+        excluded_roots=[root / "payload"],
+        excluded_configuration_fields=("boundary-set", "unsafe"),
+    )
+    assert root / "boundary" in safe_observations.paths
+    assert root / "unsafe" in safe_observations.paths
+    assert root / "boundary" / "guide.md" not in safe_observations.paths
+    assert root / "unsafe" / "guide.md" not in safe_observations.paths
