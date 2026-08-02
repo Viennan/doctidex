@@ -13,15 +13,19 @@ mutate, or report a doctidex tree. Trace each finding to an exact normative rule
 failure. Protocol silence permits implementation choice; a valuable new rule is at most an
 `advisory`/`recommended` specification suggestion unless another authority is violated.
 
-Do not infer CLI, source-identity, revision, scope, reuse, scheduling, or implementation requirements
-from protocol concepts. `protected` permits an exact user-authorized override; report silent or
-over-broad writes, not the existence of that path. `atomic_entries` changes responsible-index
-organization, not content/link roots; evaluate links against their actual protocol root.
+Do not infer CLI, source-identity, revision, scope, reuse, scheduling, implementation, or write
+authorization requirements from protocol concepts. `unsafe` is a conformity exception, not a
+permission, trust conclusion, or write boundary. Check its local declaration, path, reachability,
+and safe-link annotation; its mere existence is not a defect, and an unnecessarily broad scope is
+only `advisory` under section 5.3 unless another mandatory rule fails. `atomic-indexing` changes
+indexing granularity, not responsible-index ownership, unsafe status, reading access, link roots, or
+boundary rules. Evaluate links from their current doctidex root using root-internal lexical paths.
 
 ## Agent-Facing Skill Surface
 
-Authority: `$write-doctidex-agent-skills`, the changed Skills and metadata, and the public behavior
-they claim.
+Authority: `AGENTS.md`, the applicable product Architecture design constraints, the changed Skills
+and metadata, and the public behavior they claim. For doctidex-git Published Skills, read
+`docs/doctidex-git/architecture/skill-system.md` first.
 
 Classify each Skill as published or repository-local. Apply installed-product information boundaries
 only to published Skills. Verify trigger precision, audience, acyclic reading, workflow and command
@@ -37,7 +41,7 @@ Authority: the applicable record under `docs/requirements/` and
 Trace reviewed intent and acceptance criteria to authorized artifacts and evidence. Check negative
 requirements and failures, not only happy paths. Verify status and explicit approval provenance,
 active-artifact update order, question/answer handling, live user comments, dependency links,
-large-Requirement aggregate gates, scope, and protected approved history. Do not invent missing
+large-Requirement aggregate gates, scope, and approved-history preservation. Do not invent missing
 historical wording or infer authority to repair another layer.
 
 Use current Architecture, Impls, code, tests, and public surfaces as realization evidence in their

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Write doctidex Agent Skills"
-  short_description: "Author self-contained agent-facing repository skills"
-  default_prompt: "Use $write-doctidex-agent-skills to create or revise an agent-facing Skill for this repository."

@@ -94,9 +94,9 @@ public/internal separation, unique authorities, links, anchors, navigation, diag
 When the change affects an Impls variant, use `$write-doctidex-impls-docs` to update or assess its
 coverage rather than embedding variant details here.
 
-When Architecture defines an agent-facing Skill surface, use `$write-doctidex-agent-skills` for the
-Skill-specific audience, reading-chain, command, and failure contract; link that authority instead
-of copying its checklist into Architecture maintenance rules.
+When Architecture defines an agent-facing Skill surface, make the affected product Architecture own
+its audience, reading-chain, command, failure, and maintenance-verification constraints. Link that
+product authority instead of copying a generic checklist into this Architecture authoring workflow.
 
 For substantial structural reorganization, use fresh raw-artifact readers:
 

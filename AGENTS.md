@@ -95,8 +95,9 @@ historical link repair require the authority defined by the applicable authoring
 - Use `.agents/skills/review-doctidex-repository/` only when the user explicitly authorizes a review,
   audit, compliance check, or review-and-repair cycle. The review Skill owns scope, independent
   lenses, finding adjudication, repair authorization, and re-review.
-- Use `.agents/skills/write-doctidex-agent-skills/` for published or repository-local Skill content,
-  metadata, reading chains, command contracts, and validation. Preserve its published-product versus
-  repository-maintenance audience boundary.
+- Before creating, revising, or removing a doctidex-git Published Skill or its metadata under
+  `impls/agent-plugins/doctidex-git/`, read
+  `docs/doctidex-git/architecture/skill-system.md` first. It defines the product's audience,
+  reading-chain, command, information-boundary, and validation constraints.
 - Let each maintenance Skill own its detailed rules. `AGENTS.md` selects and orders Skills; it does
   not duplicate their authoring or review checklists.

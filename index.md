@@ -48,17 +48,12 @@ without expanding the doctidex index hierarchy.
 
 ## Declared Unsafe Material
 
-- [`.asserts/`](.asserts/) contains read-only collected sources used to
-  construct tests.
-  <!-- doctidex: {unsafe: true} -->
-- [`.tmp/`](.tmp/) contains disposable test workspaces.
-  <!-- doctidex: {unsafe: true} -->
-- [`.venv/`](.venv/) contains the local Python environment.
-  <!-- doctidex: {unsafe: true} -->
-- [`.ruff_cache/`](.ruff_cache/) contains generated linter state.
-  <!-- doctidex: {unsafe: true} -->
-- [`.git/`](.git/) contains Git's repository metadata.
-  <!-- doctidex: {unsafe: true} -->
+- [`.asserts/`](.asserts/) <!-- doctidex: {unsafe: true} --> contains read-only collected sources used
+  to construct tests.
+- [`.tmp/`](.tmp/) <!-- doctidex: {unsafe: true} --> contains disposable test workspaces.
+- [`.venv/`](.venv/) <!-- doctidex: {unsafe: true} --> contains the local Python environment.
+- [`.ruff_cache/`](.ruff_cache/) <!-- doctidex: {unsafe: true} --> contains generated linter state.
+- [`.git/`](.git/) <!-- doctidex: {unsafe: true} --> contains Git's repository metadata.
 
 These directories remain readable and discoverable, but their generated,
 collected, or disposable internal structures are not required to conform to

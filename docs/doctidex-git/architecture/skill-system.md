@@ -1,9 +1,12 @@
 # 已发布 Skill 系统
 
-本篇只设计三个 Published Skills 的职责、阅读链、命令说明充分性和用户/内部信息边界。
+本篇定义三个 Published Skills 的职责、阅读链、命令说明充分性和用户/内部信息边界，也是维护
+`impls/agent-plugins/doctidex-git/skills/` 的当前设计约束。仓库维护者在创建、修改或删除该产品
+的 Skill 或其 metadata 前，必须先读本篇及受影响 workflow 的 Architecture 和 public interface。
+
 产品工作流以 [Architecture system](index.md#系统与-workflow)为准，精确 public command contract 由
-[CLI](interfaces/cli.md) 和 [JSON Schema](interfaces/cli-schema.md) 负责；Skill 应完整转述 agent
-完成任务所需的信息，但不能成为另一份 Architecture 权威。
+[CLI](interfaces/cli.md) 和 [JSON Schema](interfaces/cli-schema.md) 负责。Skill 应使已安装产品中的
+agent 能完成支持的工作流，却不成为另一份 Architecture authority，也不把维护过程带入产品。
 
 ## 1. 三 Skill 结构
 
@@ -23,7 +26,76 @@
 Maintenance 不提及、推荐或调用它；Skill 也不因 close、restore 或 objects 缺失暗示隐式
 cleanup。
 
-## 2. 阅读链
+## 2. 维护设计约束
+
+### 2.1 范围、受众与 metadata
+
+每次变更先确认所涉用户场景、公共命令、Architecture 和当前三个 Skill；改变产品行为时，先更新
+相应 Architecture authority，而不是以 Skill 文本暗中定义新行为。Published Skill 只面向已安装
+产品，不能要求 agent 阅读本仓库源码、Architecture、Impls、tests、repository-local path 或开发
+命令，也不得先于对应命令实现写入发布目标 Skill。
+
+每个 Skill 的 frontmatter 只含 `name` 和完整的 `description`。description 必须说明触发场景和
+不会触发的相邻场景；目录名、frontmatter name、`agents/openai.yaml` 的显示 metadata 及
+`$skill-name` prompt 必须一致。metadata 保持 quoted strings，`short_description` 为 25--64 个
+字符。name 使用不超过 64 个字符的 lowercase hyphenated identifier，优先动词开头。新建 Skill
+在获创建授权后使用 active Skill catalog 提供的初始化工作流；不要新增 README、changelog、安装教程
+或没有明确读取条件的 reference 目录。
+
+Skill 先定义工作流所用术语、调用方输入、默认 context、可观察结果和下一决策，再说明步骤。产品
+概念足以让 agent 完成任务，但不公开 cache、key、lock、worktree 管理、内部 schema、repository
+setup、测试或诊断实现；必要的用户路径、状态和操作不能因内部实现而被隐藏。
+
+### 2.2 阅读链与内容归属
+
+Overview 是共同心智模型、术语、共享 CLI grammar、结果与安全边界的唯一 owner；专项 Skill 只补充
+自身工作流。运行时阅读关系以第 3 节为唯一约束；任何 "if not already read" 路由都必须说明返回
+位置，且不得在一个任务中重新打开已经加载的 Skill。
+
+不要把共同段落复制到每个 Skill。`SKILL.md` 保持简短、命令式且少于 500 行；详细 command contract
+可置于紧邻的 reference，但每个 reference 必须由主 Skill 直接链接并声明读取条件。一个 Overview
+加一个相关专项必须足以完成一个受支持场景。
+
+### 2.3 工作流、命令与决定边界
+
+每个 Skill 以用户场景说明 prerequisite、输入、默认值、所选 context、可观察结果、保留状态、
+failure 和非责任。保留原生 file、search、shell、edit 和 Git 工具；CLI 只提供普通工具不能可靠
+取得的 doctidex/Git 事实，必须 deterministic 且不调用 AI。agent 仍负责语义正文、任务相关性、
+unsafe 范围、diff 质量、权限与 Git delivery 判断。
+
+Skill 第一次引入某命令时，Overview 与该专项合起来必须让 agent 无须 `--help`、错误试探或实现文档
+便能安全调用。契约至少说明：
+
+- 精确 invocation、参数格式、必填/可选/互斥/重复关系与省略行为；
+- cwd、ROOT、PATH、SOURCE 或 WORKTREE 的选择、嵌套根歧义和输入存在条件；
+- read/write/network、dry-run/apply、batch/partial success/interruption 与持久效果；
+- agent 下一步需要读取的 status、result、finding、affected、preserved state、`requires_user`，以及
+  limit、filter、summary、truncation 和 opaque cursor；
+- stable failure code 的用户原因、可安全恢复动作及何时必须停下取得用户输入。
+
+Skill 必须转述其实际公开的当前命令事实，包括 fixed commit 与 selector provenance、direct/dependency
+install 和 promotion、owner/content root、managed path、validation scope/coverage、link-parse target
+state、worktree lifecycle 及 remove 的 reference protection；这些事实仍由模型、workflow、CLI 和 JSON
+Schema authority 定义。`cache clean` 是仅供 human/program operator 使用的已安装 CLI 管理接口，三个
+Published Skills 都不得路由、推荐或调用它，也不得暗示其他 lifecycle command 会触发 cleanup。
+
+默认使用精确的 ROOT、PATH、SOURCE 或 WORKTREE；只在任务确实聚焦部分目录时使用 validation scope。
+先读取 coverage、scope 和 collection 统计，再分页，不得以最大 limit 代替收窄。失败引导必须区分
+未完成 operation、affected object、保留结果和下一动作；credentials、network、revision、link target、
+manifest/Git tracking、dirty worktree 或 delivery 不能以无限重试代替用户决定。
+不要把 stack trace 或内部 storage 当作正常决策界面；无法恢复时向用户报告 operation、affected
+object、已保留结果和可用的 diagnostic fact。
+
+### 2.4 发布前验证
+
+每次变更都检查 trigger、frontmatter、metadata、直接 links、无环阅读链、命令契约、用户/内部信息
+边界、bounded output 和 failure guidance。验证变更的 Skill 及其 containing plugin；从 active Skill
+catalog 取得当前 validator 路径，不把这些仓库维护命令复制进 Published Skill。
+
+复杂 workflow 的变更还需用 fresh independent agent 进行 forward test。测试只提供公开 artifacts，
+不泄漏预期 finding 或修复，并覆盖正常、clean/no-op、歧义、failure 和授权边界。
+
+## 3. 阅读链
 
 ```text
 选择专项 Skill
@@ -36,44 +108,7 @@ Overview 只向专项 Skill 路由，不反向要求重读；专项之间不能�
 Overview 在同一任务中不重复打开。Overview 加一个相关专项 Skill 必须足以完成单一受支持
 场景。
 
-## 3. 已安装产品措辞
-
-Published Skills 面向已安装产品，不能要求 agent 阅读本仓库源码、Architecture、Impls、
-tests、repository-local path 或开发命令。当前三个 Skills 只引用 `1.0.0` 安装后可用的命令
-和用户路径；未来也不得先于对应命令实现发布目标 Skill 文本。
-
-## 4. 命令充分性
-
-每个被 Published Skill 引入的命令都必须写明：
-
-- 精确 invocation、参数类型、必填/可选/互斥关系；
-- 省略行为、cwd/ROOT 选择和嵌套根歧义；
-- read/write/network、dry-run/apply 与生命周期效果；
-- selector、default branch provenance 与固定 commit 的区别；
-- install 无 target、稳定 `/.doctidex` 路径、payload Git ignore、可版本化 manifest、可追踪
-  relative symlink，以及 restore 不改 link 的区别；
-- install key 由 root/source/normalized fixed selector 组成；default provenance 供后续省略调用
-  lookup，physical key 细节由 Impls 定义；`--dependency-of`
-  表示从哪个 install 发现依赖，dependency 扁平、不递归、不进 manifest，环命中既有 key
-  即停止，建立 durable link 前需提升为 direct；
-- worktree open 对所有 source 选择 owner root，并把现场扁平放在其 `/.doctidex`；list 以
-  root 为范围，close 只处理 exact managed path；
-- agent 决策所需字段、默认 limit、cursor 和过滤方式；
-- validate 的可重复根绝对 `--scope`、省略时全根、规范化/去重规则、必要支持闭包，以及
-  scoped pass 不能作为全根符合结论；
-- restore 的 filter、bounded collection、dry-run/apply、exact commit 与 cursor identity；
-- remove 的单一 `INSTALL_ID`、dry-run/apply、reference block 与证据、reference-free 的有限
-  payload/metadata effect、shared cache 不变，以及 ID 不明时先 link-parse；
-- link-parse 的 PATH 输入、owner/content root 区别、current-owner/installed-repository mapping、
-  target state，以及 broken symlink 不需要 target 存在；
-- 常见 blocked code、保留结果、恢复动作和需要用户输入的边界。
-
-Overview 与专项 Skill 合起来不得要求 agent 通过 `--help`、错误试探或实现文档补全语法。
-该充分性要求覆盖 Skills 实际暴露的命令；已安装 CLI 可以另有未被 Skills 路由、但仍由
-Architecture 和 CLI/JSON schema 稳定定义的 human/program 管理命令。当前唯一这种命令是
-`cache clean`。
-
-## 5. Read 的不可访问 Symlink 引导
+## 4. Read 的不可访问 Symlink 引导
 
 Read Skill 保持原生工具优先，但必须为无法访问的 symlink 提供确定的升级路径：
 
@@ -99,7 +134,7 @@ Read Skill 保持原生工具优先，但必须为无法访问的 symlink 提供
 该引导是访问失败时的按需辅助，不把每个 symlink 或普通目录都变成 CLI 前置检查，也不把
 产品 target state 当作 protocol validation 结论。
 
-## 6. 维护决策顺序
+## 5. 维护决策顺序
 
 Maintenance Skill 先帮助 agent 选择工作方式，再介绍命令：
 
@@ -116,33 +151,3 @@ Maintenance Skill 先帮助 agent 选择工作方式，再介绍命令：
    不让 Skill 自动删除文档、symlink、mapping 或 dependency edge。
 
 “优先”表达默认建议，不是禁止隔离；“受管”表达产品承诺，不是协议符合性或工具排他性。
-
-## 7. 用户界面与内部信息
-
-Skill 应暴露：direct/dependency 区别、parent install ID 输入、selector 隔离、fixed commit、
-root-internal install/worktree path、manifest inclusion、symlink 可恢复性、read/write/network
-效果、mapping origin、owner/content root、target state 和下一步。Skill 不暴露：宿主
-`.git` 快速路径、object store 共享、install key 编码、portable mapping 查找算法、
-环检测数据结构、cache cleanup、record/lock/storage 布局。自依赖只需说明返回独立只读快照，不会折叠到
-当前可写 working tree；实际 objects 来源由 CLI 的 network 与 source relation facts 表达。
-
-## 8. 原生工具与客观性
-
-Skills 保留 agent 的原生文件、搜索、shell、编辑和 Git 工具自由。CLI helper 只增加
-doctidex/Git 交叉处无法可靠从普通工具直接得到的事实。CLI 确定性且不调用 AI；agent
-负责语义内容、任务相关性、unsafe 范围是否合适、diff 质量和交付决定。
-
-## 9. 输出与失败
-
-Skill 默认使用精确 ROOT、PATH、SOURCE 或 WORKTREE；validation 只在任务确实聚焦
-部分目录时使用 scope，并先读 coverage/scopes 与 collection 统计再分页，不得习惯性提高
-limit。失败步骤必须说明 operation、affected、preserved result、下一动作
-与 `requires_user`；credentials、network、revision、link target、manifest/Git tracking、
-dirty worktree 和 Git
-交付决定不能用无限重试代替用户输入。
-
-## 10. 发布验证
-
-每次 Skill 或 metadata 变化都验证 frontmatter、`agents/openai.yaml`、无环阅读链、命令
-契约、用户/内部信息边界、bounded output 和 containing plugin。复杂工作流需用只含公开
-artifacts 的独立 agent forward test，不能泄漏预期 finding 或修复。
