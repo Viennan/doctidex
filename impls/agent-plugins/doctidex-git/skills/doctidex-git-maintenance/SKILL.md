@@ -32,11 +32,33 @@ Git tracking fact, content trust concern, or semantic writing judgment into a pr
 Validation is deterministic; the agent still judges semantic candidates and authors index/log
 prose.
 
+When creating or editing a Markdown file link in safe content, decide its lexical relation before
+writing it. Add one adjacent `doctidex` HTML annotation when required:
+
+- A cross-boundary link from a non-`index.md` document needs
+  `cross-boundary-point` set to the first boundary crossed, such as
+  `<!-- doctidex: {cross-boundary-point: /external} -->`.
+- A safe document link to an unsafe path needs `unsafe: true`, including from `index.md`. For a
+  non-`index.md` link where both rules apply, put both fields in that same annotation, for example
+  `<!-- doctidex: {cross-boundary-point: /external, unsafe: true} -->`.
+- An `index.md` can derive a cross-boundary point from its valid `boundary-set`, and an ordinary
+  safe non-cross-boundary link needs no annotation. Preserve valid existing annotations.
+
+`external link` updates the responsible index's boundary/unsafe configuration for its presentation,
+but it does not write navigation prose or annotations in documents that link to it. Add those
+semantic links and their required annotations with native editing before validation reports avoidable
+findings.
+
 Treat installs as logical read-only snapshots at fixed commits. Never edit an install in place. A
 dependency discovered from installed content is created flat in the outer owner root, using
 `--dependency-of`; never recurse under the installed repository. Self-reference also gets an
 independent snapshot. Different selectors have different install paths even if they resolve to the
 same commit.
+
+When a known dependency points back to the owner or host repository, or closes a cycle, consider
+external install when the task needs a fixed independent snapshot or a durable presentation. It
+keeps that relation flat rather than nesting another checkout. If the current native working tree
+already satisfies the task, or no managed presentation is needed, keep using native Git.
 
 For edits, work only in an authorized writable working tree. Inspect native Git status/diff before
 and after changes. The CLI never chooses a delivery branch or runs add/commit/push/merge/reset.

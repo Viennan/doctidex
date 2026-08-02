@@ -41,6 +41,7 @@ overview 才可成为 `approved`。详见 [DX-REQ-0006](0006-large-requirement-d
 | 0008 | [doctidex-git 与协议 v1.0.0 对齐](0008-doctidex-git-v1-0-0-alignment/overview.md) | 分阶段完成三 Skill Architecture，以及 Python validation、外部 Git 与 worktree 实现。 | `approved` |
 | 0009 | [Architecture 与 Impls 文档维护规则调整](0009-architecture-and-details-maintenance-rules.md) | 建立 Architecture / Impls 基准，并将 Requirement、Architecture、Impls 维护规则拆分为专用 Skills。 | `approved` |
 | 0010 | [修复 restore 生成无效 runtime record](0010-fix-restore-runtime-record.md) | 修复 restore 遗漏 `requested_default` 后产生不可读 runtime state 的 Python bug。 | `approved` |
+| 0011 | [优化 doctidex-git Skill 文档内容](0011-optimize-doctidex-git-skill-documentation.md) | 梳理并优化 doctidex-git Published Skills 的内容、阅读路径与使用引导。 | `approved` |
 
 新记录按全项目连续编号。`draft` 中可使用 `<question>` 与紧邻的 `<answer>` 块协作；
 用户也可以用 `<comment>...</comment>` 在相关位置留下评论。agent 不得代用户创建评论，

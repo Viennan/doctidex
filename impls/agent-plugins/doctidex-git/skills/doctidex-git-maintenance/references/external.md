@@ -29,6 +29,20 @@ install and a parent edge without adding independent recovery. Direct never down
 the same source/selector without the parent promotes dependency to direct. A cycle or self-reference
 hits the existing key and remains bounded; self-reference still uses an independent snapshot.
 
+## Handle Cycles and Self-Reference
+
+Use explicit `--dependency-of` requests only for dependency edges the task actually requires. A
+dependency is always a flat install in the outer owner root, never a nested checkout inside another
+snapshot. If an explicit edge returns to an existing root/source/selector identity, the CLI reuses
+that install and records the parent relation, so the cycle is bounded. This also supports a source
+that is the owner or host repository itself: it remains an independent logical read-only snapshot,
+not the current writable working tree.
+
+The CLI does not discover or recursively install dependencies. A dependency-only install cannot
+back a durable link; repeat its source and selector without `--dependency-of` to promote it to a
+direct install before linking. Keep the returned fixed selector and commit rather than resolving a
+moving ref again.
+
 Read `applied`, `install_id`, `install_role`, bounded `dependency_of`, `manifest_included`,
 `install_path`, `working_path`, sanitized `source_url`, `source_relation`, `revision_selector`,
 `default_branch`, `resolved_commit`, `host_repository`, `payload_tracking`, `git_exclusion_file` and
