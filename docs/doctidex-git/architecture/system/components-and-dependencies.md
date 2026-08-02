@@ -47,7 +47,7 @@ flowchart TD
 | External Coordinator | owner/source/install/link/recovery models、shared tree observations | install/link/restore/remove plans 与 publication | 自动递归依赖、moving-ref refresh、protocol finding emission。 |
 | Mapping Resolver | input path、runtime/portable state | owner/content/source/repository mapping | network、write、validation、authorization。 |
 | Worktree Coordinator | owner root、source、selector | managed writable worktree lifecycle | branch/delivery、dirty cleanup。 |
-| Cache Cleanup Coordinator | canonical source | Git-derived eligibility 与单 source cleanup | root selection、batch/implicit cleanup。 |
+| Cache Cleanup Coordinator | canonical source 或 auto candidate set | Git-derived eligibility 与单 source 或 explicit batch-auto cleanup | root selection、隐式 cleanup、root/runtime 存活性推断。 |
 | Portable State | direct installs、durable links | versioned recovery identity | runtime edges、host paths、locks。 |
 | Runtime Ownership | installs、links、worktrees | current ownership/mapping evidence | protocol facts、public API。 |
 | Result Budgeter | complete domain collections、query state | deterministic bounded pages/cursor | filtering semantics、AI summary。 |

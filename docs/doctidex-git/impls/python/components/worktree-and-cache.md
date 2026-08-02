@@ -29,12 +29,19 @@ unavailable 并保留 record，不从缺失 path 推导自动清理授权。
 ## `CacheService`
 
 `clean(url, apply)` 不选择 root。locator 必须是 remote 或绝对 local path；canonical identity
-只定位一个 bare source。`_classify_linked_worktrees` 解析 `git worktree list --porcelain`，跳过
-bare 本身，把每个登记唯一分成 valid 或 Git `prunable`；语法/metadata异常 blocked。
+只定位一个 bare source。`clean_auto(apply)` 枚举 cache root `sources/` 的 direct child，只有
+`<24-lowercase-hex>.git` 的 non-symlink directory 是 candidate；它们以 opaque source ID 排序，未知
+object 或 symlink 不读取、不报告为 candidate，也不删除。当前 cache storage 不保存 canonical URL，因此 auto item 不能恢复或
+公开 source URL。`_classify_linked_worktrees` 解析 `git worktree list --porcelain`，跳过 bare 本身，
+把每个登记唯一分成 valid 或 Git `prunable`；语法/metadata异常 blocked。
 
-source lock 内有任一 valid 时返回 preserved warning。否则 dry-run 返回 planned；apply 立即
-重查相同计数后只删除 bare source directory，公开 changed 仍为空。它不清理 root payload、
-manifest、runtime 或其他来源。该 operator command不进入 Published Skills。
+URL mode 的 source lock 内有任一 valid 时返回 preserved warning。否则 dry-run 返回 planned；apply
+立即重查相同计数后只删除 bare source directory，公开 changed 仍为空。Auto 为每个 ID 取得同一
+source lock；candidate 在 enumeration 后消失、变成 symlink、metadata damage 或 recheck conflict 都被捕获成
+`blocked` item，其余 candidate 继续。`source_mutation_id` 让 auto 与使用 canonical source 的
+open/remove/URL clean 共用同一 lock namespace。Auto 的 top-level results 汇总 item findings/counts，
+但不泄露 cache path。两种模式都不清理 root payload、manifest、runtime 或其他来源。该 operator
+command不进入 Published Skills。
 
 ## Effects、concurrency 与 evidence
 
@@ -46,7 +53,9 @@ Open/remove/cleanup 通过 source lock 串行；worktree record publication 另�
 `test_unrecorded_worktree_namespace_path_is_preserved`、
 `test_interrupted_worktree_publication_leaves_orphan_evidence`、
 `test_worktree_source_kinds_managed_bare_and_submodule`、
-`test_cache_cleanup_preserves_active_then_removes_eligible` 与
-`test_cache_cleanup_accepts_prunable_registration` 提供证据。跨平台与 suite 入口见
+`test_cache_cleanup_preserves_active_then_removes_eligible`、
+`test_cache_cleanup_accepts_prunable_registration` 与
+`test_cache_cleanup_auto_isolated_candidates`、
+`test_cache_cleanup_auto_rechecks_each_candidate` 提供证据。跨平台与 suite 入口见
 [Platform](../platform-package-and-dependencies.md)和
 [Architecture coverage](../architecture-coverage-and-tests.md)。

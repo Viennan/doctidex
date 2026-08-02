@@ -46,6 +46,8 @@ design goals are interoperability, extensibility, and minimal format constraints
 
 - Keep proposals, current design, accepted specification, and implemented behavior visibly
   distinct.
+- Do not force Markdown line breaks merely to satisfy a per-line character limit when doing so
+  harms rendering or structure; in particular, keep each heading on one line.
 - Keep `spec/` normative, `docs/` focused on non-normative design and Requirement history, and
   `impls/` focused on code and agent-facing products.
 - Do not turn placeholders such as "refer to OKF" into detailed requirements without an explicit

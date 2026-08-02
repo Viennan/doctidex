@@ -162,6 +162,9 @@ def _dispatch(args: argparse.Namespace) -> dict[str, Any]:
         )
 
     if args.command == "cache":
+        if args.auto:
+            return CacheService().clean_auto(apply=args.apply)
+        assert args.url is not None
         return CacheService().clean(args.url, apply=args.apply)
     raise AssertionError(args.command)
 
@@ -225,7 +228,9 @@ def _parser() -> Parser:
     cache = commands.add_parser("cache")
     cache_commands = cache.add_subparsers(dest="cache_command", required=True)
     clean = cache_commands.add_parser("clean")
-    clean.add_argument("--url", required=True)
+    cache_selector = clean.add_mutually_exclusive_group(required=True)
+    cache_selector.add_argument("--url")
+    cache_selector.add_argument("--auto", action="store_true")
     _mode(clean)
     return parser
 

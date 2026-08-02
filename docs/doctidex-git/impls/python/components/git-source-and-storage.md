@@ -34,7 +34,9 @@ argv 不进入正常结果。
 
 `cache_root()` 按 `DOCTIDEX_GIT_CACHE`、Windows `LOCALAPPDATA`、macOS Caches 或 Linux
 `XDG_CACHE_HOME` 选择用户 cache。`source_id` 是 opaque hash；`source_cache` 只返回 bare
-repository 路径。
+repository 路径。`source_mutation` 从 canonical source 得到 ID；`source_mutation_id` 是其底层
+lock primitive，供 `cache clean --auto` 对已枚举的 opaque ID 使用，因此不会因缺少 canonical URL
+另建一个 lock namespace。
 
 `RootStorage` 的属性为 `root`、内部 namespace、install/worktree 目录、ignored runtime
 JSON、trackable manifest JSON 和 root mutation lock。方法负责拒绝 duplicate JSON key、逐项

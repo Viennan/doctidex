@@ -66,7 +66,7 @@ hash 与辅助模型属于 Impls，除非某个 exact representation 明确成�
 
 必需能力包括：原生渐进读取、full/scoped validation、fixed external snapshot、扁平 dependency、
 durable presentation、exact restore、reference-protected remove、offline mapping、native/managed maintenance
-choice、isolated worktree、single-source cache cleanup、bounded results 和 installed agent routing。当前 Python
+choice、isolated worktree、explicit source-cache cleanup、bounded results 和 installed agent routing。当前 Python
 coverage 见 [coverage and tests](../impls/python/architecture-coverage-and-tests.md)。
 
 doctidex-git 不生成语义正文、不替代 native read/search/edit/Git delivery、不把 managed state

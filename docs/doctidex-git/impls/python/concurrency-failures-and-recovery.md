@@ -3,7 +3,8 @@
 ## 1. Lock realization
 
 `git.storage.source_mutation(canonical_source)` 使用 cache-root lock directory，把同 source 的
-fetch/object preparation、worktree create/remove 和 cache cleanup 串行化。`RootStorage.mutation()`
+fetch/object preparation、worktree create/remove 和 cache cleanup 串行化；其 `source_mutation_id`
+底层入口让 auto cleanup 对 storage filename 中的 source ID 取得同一 lock。`RootStorage.mutation()`
 使用 owner-root internal lock，把 frontmatter/ignore/manifest/runtime/payload publication 串行化。
 调用顺序始终 source -> root；validation/list/link-parse 等只读操作不持锁。
 
@@ -42,7 +43,7 @@ exception 写 diagnostic 后只公开 random ID。Renderer 不改变 domain fiel
 | missing direct payload | portable manifest + absent stable path | exact restore 重建 payload，并从 default provenance 重建可校验 runtime ownership。 |
 | symlink/record mismatch | lexical target + runtime/manifest validators | `mapping_damaged`，不跟随或覆盖。 |
 | worktree without ownership | Git registrations + namespace | preserve and report；用户决定后 native action。 |
-| cache eligibility changed | second Git classification | conflict，cache 保留。 |
+| cache eligibility changed | second Git classification | conflict，cache 保留；auto 将其作为一个 blocked item，继续其它 candidate。 |
 | remove payload deleted before metadata | exact ID 仍在 runtime/manifest、但 worktree path 已不存在 | same-ID remove 重新检查引用并发布剩余 per-install metadata 删除；它不删除 cache，也不猜测另一个 target。 |
 
 Restore batch 捕获 item-level `DoctidexError` 并继续 independent items；top-level warning 与 totals

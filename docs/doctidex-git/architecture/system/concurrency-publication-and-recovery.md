@@ -34,7 +34,9 @@ Reader-safe publication 原则：
 
 Plan 后 state 改变返回 conflict，不覆盖 concurrent result。Cancellation 停止启动新 publication
 unit；已完成 effects 保留。Result 列出 changed、affected、preserved state 与有限 retry。不同
-root/source 的独立 success 不因另一项失败回滚。
+root/source 的独立 success 不因另一项失败回滚。`cache clean --auto` 是同一规则下的 source-candidate
+batch：enumeration 不是全局 lock 或 snapshot，每个 source lock 内的 recheck 独立完成，先前 candidate
+的 success 不因后续 candidate blocked/conflict 而回滚。
 
 Agent 对同 root 的并行文档编辑不受 CLI mutation boundary 保护；协调者必须分配不重叠的
 ownership 或串行集成。

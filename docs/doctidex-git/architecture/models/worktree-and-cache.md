@@ -67,6 +67,13 @@ Cache Cleanup Eligibility 要求 valid=0、unknown=0，且其余全部 prunable�
 apply 在同一 source boundary 中重新分类，变化则 conflict。Cleanup 只删除所选 bare cache，
 不删除 linked/root-owned path、record 或 Git index，也不联网。
 
+Cleanup selector 可以是调用者提供的一个 canonical source，或 `--auto`。`--auto` 在本次调用开始时
+扫描实现拥有的 source-cache namespace，仅把符合该 namespace 命名规则的 bare cache 作为候选；它
+不从 root/runtime/manifest 反推 source 存活性，也不把未知 filesystem object 当作删除目标。每个
+candidate 以 opaque cache source ID 排序，在自身 source mutation boundary 中独立重新分类和发布；
+不存在跨 candidate transaction。扫描后新出现的 cache 留给下一次明确调用，已消失或损坏的 candidate
+以 item-level blocked 保留，不影响其他 candidate。
+
 ## 4. 组合与并发
 
 Worktree open/remove、source object update 与 cache clean 对同一 canonical source 串行；list 和

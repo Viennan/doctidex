@@ -12,9 +12,9 @@ import pytest
 
 from whero.doctidex.errors import DoctidexError
 from whero.doctidex.git.external import ExternalService
-from whero.doctidex.git.source import RevisionSelector
-from whero.doctidex.git.storage import RootStorage, directory_lock
-from whero.doctidex.git.worktrees import WorktreeService
+from whero.doctidex.git.source import RevisionSelector, canonical_source
+from whero.doctidex.git.storage import RootStorage, directory_lock, source_id
+from whero.doctidex.git.worktrees import CacheService, WorktreeService
 from whero.doctidex.protocol.root import root_at
 
 
@@ -166,15 +166,27 @@ def run(
             "worktree_open": {"worktree", "reuse_candidate_count"},
             "worktree_list": {"items"},
             "worktree_close": {"worktree"},
-            "cache_clean": {
-                "applied",
-                "source_url",
-                "cache_source_id",
-                "linked_worktree_count",
-                "valid_worktree_count",
-                "prunable_worktree_count",
-                "state",
-            },
+            "cache_clean": (
+                {
+                    "applied",
+                    "items",
+                    "cache_source_count",
+                    "planned_cache_count",
+                    "removed_cache_count",
+                    "preserved_cache_count",
+                    "blocked_cache_count",
+                }
+                if "--auto" in command
+                else {
+                    "applied",
+                    "source_url",
+                    "cache_source_id",
+                    "linked_worktree_count",
+                    "valid_worktree_count",
+                    "prunable_worktree_count",
+                    "state",
+                }
+            ),
         }.get(payload["operation"], set())
         assert required <= payload.keys()
     return payload
@@ -878,6 +890,128 @@ def test_cache_cleanup_accepts_prunable_registration(cli_env: dict[str, str], tm
     planned = run(["cache", "clean", "--url", url], tmp_path, cli_env)
     assert planned["state"] == "planned"
     assert planned["linked_worktree_count"] == planned["prunable_worktree_count"] == 1
+
+
+def test_cache_cleanup_auto_isolated_candidates(cli_env: dict[str, str], tmp_path: Path) -> None:
+    empty = run(["cache", "clean", "--auto"], tmp_path, cli_env)
+    assert empty["status"] == "ok"
+    assert empty["items"] == []
+    assert empty["cache_source_count"] == 0
+    assert all(empty[f"{state}_cache_count"] == 0 for state in ("planned", "removed", "preserved", "blocked"))
+
+    root = create_repository(tmp_path / "host")
+    active_source = create_repository(tmp_path / "active-source")
+    prunable_source = create_repository(tmp_path / "prunable-source")
+    eligible_source = create_repository(tmp_path / "eligible-source")
+    active_commit = add_source_content(active_source)
+    prunable_commit = add_source_content(prunable_source)
+    eligible_commit = add_source_content(eligible_source)
+    active_url = active_source.as_uri()
+    prunable_url = prunable_source.as_uri()
+    eligible_url = eligible_source.as_uri()
+
+    active = run(
+        ["worktree", "open", active_url, "--root", str(root), "--commit", active_commit],
+        tmp_path,
+        cli_env,
+    )
+    prunable = run(
+        ["worktree", "open", prunable_url, "--root", str(root), "--commit", prunable_commit],
+        tmp_path,
+        cli_env,
+    )
+    shutil.rmtree(prunable["worktree"]["worktree_path"])
+    eligible = run(
+        ["worktree", "open", eligible_url, "--root", str(root), "--commit", eligible_commit],
+        tmp_path,
+        cli_env,
+    )
+    run(["worktree", "close", eligible["worktree"]["worktree_path"]], tmp_path, cli_env)
+
+    active_id = source_id(canonical_source(active_url))
+    prunable_id = source_id(canonical_source(prunable_url))
+    eligible_id = source_id(canonical_source(eligible_url))
+    cache_sources = Path(cli_env["DOCTIDEX_GIT_CACHE"]) / "sources"
+    damaged_id = "f" * 24
+    damaged = cache_sources / f"{damaged_id}.git"
+    damaged.mkdir()
+    unknown = cache_sources / "not-a-managed-source.git"
+    unknown.mkdir()
+    redirected = cache_sources / f"{'e' * 24}.git"
+    redirected.symlink_to(damaged, target_is_directory=True)
+
+    dry = run(["cache", "clean", "--auto"], tmp_path, cli_env)
+    dry_items = {item["cache_source_id"]: item for item in dry["items"]}
+    assert [item["cache_source_id"] for item in dry["items"]] == sorted(dry_items)
+    assert dry["status"] == "warning"
+    assert dry["cache_source_count"] == 4
+    assert dry["planned_cache_count"] == 2
+    assert dry["removed_cache_count"] == 0
+    assert dry["preserved_cache_count"] == 1
+    assert dry["blocked_cache_count"] == 1
+    assert dry_items[active_id]["state"] == "preserved"
+    assert dry_items[active_id]["valid_worktree_count"] == 1
+    assert dry_items[prunable_id]["state"] == "planned"
+    assert dry_items[prunable_id]["prunable_worktree_count"] == 1
+    assert dry_items[eligible_id]["state"] == "planned"
+    assert dry_items[eligible_id]["linked_worktree_count"] == 0
+    assert dry_items[damaged_id]["state"] == "blocked"
+    assert dry_items[damaged_id]["linked_worktree_count"] is None
+    assert dry_items[damaged_id]["findings"][0]["code"] == "cache_source_damaged"
+    assert unknown.is_dir()
+    assert redirected.is_symlink()
+
+    applied = run(["cache", "clean", "--auto", "--apply"], tmp_path, cli_env)
+    applied_items = {item["cache_source_id"]: item for item in applied["items"]}
+    assert applied["status"] == "warning"
+    assert applied["applied"] is True
+    assert applied["changed"] == []
+    assert applied["removed_cache_count"] == 2
+    assert applied_items[active_id]["state"] == "preserved"
+    assert applied_items[prunable_id]["state"] == "removed"
+    assert applied_items[eligible_id]["state"] == "removed"
+    assert applied_items[damaged_id]["state"] == "blocked"
+    assert (cache_sources / f"{active_id}.git").is_dir()
+    assert not (cache_sources / f"{prunable_id}.git").exists()
+    assert not (cache_sources / f"{eligible_id}.git").exists()
+    assert damaged.is_dir()
+    assert unknown.is_dir()
+    assert redirected.is_symlink()
+
+    invalid = run(["cache", "clean", "--url", active_url, "--auto"], tmp_path, cli_env, expected=2)
+    assert invalid["findings"][0]["code"] == "argument_invalid"
+    run(["worktree", "close", active["worktree"]["worktree_path"]], tmp_path, cli_env)
+
+
+def test_cache_cleanup_auto_rechecks_each_candidate(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    cache_root = tmp_path / "cache"
+    monkeypatch.setenv("DOCTIDEX_GIT_CACHE", str(cache_root))
+    changing_id = "a" * 24
+    eligible_id = "b" * 24
+    sources = cache_root / "sources"
+    changing = sources / f"{changing_id}.git"
+    eligible = sources / f"{eligible_id}.git"
+    changing.mkdir(parents=True)
+    eligible.mkdir()
+    calls: dict[str, int] = {}
+
+    def classify(path: Path) -> dict[str, int]:
+        calls[path.name] = calls.get(path.name, 0) + 1
+        if path == changing and calls[path.name] == 2:
+            return {"linked": 1, "valid": 1, "prunable": 0}
+        return {"linked": 0, "valid": 0, "prunable": 0}
+
+    monkeypatch.setattr("whero.doctidex.git.worktrees._classify_linked_worktrees", classify)
+    result = CacheService().clean_auto(apply=True)
+    items = {item["cache_source_id"]: item for item in result["items"]}
+    assert result["status"] == "warning"
+    assert result["removed_cache_count"] == 1
+    assert result["blocked_cache_count"] == 1
+    assert items[changing_id]["state"] == "blocked"
+    assert items[changing_id]["findings"][0]["code"] == "cache_cleanup_conflict"
+    assert items[eligible_id]["state"] == "removed"
+    assert changing.is_dir()
+    assert not eligible.exists()
 
 
 def test_manifest_rejects_duplicate_and_inconsistent_portable_facts(cli_env: dict[str, str], tmp_path: Path) -> None:

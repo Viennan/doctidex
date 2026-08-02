@@ -96,8 +96,12 @@ Write 前使用与 read 相同 validator，保证 CLI 不发布自身无法读�
 ## 4. Cache 与 IDs
 
 Canonical source 的 SHA-256 前 24 hex 形成 opaque `source_id`，只用于内部 cache/lock naming。
-Install ID 对 owner root/source/selector identity 求稳定摘要；worktree ID 随每次 open 随机生成。
-Opaque ID 不用于 permission 或 trust，collision/record mismatch 按 damaged state 处理。
+`cache clean --auto` 只遍历非 symlink `sources/` directory 下名称严格匹配 `<source-id>.git` 的
+non-symlink direct child directory，按 source ID 排序；它从 ID 直接取得对应
+`locks/<source-id>.lock/`，与 canonical-source caller 互斥。未知 cache-root entry 不成为 candidate。
+Install ID 对 owner root/source/selector identity 求稳定摘要；
+worktree ID 随每次 open 随机生成。Opaque ID 不用于 permission 或 trust，collision/record mismatch 按
+damaged state 处理。
 
 ## 5. Publication
 

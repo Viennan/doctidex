@@ -378,7 +378,7 @@ unavailable/blocked 并保留 ownership record；实现不从“path 不存在�
 
 ## 9. `cache_clean`
 
-非 blocked result 的 required fields：
+URL mode 的非 blocked result required fields：
 
 | 字段 | 类型 | 含义 |
 |---|---|---|
@@ -397,12 +397,44 @@ unavailable/blocked 并保留 ownership record；实现不从“path 不存在�
 要求 `applied: false`、valid count 为零；`state: removed` 要求 `applied: true`、valid count
 为零；`state: preserved` 要求 `applied: false`、valid count 大于零且 status 为 warning。
 
-cache clean 的顶层 `root`、`collection` 固定为 null，`network` 固定为 false。内部 cache
-path 不公开，因此包括 `removed` 在内的 `changed` 都为空。`cache_source_not_found`、metadata
-损坏/无法分类或并发复查冲突是 blocked；blocked envelope 可以保留已可靠确定的上述字段，
-但调用方不得假定 operation-specific fields 完整。删除后的重复调用返回
-`cache_source_not_found`，而不是再次返回 `removed`。cache-domain Finding 的 `path` 固定为
-null，不能用该字段泄漏内部 cache 或 Git metadata 路径。
+`--auto` 的非 blocked result required fields：
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| `operation` | `cache_clean` | 操作判别字段。 |
+| `applied` | boolean | 调用是否以 `--apply` 完成；它不表示每个 item 都已删除。 |
+| `items` | array[CacheCleanupItem] | 调用开始时发现的 recognized source-cache candidate，按 `cache_source_id` 升序；空 namespace 返回空数组。 |
+| `cache_source_count` | integer | `items` 总数。 |
+| `planned_cache_count` | integer | state 为 `planned` 的 item 数。 |
+| `removed_cache_count` | integer | state 为 `removed` 的 item 数。 |
+| `preserved_cache_count` | integer | state 为 `preserved` 的 item 数。 |
+| `blocked_cache_count` | integer | state 为 `blocked` 的 item 数。 |
+
+`CacheCleanupItem` 的字段如下：
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| `cache_source_id` | opaque string | source-cache namespace 中的稳定不透明标识；不得据此构造 storage path。 |
+| `state` | `planned`/`removed`/`preserved`/`blocked` | 此 candidate 的 cleanup outcome。 |
+| `linked_worktree_count` | integer/null | 可完整分类时的 Git linked registration 总数；blocked 时为 null。 |
+| `valid_worktree_count` | integer/null | 可完整分类时仍有效 registration 数；blocked 时为 null。 |
+| `prunable_worktree_count` | integer/null | 可完整分类时 Git 明确判为 prunable 的 registration 数；blocked 时为 null。 |
+| `findings` | array[Finding] | preserved 或 blocked 的原因；Finding path 固定为 null。 |
+
+可完整分类的 item 满足
+`linked_worktree_count = valid_worktree_count + prunable_worktree_count`。`planned` 只出现于
+dry-run 且 valid count 为零；`removed` 只出现于 apply 且 valid count 为零；`preserved` 的 valid
+count 大于零；`blocked` 不得把不完整观察伪装为零计数。Auto mode 中 preserved/blocked item 令顶层
+status 为 warning，其他 independent item 仍完成；顶层 `findings` 汇总各 item 的非空 findings，
+但 `affected` 保持空且退出码为 0。
+
+两种 selector mode 的顶层 `root`、`collection` 固定为 null，`network` 固定为 false。内部 cache
+path 不公开，因此包括 `removed` 在内的 `changed` 都为空。URL mode 的
+`cache_source_not_found`、metadata 损坏/无法分类或并发复查冲突是 blocked；blocked envelope 可以保留
+已可靠确定的上述字段，但调用方不得假定 operation-specific fields 完整。删除后的重复 URL 调用返回
+`cache_source_not_found`，而不是再次返回 `removed`。Auto mode 把同类 source-local failure 放进对应
+`CacheCleanupItem` 的 `blocked` outcome。cache-domain Finding 的 `path` 固定为 null，不能用该字段
+泄漏内部 cache 或 Git metadata 路径。
 
 ## 10. `requires_user`
 

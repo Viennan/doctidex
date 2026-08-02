@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 import uuid
 from dataclasses import dataclass
@@ -25,7 +26,9 @@ from .source import (
     resolve_source,
     sanitize_url,
 )
-from .storage import RootStorage, source_cache, source_id, source_mutation
+from .storage import RootStorage, cache_root, source_cache, source_id, source_mutation, source_mutation_id
+
+_SOURCE_CACHE_NAME = re.compile(r"^(?P<source_id>[0-9a-f]{24})\.git$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -292,23 +295,40 @@ class CacheService:
                 domain="cache",
             )
         with source_mutation(canonical, operation="cache_clean", conflict_code="cache_cleanup_conflict"):
-            first = _classify_linked_worktrees(cache)
-            if first["valid"]:
-                return _cache_result(public, canonical, first, state="preserved", applied=False)
-            if apply:
-                second = _classify_linked_worktrees(cache)
-                if second != first:
-                    raise DoctidexError(
-                        "The linked worktree registrations changed during cleanup.",
-                        operation="cache_clean",
-                        affected=[public],
-                        actions=["Rerun cache clean dry-run after concurrent worktree activity finishes."],
-                        code="cache_cleanup_conflict",
-                        domain="cache",
-                    )
-                shutil.rmtree(cache)
-                return _cache_result(public, canonical, first, state="removed", applied=True)
-            return _cache_result(public, canonical, first, state="planned", applied=False)
+            item = _clean_cache_item(cache, source_id(canonical), apply=apply)
+        return _cache_result(public, item, applied=item["state"] == "removed")
+
+    def clean_auto(self, *, apply: bool) -> dict[str, Any]:
+        items: list[dict[str, Any]] = []
+        for identifier, cache in _auto_cache_candidates():
+            try:
+                with source_mutation_id(
+                    identifier,
+                    operation="cache_clean",
+                    conflict_code="cache_cleanup_conflict",
+                ):
+                    if not cache.is_dir() or cache.is_symlink():
+                        raise _auto_cache_not_found()
+                    items.append(_clean_cache_item(cache, identifier, apply=apply))
+            except DoctidexError as error:
+                items.append(_blocked_cache_item(identifier, error))
+
+        counts = {state: sum(item["state"] == state for item in items) for state in _CACHE_STATES}
+        findings = [notice for item in items for notice in item["findings"]]
+        warning = counts["preserved"] > 0 or counts["blocked"] > 0
+        return envelope(
+            "cache_clean",
+            status="warning" if warning else "ok",
+            result="All discovered source caches were assessed." if items else "No managed source caches were found.",
+            findings=findings,
+            applied=apply,
+            items=items,
+            cache_source_count=len(items),
+            planned_cache_count=counts["planned"],
+            removed_cache_count=counts["removed"],
+            preserved_cache_count=counts["preserved"],
+            blocked_cache_count=counts["blocked"],
+        )
 
 
 def _worktree_item(record: dict[str, Any]) -> dict[str, Any]:
@@ -408,6 +428,27 @@ def _absolute_or_remote(value: str) -> bool:
     return Path(value).expanduser().is_absolute()
 
 
+_CACHE_STATES = ("planned", "removed", "preserved", "blocked")
+
+
+def _auto_cache_candidates() -> list[tuple[str, Path]]:
+    sources = cache_root() / "sources"
+    if not sources.exists():
+        return []
+    if not sources.is_dir() or sources.is_symlink():
+        raise _cache_namespace_unavailable()
+    try:
+        entries = list(sources.iterdir())
+    except OSError as error:
+        raise _cache_namespace_unavailable() from error
+    candidates: list[tuple[str, Path]] = []
+    for entry in entries:
+        match = _SOURCE_CACHE_NAME.fullmatch(entry.name)
+        if match is not None and entry.is_dir() and not entry.is_symlink():
+            candidates.append((match.group("source_id"), entry))
+    return sorted(candidates)
+
+
 def _classify_linked_worktrees(cache: Path) -> dict[str, int]:
     check = git(["--git-dir", str(cache), "rev-parse", "--is-bare-repository"], operation="cache_clean", check=False)
     if check.returncode != 0 or check.stdout.strip() != "true":
@@ -444,42 +485,111 @@ def _cache_damaged() -> DoctidexError:
     )
 
 
-def _cache_result(
-    public_url: str,
-    canonical: str,
-    counts: dict[str, int],
-    *,
-    state: str,
-    applied: bool,
-) -> dict[str, Any]:
-    preserved = state == "preserved"
-    notices = (
-        [
+def _cache_namespace_unavailable() -> DoctidexError:
+    return DoctidexError(
+        "The source-cache namespace cannot be read safely.",
+        operation="cache_clean",
+        actions=["Preserve the cache namespace and repair its filesystem availability before retrying."],
+        code="cache_source_damaged",
+        domain="cache",
+    )
+
+
+def _auto_cache_not_found() -> DoctidexError:
+    return DoctidexError(
+        "The source cache was removed before cleanup could revalidate it.",
+        operation="cache_clean",
+        actions=["Rerun cache clean --auto to observe the current cache namespace."],
+        code="cache_source_not_found",
+        domain="cache",
+    )
+
+
+def _clean_cache_item(cache: Path, identifier: str, *, apply: bool) -> dict[str, Any]:
+    first = _classify_linked_worktrees(cache)
+    if first["valid"]:
+        return _cache_item(identifier, first, state="preserved")
+    if not apply:
+        return _cache_item(identifier, first, state="planned")
+    second = _classify_linked_worktrees(cache)
+    if second != first:
+        raise DoctidexError(
+            "The linked worktree registrations changed during cleanup.",
+            operation="cache_clean",
+            actions=["Rerun cache clean dry-run after concurrent worktree activity finishes."],
+            code="cache_cleanup_conflict",
+            domain="cache",
+        )
+    shutil.rmtree(cache)
+    return _cache_item(identifier, first, state="removed")
+
+
+def _cache_item(identifier: str, counts: dict[str, int], *, state: str) -> dict[str, Any]:
+    notices = _cache_notices(state)
+    return {
+        "cache_source_id": identifier,
+        "linked_worktree_count": counts["linked"],
+        "valid_worktree_count": counts["valid"],
+        "prunable_worktree_count": counts["prunable"],
+        "state": state,
+        "findings": notices,
+    }
+
+
+def _blocked_cache_item(identifier: str, error: DoctidexError) -> dict[str, Any]:
+    return {
+        "cache_source_id": identifier,
+        "linked_worktree_count": None,
+        "valid_worktree_count": None,
+        "prunable_worktree_count": None,
+        "state": "blocked",
+        "findings": [
             finding(
                 "cache",
-                "warning",
-                "cache_worktree_active",
-                "At least one valid linked worktree still uses this source cache.",
-                actions=["Close or otherwise finish every valid linked worktree before retrying cleanup."],
+                "error",
+                error.code,
+                error.message,
+                actions=error.actions,
             )
-        ]
-        if preserved
-        else []
-    )
+        ],
+    }
+
+
+def _cache_notices(state: str) -> list[dict[str, Any]]:
+    if state != "preserved":
+        return []
+    return [
+        finding(
+            "cache",
+            "warning",
+            "cache_worktree_active",
+            "At least one valid linked worktree still uses this source cache.",
+            actions=["Close or otherwise finish every valid linked worktree before retrying cleanup."],
+        )
+    ]
+
+
+def _cache_result(
+    public_url: str,
+    item: dict[str, Any],
+    *,
+    applied: bool,
+) -> dict[str, Any]:
+    state = item["state"]
     return envelope(
         "cache_clean",
-        status="warning" if preserved else "ok",
+        status="warning" if state == "preserved" else "ok",
         result={
             "planned": "The source cache is eligible for cleanup.",
             "removed": "The eligible source cache was removed.",
             "preserved": "The source cache was preserved.",
         }[state],
-        findings=notices,
+        findings=item["findings"],
         applied=applied,
         source_url=public_url,
-        cache_source_id=source_id(canonical),
-        linked_worktree_count=counts["linked"],
-        valid_worktree_count=counts["valid"],
-        prunable_worktree_count=counts["prunable"],
+        cache_source_id=item["cache_source_id"],
+        linked_worktree_count=item["linked_worktree_count"],
+        valid_worktree_count=item["valid_worktree_count"],
+        prunable_worktree_count=item["prunable_worktree_count"],
         state=state,
     )

@@ -41,7 +41,7 @@ doctidex-git worktree list [--root ROOT]
 
 doctidex-git worktree close WORKTREE [--json]
 
-doctidex-git cache clean --url URL [--dry-run | --apply] [--json]
+doctidex-git cache clean (--url URL | --auto) [--dry-run | --apply] [--json]
 ```
 
 `context`、`inspect`、`resolve`、`init`、`changes`、`check`、整个 `mount` 与旧
@@ -318,24 +318,30 @@ worktree。changed、unavailable、路径不 exact、归属不明或 Git 检查�
 ## 14. `cache clean`
 
 ```text
-doctidex-git cache clean --url URL [--dry-run | --apply] [--json]
+doctidex-git cache clean (--url URL | --auto) [--dry-run | --apply] [--json]
 ```
 
-- URL 必填，采用 `external install` 相同的 repository locator、credential sanitization 与
-  canonical source identity 规则；结果只公开 sanitized URL 和 opaque cache source ID。
-- 命令不接受 `--root`、scope、filter、limit 或 cursor。它是单结果操作，顶层 `root` 和
-  `collection` 固定为 null；cwd 不影响结果。
-- 命令离线、默认 dry-run。dry-run 与 apply 都在该 canonical source 的 mutation boundary
-  内读取 Git worktree metadata；apply 在删除前重新分类，不能依赖先前 dry-run 的计数。
+- `--url URL` 与 `--auto` 恰好提供一个。URL mode 采用 `external install` 相同的 repository
+  locator、credential sanitization 与 canonical source identity 规则；结果公开 sanitized URL 和
+  opaque cache source ID。`--auto` 没有调用者 URL，扫描本机 doctidex-git source-cache namespace，
+  只公开 opaque cache source ID。
+- 命令不接受 `--root`、scope、filter、limit 或 cursor；cwd 不影响结果。URL mode 是单结果，
+  auto mode 返回调用开始时已发现 candidate 的稳定 source-ID 顺序；两种模式顶层 `root` 和
+  `collection` 固定为 null。
+- 命令离线、默认 dry-run。每个 candidate 在自身 source mutation boundary 中读取 Git worktree
+  metadata；apply 在删除前重新分类，不能依赖先前 dry-run 或另一个 candidate 的计数。
 - 任一 Git-valid linked worktree 都保留整个 bare source cache，不考虑 clean/dirty、
-  doctidex ownership 或 runtime record，并返回完成的 warning。只有 valid count 为零且其余
-  linked registrations 全部由 Git 判为 prunable 时，dry-run 才报告 planned，apply 才删除
-  该 bare cache。
-- missing/damaged metadata、无法分类的 registration 或复查冲突一律不删除。source cache
-  已不存在时返回 `cache_source_not_found` blocked；因此删除后的重复调用保持无变化，但不
-  伪装为新一次成功删除。
-- 删除范围只有所选 bare source cache。命令不删除或修改 linked worktree filesystem path、
-  install/worktree payload、恢复清单、runtime record、其他 source cache，也不由 close、
+  doctidex ownership 或 runtime record。只有 valid count 为零且其余 linked registrations全由 Git
+  判为 prunable 时，dry-run 才报告 planned，apply 才删除该 bare cache。
+- URL mode 的 missing cache、damaged metadata、无法分类 registration 或复查冲突返回 top-level
+  blocked。Auto mode 把同类 candidate failure 作为 item-level `blocked` 并继续其他 source；
+  valid worktree 为 item-level `preserved`。auto mode 的顶层 status 在任一 preserved 或 blocked
+  item 存在时为 warning，但请求仍完成且不因这些 item 使用退出码 2。
+- 自动扫描不是全局 transaction 或持续 watcher。未识别 namespace entry、扫描外/后新增的 cache 和
+  cache root 外 repository 不在本次删除范围；并发移除后才取得 source lock 的 candidate 作为 blocked
+  item 保留。调用方可在审阅结果后再次显式运行命令。
+- 删除范围只有每个 eligible bare source cache。命令不删除或修改 linked worktree filesystem path、
+  install/worktree payload、恢复清单、runtime record、其他非 candidate source cache，也不由 close、
   restore 或其他 operation 隐式触发。
 - 内部 cache path 不进入 human/JSON 输出；即使 apply 成功，公共 `changed` 也为空。后续
   install/restore/worktree open 如缺 objects，仍按各自网络契约重新取得。

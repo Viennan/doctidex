@@ -185,7 +185,22 @@ def source_mutation(
     operation: str = "source_mutation",
     conflict_code: str = "index_update_conflict",
 ) -> Iterator[None]:
-    lock = cache_root() / "locks" / f"{source_id(canonical_source)}.lock"
+    with source_mutation_id(
+        source_id(canonical_source),
+        operation=operation,
+        conflict_code=conflict_code,
+    ):
+        yield
+
+
+@contextmanager
+def source_mutation_id(
+    identifier: str,
+    *,
+    operation: str = "source_mutation",
+    conflict_code: str = "index_update_conflict",
+) -> Iterator[None]:
+    lock = cache_root() / "locks" / f"{identifier}.lock"
     lock.parent.mkdir(parents=True, exist_ok=True)
     with directory_lock(lock, operation=operation, conflict_code=conflict_code):
         yield

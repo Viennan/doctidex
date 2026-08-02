@@ -71,7 +71,7 @@ Agent 的正常画面是 Published Skill 与原生工具共同工作，不是阅
 | 维护当前仓库当前 commit | 当前 working tree 已是可写现场，不应强制再开 worktree。 | Maintenance Skill + 原生 Git | 直接保留当前路径与现有 changes；需要隔离时仍可选择 open。 |
 | 修改其他 source/revision | 只读入口不能作为编辑现场，隔离现场也不能递归嵌套。 | `worktree open/list/close` | selected root 的 `/.doctidex` 下扁平、固定 base commit 的可写 worktree。 |
 | 协调多个根 | 多 repository 结果没有跨 Git 事务。 | Maintenance Skill + 每根独立命令/原生 Git | 每根分别保留 diff、validation、交付或 blocked 状态。 |
-| 回收共享来源缓存 | human/program operator 需要回收不再被任何有效 linked worktree 使用的 bare source cache，又不能误删仍被其他根使用的 objects。 | `cache clean`；不经 Published Skills 路由 | 单个 source 被报告为 planned、removed 或 preserved；任何 root-owned 状态不变。 |
+| 回收共享来源缓存 | human/program operator 需要回收不再被任何有效 linked worktree 使用的 bare source cache，又不能误删仍被其他根使用的 objects。 | `cache clean --url URL` 或 `cache clean --auto`；不经 Published Skills 路由 | 单个 source 或自动枚举的每个 source cache 被报告为 planned、removed、preserved 或 blocked；任何 root-owned 状态不变。 |
 
 ## 5. 用户心智模型
 
@@ -110,8 +110,8 @@ doctidex-git 负责：
 - 为主仓库受管路径和 install 内 portable link 提供 owner/content root、source、revision、
   commit、target state 和 repository-relative path；
 - 为显式 revision 在 selected root 的 `/.doctidex` 下创建、列出和安全关闭扁平 maintenance worktree；
-- 为 human/program operator 提供显式、离线且受 Git worktree metadata 保护的单 source
-  shared bare cache 清理；
+- 为 human/program operator 提供显式、离线且受 Git worktree metadata 保护的单 source 或
+  batch-auto shared bare cache 清理；
 - 提供 bounded JSON、可行动失败和不泄漏 credentials 的输出。
 
 doctidex-git 不负责：

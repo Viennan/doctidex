@@ -58,9 +58,10 @@ clean close 才把实际移除的 worktree path 放入 `changed`。
 
 ## 4. Cache clean
 
-Human/program 提供 source URL，先得到 canonical identity；cache 不存在时返回 not found，不能
-创建或联网。Coordinator 在 source mutation boundary 内读取 Git linked registrations，分类
-valid/prunable/unknown：
+Human/program 可以提供 source URL，或以 `--auto` 枚举 implementation-owned source-cache namespace。
+URL 先得到 canonical identity；cache 不存在时返回 not found，不能创建或联网。Auto 不从 root records
+或 cache path 反向恢复 URL，只按 opaque source ID 稳定排序 recognized cache candidate。Coordinator 在每个
+source mutation boundary 内读取 Git linked registrations，分类 valid/prunable/unknown：
 
 ```text
 any unknown -> blocked, preserve all
@@ -70,8 +71,9 @@ apply -> reclassify -> conflict or remove selected bare cache
 ```
 
 Clean 不读取 root records 来弱化 Git registration，不按 clean/dirty 判断存活性，不删除 linked
-path、manifest、runtime 或 Git index。一个调用只处理一个 canonical source；无 batch、watch
-或 implicit cleanup。
+path、manifest、runtime 或 Git index。URL mode 只处理一个 canonical source。Auto mode 对开始扫描时的
+每个 candidate 独立执行上述流程：unknown、damage、source disappearance 或 conflict 成为 blocked item，
+valid 成为 preserved item，其他 candidate 继续；没有跨 source rollback、watch 或 implicit cleanup。
 
 ## 5. 下一决策
 

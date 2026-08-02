@@ -45,6 +45,12 @@ blocked result。unexpected failure 只公开 diagnostic ID；内部 traceback �
 `external link-parse PATH --json` 并使用返回的 `install_id`；`dependency_parent_install_id` 是
 dependency installation 的 parent，不是 remove target。
 
+Human/Program 可以以 `cache clean --url URL` 审阅一个已知 source，或以
+`cache clean --auto` 审阅本机所有 recognized source-cache candidate。两种模式都默认 dry-run；
+auto 的 JSON 只返回 opaque source ID、每项 outcome 和 aggregate counts，不能依赖或推导内部
+cache path/source URL。存在 preserved 或 blocked item 时，先审阅各 item finding；其他 eligible
+candidate 不会被回滚，随后可显式重复 `--auto --apply`。
+
 ## 3. Agent 使用画面
 
 Agent 的安装后入口是三个 Published Skills：
