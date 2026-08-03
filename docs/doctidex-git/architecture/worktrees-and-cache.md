@@ -34,7 +34,7 @@ option 的 meaning。一个 Architecture reader 在现场发现它时必须逐�
 | `source_identity` | non-empty variant-local equality identity。 | lock/cache/reuse comparison；另一个 variant 可转换或重新观察，不能把它显示为 public source URL。 |
 | `source_url` | sanitized public locator 或 `null`。 | 可供 user-visible result/diagnostic；不包含 credential。 |
 | `gitdir` | source object repository/common Git dir 的 local locator。 | 证明 native Git source；不是 stable program API，无法验证时 worktree unavailable/preserve。 |
-| `revision_selector` | `{kind: commit|tag|branch, value}`。 | 记录 user requested revision provenance。 |
+| `revision_selector` | `{kind: commit\|tag\|branch, value}`。 | 记录 user requested revision provenance。 |
 | `base_commit` | 40 或 64 lowercase hexadecimal commit ID。 | writable worktree detached base；是 exact lifecycle identity。 |
 | `root_internal_path` | `/.doctidex/git/worktrees/<worktree_id>`。 | owner-root logical location，与 actual path 的 handoff mapping。 |
 | `worktree_path` | current host local path。 | 实际 writable artifact path；可能因 move/delete 变 unavailable，不可从 root-internal path 单独重建。 |
