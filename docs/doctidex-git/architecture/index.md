@@ -45,7 +45,7 @@ composition 提供边界；external 组合 root + Git；worktree/cache 组合 Gi
 |---|---|
 | [组件、责任与依赖](system/components-and-dependencies.md) | 组件 DAG、inputs/outputs/non-responsibilities、state ownership。 |
 | [Validation](system/validation-workflow.md) | root/scope、configuration、reachability、finding/candidate 与 coverage。 |
-| [External](system/external-workflows.md) | install/link/restore/remove/link-parse 的完整 state flow 与下一决策。 |
+| [External](system/external-workflows.md) | install/link/restore/remove/link-parse，以及 checkout hook reconciliation 的完整 state flow 与下一决策。 |
 | [Worktree 与 cache](system/worktree-and-cache-workflows.md) | open/list/close、cache clean 与 native Git boundary。 |
 | [并发、publication 与 recovery](system/concurrency-publication-and-recovery.md) | mutation domains、资源顺序、partial publication、conflict、interruption 与 destructive boundary。 |
 
@@ -65,9 +65,10 @@ hash 与辅助模型属于 Impls，除非某个 exact representation 明确成�
 ## 能力与非目标
 
 必需能力包括：原生渐进读取、full/scoped validation、fixed external snapshot、扁平 dependency、
-durable presentation、exact restore、reference-protected remove、offline mapping、native/managed maintenance
-choice、isolated worktree、explicit source-cache cleanup、bounded results 和 installed agent routing。当前 Python
-coverage 见 [coverage and tests](../impls/python/architecture-coverage-and-tests.md)。
+durable presentation、exact restore、checkout 后的受管 snapshot reconciliation、reference-protected remove、
+offline mapping、native/managed maintenance choice、isolated worktree、explicit source-cache cleanup、bounded
+results 和 installed agent routing。当前 Python coverage 见
+[coverage and tests](../impls/python/architecture-coverage-and-tests.md)。
 
 doctidex-git 不生成语义正文、不替代 native read/search/edit/Git delivery、不把 managed state
 提升为 protocol/trust/permission，也不提供跨 repository transaction、moving-ref auto refresh、

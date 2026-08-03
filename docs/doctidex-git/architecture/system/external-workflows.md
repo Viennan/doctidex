@@ -110,6 +110,10 @@ mutation order 下重查所有 safety facts；只在 reference-free 时移除 ex
 symlink、frontmatter、ignore 或 shared source cache，也不隐式运行 cache clean。物理 payload 已移除、
 metadata 尚未发布的 interruption 保留可诊断 ownership；以相同 ID 重试只补齐已确认的删除。
 
+hidden dependency 是 remove 的例外：它没有可安全删除的 current presentation。remove 对该 exact ID
+完成 `preserved_hidden` no-op，保留 physical payload、runtime record、parent edges、manifest、links、
+cache 和 host Git，不扫描 reference，也不要求先解除 hidden。
+
 ## 5. Link parse
 
 ```mermaid
@@ -133,7 +137,31 @@ state。Portable dependency target missing 但 records 自洽时返回 exact dep
 parent，不视为 damaged；调用方决定是否扁平 install。Mapping resolver 不写、不联网、不
 validation，也不在 readonly install 内 restore。
 
-## 6. Failure 与 partial publication
+## 6. Checkout hook reconciliation
+
+`hook --install` 解决 host Git checkout 不会同步 ignored install payload/runtime 的问题。它选择一个
+owner root 和其唯一 host repository，安装该 root 的 `post-checkout` entrypoint。重复安装相同 entrypoint
+为 unchanged；已有非产品 hook 是 blocked conflict，保持其内容。安装不配置 global hook、不改变 Git
+config、index、manifest 或普通文件。
+
+`hook --run` 在 post-checkout 后离线执行。它先读取 current portable manifest 和 runtime，逐项处理
+manifest 中 payload 存在的 direct installs：exact `resolved_commit` 是 hard target；selector/default
+branch 及其他 revision provenance 只按 manifest 做 best-effort runtime alignment。dirty、damaged、
+objects 缺失或无法同步 metadata 的项保留现场，并提供 item result；run 不 fetch、也不以 moving ref
+重新解释 manifest。
+
+完成的 direct install 是 dependency forest roots。对每条 runtime parent edge，hook 在 parent payload
+自身作为 doctidex root 且拥有合法 manifest 时查找 child metadata。找到 metadata 的 child 按同一
+revision contract 处理并继续遍历；没有 metadata、不是 doctidex root 或清单损坏时，将该 child 及其
+descendants hidden。每个 existing hidden node 也在每次 run 进入重新判定：没有可达 aligned direct
+ancestor 时明确保持 hidden，重新获得 metadata 时只 unhide 该 node，descendants 各自重新判定。
+
+run 在 source -> root mutation order 下对 worktree switch、hidden path move 和 runtime mutation 重查
+current facts。每项的成功、忽略、hidden、unhidden 或 blocked 独立，不能因另一项 warning 回滚；hook
+只能报告 warning，Git checkout 本身不回滚。portable manifest、durable symlink、Markdown/frontmatter、
+`.gitignore`、Git index 和 shared cache 均不属于 run effect。
+
+## 7. Failure 与 partial publication
 
 Source locator 使用 `source_invalid`，revision 使用 revision codes；authentication 与 transport
 均使用 `source_access_failed`，分别以 `requires_user: repository_access` 与 `network_access`

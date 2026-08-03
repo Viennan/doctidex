@@ -27,7 +27,9 @@ argv 不进入正常结果。
   key/restore 只保证已记录 commit，不解析 moving ref；`verify_exact_commit` 为 dry-run 使用
   现有 objects 或调用期临时 bare repository，不写持久 cache；
 - `add_detached_worktree` prune 明确失效登记后从 bare/common gitdir 直接创建 detached path；
-  `make_logically_read_only` 清除普通写权限，失败时尽力而为且不构成 sandbox；
+  `move_detached_worktree` 先临时恢复 owner-write permission，再以 `git worktree move` 保持 linked-worktree
+  registration 后重设 logical read-only；`make_logically_read_only` 清除普通写权限，失败时尽力而为且不构成
+  sandbox；
 - `source_relation` 只在 common gitdir 或 canonical origin 足以证明时报告宿主关系。
 
 ## [`git/storage.py`](../../../../../impls/libs/python/whero/doctidex/git/storage.py)
@@ -38,7 +40,7 @@ repository 路径。`source_mutation` 从 canonical source 得到 ID；`source_m
 lock primitive，供 `cache clean --auto` 对已枚举的 opaque ID 使用，因此不会因缺少 canonical URL
 另建一个 lock namespace。
 
-`RootStorage` 的属性为 `root`、内部 namespace、install/worktree 目录、ignored runtime
+`RootStorage` 的属性为 `root`、内部 namespace、normal install/hidden/worktree 目录、ignored runtime
 JSON、trackable manifest JSON 和 root mutation lock。方法负责拒绝 duplicate JSON key、逐项
 校验 schema/identity/path/reference 自洽性、atomic update、
 manifest identity、root lock，以及维护 root index 的 install boundary/unsafe 和宿主根
@@ -57,7 +59,13 @@ JSON 使用排序键和结尾换行，manifest identity 对完整规范 JSON 求
 `manifest_identity` 使用 Python `json.dumps(sort_keys=True, separators=(",", ":"))` 的完整 logical
 object 摘要；validator 要求 known fields 自洽并允许 unknown fields 保留为无本版本语义的数据。
 
-Host Git Coordinator 没有单独 class，ownership 分布为：`git.external._host_repository` 用
+`HookService` 用 `git rev-parse --git-path hooks/post-checkout` 取得 linked host worktree 对应的 hook
+path，以内容标识自己管理的 executable shell entrypoint；它不会覆盖或组合其他 hook。`run()` 只在现有
+linked worktree/common Git objects 上执行 detached checkout，不 fetch 或重新解析 moving ref；随后在
+source -> root lock order 中同步 runtime revision provenance，或在没有 parent manifest metadata 时调用
+`move_detached_worktree` 隐藏 dependency subtree。
+
+Host Git Coordinator 的其余 ownership 分布为：`git.external._host_repository` 用
 `git rev-parse --show-toplevel` 选择唯一 host；`RootStorage.ensure_host_layout` 再验证 host、更新
 root index 与 exact `.gitignore` entries；`git.storage.git_file_state` 产生 tracked/modified/untracked；
 `git.external._assert_payload_untracked`、`_assert_manifest_trackable`、`_git_ignored` 与 link target

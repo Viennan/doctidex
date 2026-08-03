@@ -22,6 +22,10 @@ file, search, shell, editing, and Git tools whenever they suit the task. The CLI
 doctidex/Git facts; it does not author prose, judge semantic quality, grant write authority, or
 perform Git delivery.
 
+After `doctidex-git hook --install` has been installed for a root, its Git checkouts automatically
+reconcile managed external dependency state. Do not repeat equivalent manual reconciliation after
+those checkouts; inspect the hook result only when Git reports a warning.
+
 ## Shared Terms
 
 - A **doctidex root** is the exact directory whose `index.md` declares `doctidex.root: true`.

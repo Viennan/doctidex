@@ -43,10 +43,10 @@ ownership 和 evidence。辅助对象与局部算法可直接链接源码，不�
 | Tree/root/validation | [Protocol interpreter](components/protocol-interpreter.md) |
 | Git source/objects/state | [Git source 与 storage](components/git-source-and-storage.md) |
 | Host Git/portable/runtime state | [Git source 与 storage](components/git-source-and-storage.md) + [External installation 与 mapping](components/external-installation-and-mapping.md) |
-| Install/link/restore/mapping | [External installation 与 mapping](components/external-installation-and-mapping.md) |
+| Install/link/restore/remove/mapping/checkout hook | [External installation 与 mapping](components/external-installation-and-mapping.md) |
 | Worktree/cache | [Worktree 与 cache](components/worktree-and-cache.md) |
 
-总体依赖为 `cli -> protocol/external/worktree/cache -> source/storage -> Git/filesystem`，同时
+总体依赖为 `cli -> protocol/external/hook/worktree/cache -> source/storage -> Git/filesystem`，同时
 `errors/results` 是横向结果支持。`protocol` 不导入 Git；source 不读取 doctidex root；renderer
 不产生 domain facts；Published Skills 不读取 package internals。
 

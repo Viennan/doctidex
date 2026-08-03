@@ -261,14 +261,53 @@ dependency edges 不在无 filter 集合中。任一 item blocked 令顶层 stat
 | `install_role` | `direct`/`dependency` | preflight 时 record 的 role；direct 也可以具有 parent edges。 |
 | `install_path` | root-absolute POSIX path | exact managed payload path；不是调用方可替换的 path input。 |
 | `manifest_included` | boolean | remove 是否同时删除该 install 的 portable manifest entry。 |
-| `state` | `planned`/`removed` | dry-run 已完成 reference-free plan，或 apply 已移除 payload 与 per-install records。 |
+| `state` | `planned`/`removed`/`preserved_hidden` | dry-run 已完成 reference-free plan、apply 已移除 payload/per-install records，或 hidden dependency 的 completed no-op。 |
 | `planned_changes` | array[absolute path] | install payload、runtime record，及 direct install 的 manifest record 所在公开文件。 |
 
-此 operation 不是 batch，`collection` 固定 null。成功或 planned result 的 `findings` 为空；target
-reference、unknown/damaged install 或 revalidation conflict 整体 blocked，`changed` 为空。每一个
-reference 的可定位 document/symlink path 或 managed-record identity 都进入 `affected`，并以
-`install_referenced` external finding 说明 remove 未执行。command 不公开或推断 shared cache object
-identity。
+此 operation 不是 batch，`collection` 固定 null。`preserved_hidden` 的 `changed` 与
+`planned_changes` 都为空，`findings` 含 `hidden_install_preserved`；它不是 blocked。其他成功或 planned
+result 的 `findings` 为空；target reference、unknown/damaged install 或 revalidation conflict 整体 blocked，
+`changed` 为空。每一个 reference 的可定位 document/symlink path 或 managed-record identity 都进入
+`affected`，并以 `install_referenced` external finding 说明 remove 未执行。command 不公开或推断 shared
+cache object identity。
+
+### 6.5 `hook_install` 与 `hook_run`
+
+HookInstall 的非 blocked result fields：
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| `operation` | `hook_install` | 操作判别字段。 |
+| `host_repository` | absolute path | 包含 selected root 的 Git repository。 |
+| `hook_path` | absolute path | `post-checkout` hook 的公开 filesystem path。 |
+| `state` | `installed`/`unchanged` | 是否新建 managed entrypoint，或相同 entrypoint 已存在。 |
+
+`hook_occupied` 是整体 blocked external finding：非 doctidex-git hook 保持原样，`hook_path` 仍作为
+affected path 返回。
+
+HookItem：
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| `install_id` | opaque string | 当前 owner root 中已观察的 install。 |
+| `install_role` | `direct`/`dependency` | 当前 runtime role。 |
+| `state` | `aligned`/`unchanged`/`ignored`/`hidden`/`unhidden`/`blocked` | 本轮 reconciliation 对该 item 的确定结果。 |
+| `resolved_commit` | full commit ID/null | manifest/child metadata 能证明时的 exact target；ignored/hidden 无 target 时为 null。 |
+| `revision_alignment` | `complete`/`metadata_warning`/`not_applicable` | exact commit 与 revision provenance 的 aggregate outcome。 |
+| `metadata_mismatches` | array[string] | 尚未安全对齐的 stable revision metadata field names；其他 state 为空。 |
+| `findings` | array[Finding] | item-level blocked 或 preserved reason。 |
+
+HookRun 的非 blocked result fields：
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| `operation` | `hook_run` | 操作判别字段。 |
+| `host_repository` | absolute path | 执行 hook 的 repository。 |
+| `items` | array[HookItem] | 本次已观察的 direct/dependency items，按 install ID 排序。 |
+| `counts` | object | 每个 HookItem `state` 的 non-negative count；未出现 state 为 `0`。 |
+
+run 的 per-item blocked 或 `metadata_warning` 令顶层 `status: warning`，但已完成 checkout 不会回滚。全局
+manifest/runtime 无法读取、root/host 无法选择或 source/root mutation conflict 才令 command blocked。
 
 ## 7. `external_link_parse`
 

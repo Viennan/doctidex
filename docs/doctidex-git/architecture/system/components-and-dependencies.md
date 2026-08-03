@@ -12,6 +12,7 @@ flowchart TD
     SF --> RS[Root Selector]
     SF --> PI[Protocol Interpreter]
     SF --> EI[External Coordinator]
+    SF --> HC[Checkout Hook Coordinator]
     SF --> MR[Mapping Resolver]
     SF --> WT[Worktree Coordinator]
     SF --> CC[Cache Cleanup Coordinator]
@@ -21,6 +22,9 @@ flowchart TD
     EI --> PS[Portable State]
     EI --> RT[Runtime Ownership]
     EI --> PI
+    HC --> EI
+    HC --> RT
+    HC --> HG
     MR --> PS
     MR --> RT
     WT --> SM
@@ -45,6 +49,7 @@ flowchart TD
 | Source Manager | locator、selector、exact commit | canonical source、resolved revision、objects、source relation | owner root、presentation、credentials persistence。 |
 | Host Git Coordinator | owner root、planned paths | unique host repo、tracking/ignore facts | stage/commit/reset、root selection。 |
 | External Coordinator | owner/source/install/link/recovery models、shared tree observations | install/link/restore/remove plans 与 publication | 自动递归依赖、moving-ref refresh、protocol finding emission。 |
+| Checkout Hook Coordinator | Hook Registration、current manifest/runtime、External revision facts | hook installation、checkout reconciliation、hidden-state result | 网络 refresh、Git delivery、未安装 direct materialization、协议 finding emission。 |
 | Mapping Resolver | input path、runtime/portable state | owner/content/source/repository mapping | network、write、validation、authorization。 |
 | Worktree Coordinator | owner root、source、selector | managed writable worktree lifecycle | branch/delivery、dirty cleanup。 |
 | Cache Cleanup Coordinator | canonical source 或 auto candidate set | Git-derived eligibility 与单 source 或 explicit batch-auto cleanup | root selection、隐式 cleanup、root/runtime 存活性推断。 |
@@ -60,6 +65,7 @@ flowchart TD
 | Host Git ignore/tracking | host Git repository | Host Git Coordinator | owner root publication + native Git decisions。 |
 | Portable manifest | owner root/version control | External/Mapping | owner root publication。 |
 | Runtime ownership | owner root | External/Mapping/Worktree | owner root publication。 |
+| Hook registration | owner root + host Git repository | Checkout Hook Coordinator | host hook registration mutation。 |
 | Source objects/registrations | canonical source object provider | External/Worktree/Cache | source mutation。 |
 | Install payload | owner root + exact source commit | native readers、Mapping | source then root publication。 |
 | Maintenance worktree | owner root ownership + Git | user/agent/native Git | source then root publication。 |

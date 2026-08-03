@@ -66,6 +66,7 @@ Agent 的正常画面是 Published Skill 与原生工具共同工作，不是阅
 | 展开已安装来源的依赖 | 递归 checkout 会制造嵌套所有权，环状引用还可能无限展开。 | `external install --dependency-of` | 宿主根下扁平 dependency install 和有限关系边；不写恢复清单。 |
 | 建立就近入口 | 同一 source 子目录需要用户选择且可由宿主 Git 追踪的根内入口。 | `external link` | 指向稳定安装路径的相对 symlink、独立 boundary/unsafe 声明和可追溯 mapping。 |
 | 恢复外部安装 | clone 或 clean 后安装载荷缺失，但已提交 symlink 应继续使用。 | `external restore` | 按清单中的 exact commit 和原路径重建；既有 symlink 不变。 |
+| checkout 后协调外部安装 | Git checkout 会切换版本化 manifest，却不会切换被 ignore 的受管 payload/runtime。 | `hook --install` 安装的 `post-checkout` hook | 已安装且当前 manifest 声明的 direct install 重新对齐 commit/revision provenance；可达 dependency subtree 递归对齐或标记 hidden。 |
 | 移除不再需要的外部安装 | 只读 payload 与 per-install metadata 不应永久保留，但仍被文档、symlink、mapping 或 dependency edge 使用的内容不能被误删。 | `external remove INSTALL_ID` | reference-free 时仅移除 exact install payload/metadata；存在可见 reference 时保留全部现场和证据；不处理 shared cache。 |
 | 识别路径或 broken symlink | agent 在主仓库或 install 中需要 source、commit、repository 子路径或不可访问 link 的依赖事实。 | `external link-parse` | 区分 current-owner mapping、installed-repository portable mapping、可恢复缺失、合法未展开 dependency 和真实损坏。 |
 | 维护当前仓库当前 commit | 当前 working tree 已是可写现场，不应强制再开 worktree。 | Maintenance Skill + 原生 Git | 直接保留当前路径与现有 changes；需要隔离时仍可选择 open。 |
@@ -97,6 +98,9 @@ Agent 的正常画面是 Published Skill 与原生工具共同工作，不是阅
 11. **跨根没有总事务**：每个根独立验证、审阅、保存和交付。
 12. **共享 cache 不从 root 推断存活性**：清理只依据目标 bare repository 的 Git worktree
     metadata；任何有效或无法安全分类的 linked worktree 都令 source cache 保留。
+13. **checkout hook 只协调已知 snapshot**：它不 materialize 未安装 direct install，也不刷新
+    moving ref。exact commit 是必要条件；selector/default-branch provenance 尽力随当前 manifest
+    同步。无足够 manifest metadata 的 dependency subtree 被 hidden 而不是猜测 revision。
 
 ## 6. 责任与非责任
 
@@ -106,6 +110,8 @@ doctidex-git 负责：
 - 把一个 Git commit 安装到稳定的 `/.doctidex` 内逻辑只读路径，使载荷不被宿主 Git 追踪；
 - 按 source selector 隔离 install，并把从 install 发现的依赖与环状关系扁平限制在 owner root；
 - 保存可版本化恢复清单，并在载荷缺失时按 exact commit/path 重建；
+- 在用户安装当前 root 的 hook 后，于 `post-checkout` 离线协调当前 manifest 已声明且已经存在的
+  install payload/runtime，并保留不能安全处理的现场；
 - 创建可由宿主 Git 追踪、恢复后无需改动的相对 symlink 入口；
 - 为主仓库受管路径和 install 内 portable link 提供 owner/content root、source、revision、
   commit、target state 和 repository-relative path；
@@ -120,6 +126,8 @@ doctidex-git 不负责：
 - 替代 read、search、editor、`git status`、`git diff`、commit、push 或 merge；
 - 把实现管理状态提升为协议要求、信任判断、访问控制或维护授权；
 - 自动跟随 remote branch、自动创建交付 branch 或自动丢弃 dirty 结果；
+- 因 checkout hook 重新 materialize 缺失的 direct install、覆盖既有用户 Git hook 或为对齐 metadata
+  改变 manifest 记录的 fixed commit；
 - 由 close、restore、install 或普通读取隐式回收 shared source cache；
 - 为跨 repository 工作制造原子提交或自动决定依赖顺序；
 - 强制 agent 使用 doctidex-git 的 install/worktree，而排除原生或第三方工作流。

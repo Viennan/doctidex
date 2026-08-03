@@ -30,6 +30,8 @@ doctidex-git external restore [--root ROOT] [--install INSTALL_ID]...
 doctidex-git external remove INSTALL_ID [--root ROOT]
   [--dry-run | --apply] [--json]
 
+doctidex-git hook (--install | --run) [--root ROOT] [--json]
+
 doctidex-git external link-parse PATH [--root ROOT] [--json]
 
 doctidex-git worktree open SOURCE [--root ROOT]
@@ -77,6 +79,7 @@ envelope；未请求 JSON 时可以使用标准 stderr usage，但退出码仍�
 |---|---|---|
 | validate | positional `ROOT` | 从 cwd 选择唯一包含根。 |
 | external install/link/restore/remove | `--root ROOT`；link 时还必须包含 SOURCE_DIRECTORY | 从 cwd 选择唯一包含根，link 的 source 必须属于该根。dependency parent 也必须属于该根。 |
+| hook | `--root ROOT` | 从 cwd 选择唯一包含根；`--install` 所得 hook 只协调该 root。 |
 | external link-parse | `--root ROOT`，必须包含 PATH 或拥有其外层受管 presentation | PATH 位于受管 install/link 时恢复其 owner root；否则从 PATH 或其可读父目录选择唯一包含根。 |
 | worktree open managed path | `--root ROOT`，必须包含 SOURCE | 从 SOURCE 选择唯一 mapping owner root。 |
 | worktree open 其他 source | `--root ROOT` | 从 cwd 选择唯一包含根。 |
@@ -214,7 +217,7 @@ doctidex-git external remove INSTALL_ID [--root ROOT]
   [--dry-run | --apply] [--json]
 ```
 
-- `INSTALL_ID` 是 selected owner root 内一个 complete managed install 的唯一 target；命令不接受
+- `INSTALL_ID` 是 selected owner root 内一个 complete 或 hidden dependency managed install 的唯一 target；命令不接受
   multiple IDs、source URL、revision、payload path、cursor 或 pagination。未知、损坏或不属于该 root
   的 ID 返回 blocked 并保留现场。
 - 调用者只有 managed path 而不知道 ID 时，先运行 `external link-parse PATH [--root ROOT]`，只使用
@@ -226,12 +229,40 @@ doctidex-git external remove INSTALL_ID [--root ROOT]
   scope 或 findings。
 - 任一 target reference 都返回 `install_referenced` blocked，并在 affected/findings 中提供可定位的
   document、symlink 或 managed-record evidence。命令不自动删除或改写引用。
-- dry-run 执行完整 preflight、回显 planned deletion，但不写入。apply 在 source -> root mutation
+- hidden dependency install 不执行删除 preflight 或物理 mutation；dry-run 和 apply 都以 completed
+  `preserved_hidden` result 保留 payload、runtime parent edge 与所有其他 state。它不是 reference block，
+  也不要求调用方解除 hidden 才能安全重试。
+- 其他 target 的 dry-run 执行完整 preflight、回显 planned deletion，但不写入。apply 在 source -> root mutation
   boundary 内重查 target/reference；只有 reference-free 时才移除 exact payload、runtime install
   record，且对 direct install 移除 manifest install record。它不改写 presentation、frontmatter、
   `.gitignore` 或 shared Git cache，不运行 cache clean。
 
-## 10. `external link-parse`
+## 10. `hook`
+
+```text
+doctidex-git hook (--install | --run) [--root ROOT] [--json]
+```
+
+- `--install` 与 `--run` 恰好提供一个；两者都不接受 dry-run/apply、source、selector、install filter、
+  scope、cursor 或 pagination。
+- `--install` 为 selected root 所在 Host Git Repository 的 `post-checkout` hook 建立 entrypoint。已有
+  相同 managed entrypoint 返回 unchanged；已有不属于 doctidex-git 的 hook 返回 `hook_occupied` blocked，
+  并保留该文件。命令不覆盖、迁移或组合用户 hook，不修改 Git config、index 或 manifest。
+- `--run` 是安装脚本在 checkout 后调用的 root-scoped reconciliation entrypoint，也可由 human/program
+  显式诊断性调用。它离线运行，不 fetch、不重新解析 moving branch/tag/default branch，也不创建、
+  restore 或删除未安装 direct install。
+- run 先处理 current manifest 中 physical payload 存在的 direct install：其 Git `HEAD` 必须变为
+  `resolved_commit`，runtime 的 selector/default-branch provenance 尽力与 manifest 同步。commit 或
+  metadata 无法安全对齐时保留该 item、报告 field-level outcome，不能以 commit 相同冒充 complete。
+- 然后从已完成 direct install 遍历 runtime dependency parent edges。parent content 是 doctidex root、
+  有合法 manifest 且包含 child metadata 时，按同一 commit/provenance contract 处理 child 并递归；
+  否则 child subtree 为 hidden。所有 existing hidden nodes 每次都重新判定，不能被忽略。
+- hook run 可以移动 complete/hidden dependency payload 以更新其受管 visibility 与 runtime state，但不
+  改写 portable manifest、durable symlink、Markdown/frontmatter、`.gitignore`、Git index 或 shared cache。
+  dirty、damaged、object 缺失、manifest/runtime 损坏和 concurrent state change 保留现场并以 item finding
+  返回；checkout 已完成，不因 hook warning 回滚。
+
+## 11. `external link-parse`
 
 ```text
 doctidex-git external link-parse PATH [--root ROOT] [--json]
@@ -266,7 +297,7 @@ doctidex-git external link-parse PATH [--root ROOT] [--json]
   warning/blocked 与仍可证明字段。
 - 不判断协议符合性、内容信任、写入授权或 remote 更新。
 
-## 11. `worktree open`
+## 12. `worktree open`
 
 ```text
 doctidex-git worktree open SOURCE [--root ROOT]
@@ -292,7 +323,7 @@ Git ignore，但不进入 external 恢复清单。URL 在 objects 不足时可�
 open 没有 dry-run/apply，不 checkout 用户 branch、不 commit/push/merge。
 相同 source/base commit 的候选不会阻止创建，只令成功 result 为 warning。
 
-## 12. `worktree list`
+## 13. `worktree list`
 
 ```text
 doctidex-git worktree list [--root ROOT]
@@ -305,7 +336,7 @@ doctidex-git worktree list [--root ROOT]
 canonical identity，`--worktree` 要求 exact managed path。无匹配返回空 ok collection。
 列表只给 clean/changed/unavailable 概要；具体 diff 使用原生 Git。
 
-## 13. `worktree close`
+## 14. `worktree close`
 
 ```text
 doctidex-git worktree close WORKTREE [--json]
@@ -315,7 +346,7 @@ close 是显式 destructive lifecycle action，但只允许移除可证明归属
 worktree。changed、unavailable、路径不 exact、归属不明或 Git 检查失败均 blocked 并保留。
 它不回收 shared objects、不影响 presentation，也不处理手工 worktree。
 
-## 14. `cache clean`
+## 15. `cache clean`
 
 ```text
 doctidex-git cache clean (--url URL | --auto) [--dry-run | --apply] [--json]
@@ -346,7 +377,7 @@ doctidex-git cache clean (--url URL | --auto) [--dry-run | --apply] [--json]
 - 内部 cache path 不进入 human/JSON 输出；即使 apply 成功，公共 `changed` 也为空。后续
   install/restore/worktree open 如缺 objects，仍按各自网络契约重新取得。
 
-## 15. 读写与网络矩阵
+## 16. 读写与网络矩阵
 
 | 命令 | 根/公开文件 | 持久 Git/state | Network |
 |---|---|---|---|

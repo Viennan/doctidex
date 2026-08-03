@@ -3,7 +3,7 @@
 ## 1. Lock realization
 
 `git.storage.source_mutation(canonical_source)` 使用 cache-root lock directory，把同 source 的
-fetch/object preparation、worktree create/remove 和 cache cleanup 串行化；其 `source_mutation_id`
+fetch/object preparation、worktree create/remove/move、checkout reconciliation 和 cache cleanup 串行化；其 `source_mutation_id`
 底层入口让 auto cleanup 对 storage filename 中的 source ID 取得同一 lock。`RootStorage.mutation()`
 使用 owner-root internal lock，把 frontmatter/ignore/manifest/runtime/payload publication 串行化。
 调用顺序始终 source -> root；validation/list/link-parse 等只读操作不持锁。
@@ -13,15 +13,21 @@ fetch/object preparation、worktree create/remove 和 cache cleanup 串行化；
 
 ## 2. Revalidation 与 atomicity
 
-External/Worktree/Cache service 在 plan 后、持锁内重新读取 occupancy、record identity、Git
+External/Worktree/Cache/Hook service 在 plan 后、持锁内重新读取 occupancy、record identity、Git
 tracking、manifest identity 或 registration eligibility。变化转换为 `index_update_conflict`、
 `cache_cleanup_conflict` 等稳定 failure，不覆盖。
 
-`_atomic_text` 只保证一个 text/JSON file 的 replace。Detached worktree creation、chmod、
+`_atomic_text` 只保证一个 text/JSON file 的 replace。Detached worktree creation/move/checkout、chmod、
 frontmatter、ignore、manifest、runtime 与 symlink 分别可见。Install/restore 按 source -> root
 resource order 调用；link 依次发布 frontmatter、symlink、runtime、manifest。正常 result 通过
 `changed` 暴露 effects；`DoctidexError.as_result` 不重建 publication 前后已经发生的 changes，
 因此 mid-publication blocked 依靠 `affected`、现场重读和同 identity retry 恢复。
+
+Hook registration compares the exact managed script before replacing it and has no composition mode. Each hook item
+acquires its source lock before the owner-root lock; a failed item leaves its payload and runtime facts observable while
+later independent items continue. The hook never waits for network/object acquisition: an absent exact object is a
+preserved item-level `revision_not_found` outcome. A hidden move or runtime write can therefore be interrupted between
+effects; the next run re-reads every hidden record rather than treating it as an already-complete decision.
 
 ## 3. Error translation
 

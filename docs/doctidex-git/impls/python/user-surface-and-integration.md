@@ -40,6 +40,11 @@ Human 不需要 import Python modules，也不应编辑 cache、manifest/runtime
 blocked result。unexpected failure 只公开 diagnostic ID；内部 traceback 位于用户 cache，
 用于实现维护而不是正常操作决策。
 
+需要跨 host checkout 保持已安装 external snapshot 一致时，Human/Program 对 selected root 执行一次
+`doctidex-git hook --install --root ROOT`。之后 Git 的 `post-checkout` 自动运行离线 reconciliation；它不
+materialize 缺失 direct install，也不以 moving branch/tag 替代 versioned manifest commit。completed warning
+表示某个 managed payload 被保留，检查 item findings，而不是以手动 restore 或重新安装覆盖现场。
+
 要移除已知 install 时，Human/Program 传回精确 `install_id`，先审阅 `external remove INSTALL_ID`
 的 dry-run，再在具备删除授权时使用 `--apply`。只有 presentation path 时应先运行
 `external link-parse PATH --json` 并使用返回的 `install_id`；`dependency_parent_install_id` 是
@@ -60,7 +65,8 @@ Agent 的安装后入口是三个 Published Skills：
 3. Maintenance 负责 validation、external 与 worktree 工作流；
 4. 普通 read/search/edit/diff/delivery 继续使用原生工具。
 
-Skills 与 Python console script 必须作为一个交付 surface 保持版本一致。Agent 不读取本
+Skills 与 Python console script 必须作为一个交付 surface 保持版本一致。Overview 告知 agent 已安装 hook
+会在 checkout 后自动协调 dependency state，因此 agent 不重复执行等价手动步骤。Agent 不读取本
 Impls 才能完成任务；Impls 只向 maintainer 解释 Skills 的命令契约由哪些 package components
 和 tests 支撑。`cache clean` 是 human/program operator surface，不由 Published Skills 路由。
 

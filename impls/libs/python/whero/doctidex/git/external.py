@@ -473,6 +473,42 @@ class ExternalService:
         return _restore_item_payload(record, "restored", []), changed, network
 
     def remove(self, identifier: str, *, apply: bool) -> dict[str, Any]:
+        runtime = self.storage.read_runtime()
+        record = runtime["installs"].get(identifier)
+        if not isinstance(record, dict):
+            raise DoctidexError(
+                "The install ID is not managed by the selected owner root.",
+                operation="external_remove",
+                affected=[identifier],
+                actions=[
+                    "Run external link-parse on a managed path when the install ID is unknown.",
+                    "Pass the returned install_id for the selected owner root.",
+                ],
+                code="install_not_found",
+                domain="external",
+            )
+        if record["role"] == "dependency" and record["managed_state"] == "hidden":
+            return envelope(
+                "external_remove",
+                result="The hidden dependency install was preserved without deletion.",
+                root=str(self.root),
+                findings=[
+                    finding(
+                        "external",
+                        "info",
+                        "hidden_install_preserved",
+                        "A hidden dependency is retained until checkout reconciliation can determine it again.",
+                        path=str(self.root.joinpath(*record["install_path"].lstrip("/").split("/"))),
+                    )
+                ],
+                applied=False,
+                install_id=record["install_id"],
+                install_role=record["role"],
+                install_path=record["install_path"],
+                manifest_included=False,
+                state="preserved_hidden",
+                planned_changes=[],
+            )
         preflight = self._remove_preflight(identifier)
         if preflight["references"]:
             return self._remove_result(preflight, apply=apply, state="blocked", changed=[])

@@ -47,6 +47,7 @@ class RootStorage:
         self.root = root.absolute()
         self.directory = self.root / ".doctidex" / "git"
         self.install_directory = self.directory / "installs"
+        self.hidden_directory = self.install_directory / ".hidden"
         self.worktree_directory = self.directory / "worktrees"
         self.runtime_path = self.directory / "runtime.json"
         self.manifest_path = self.directory / "manifest.json"
@@ -301,9 +302,14 @@ def _valid_install(record: object, identifier: str, *, portable: bool) -> bool:
         return False
     selector = record.get("revision_selector")
     commit = record.get("resolved_commit")
+    managed_state = record.get("managed_state")
+    role = record.get("role")
+    expected_path = f"/.doctidex/git/installs/{identifier}"
+    if not portable and managed_state == "hidden" and role == "dependency":
+        expected_path = f"/.doctidex/git/installs/.hidden/{identifier}"
     valid = (
         record.get("install_id") == identifier
-        and record.get("install_path") == f"/.doctidex/git/installs/{identifier}"
+        and record.get("install_path") == expected_path
         and isinstance(record.get("source_url"), str)
         and bool(record["source_url"])
         and record.get("source_relation") in {"host_repository", "other", "unknown"}
@@ -321,11 +327,14 @@ def _valid_install(record: object, identifier: str, *, portable: bool) -> bool:
         isinstance(record.get("canonical_source"), str)
         and bool(record["canonical_source"])
         and isinstance(record.get("requested_default"), bool)
-        and record.get("role") in {"direct", "dependency"}
+        and role in {"direct", "dependency"}
         and isinstance(record.get("parents"), list)
         and all(isinstance(parent, str) and parent for parent in record["parents"])
         and len(set(record["parents"])) == len(record["parents"])
-        and record.get("managed_state") == "complete"
+        and (
+            managed_state == "complete"
+            or (managed_state == "hidden" and role == "dependency")
+        )
     )
 
 

@@ -75,7 +75,9 @@ entry，最后删除 runtime install record。缺失 payload 也允许同 ID ret
 root frontmatter 或 shared layout。
 
 result 固定回显 `applied`、`install_id`、`install_role`、`install_path`、`manifest_included`、
-`state` 和 `planned_changes`；reference-free plan state 为 `planned`，apply state 为 `removed`。
+`state` 和 `planned_changes`；reference-free plan state 为 `planned`，apply state 为 `removed`。runtime
+中的 hidden dependency 是这一流程的前置例外：`remove` 不读取 references、不删除 worktree/record，直接以
+`hidden_install_preserved` finding 和 `preserved_hidden` state 完成，`applied` 为 false。
 证据由 `test_external_remove_*` 系列覆盖 direct/dependency、mapping/Markdown/symlink/parent block、
 exclusion、link-parse target 与 cache preservation。
 
@@ -112,3 +114,26 @@ Portable install 直接保存 `ResolvedSource.public_url`；relative/symlink-spe
 `test_link_retry_rejects_a_changed_symlink_target`、
 `test_link_classifies_only_a_complete_doctidex_root_as_safe` 与
 `test_link_reports_symlink_unsupported_before_persistent_changes`。
+
+## Checkout hook
+
+[`git/hooks.py::HookService`](../../../../../impls/libs/python/whero/doctidex/git/hooks.py)拥有 owner-root
+scoped `post-checkout` registration 和 reconciliation。`install()` 用 Git 解析的 hook path 写入精确、
+executable 的 `doctidex-git hook --run --root <root>` entrypoint；相同内容重复安装为 unchanged，任何其他
+file 或 symlink 保留并返回 `hook_occupied`。
+
+`run()` 先读取 current manifest/runtime。它仅对 manifest 与 runtime 都已知且 payload 存在的 direct
+install 调用 `_checkout_exact`：dirty/damaged/missing object 保留为 item-level blocked；否则 detached HEAD
+切到 manifest 的 exact commit，并把 selector/default-branch/source provenance 投影回 runtime，绝不 fetch
+或重新解释 moving ref。未安装或当前 manifest 未声明的 direct install 作为 ignored item 返回。
+
+成功 direct root 以 runtime `parents` 形成 bounded traversal。每个 parent payload 必须自身是 doctidex
+root，且其 portable manifest 必须按 canonical source（有歧义时再按 selector）唯一定位 child metadata；
+缺少此证据时，`_hide_subtree` 用 Git worktree move 将每个 dependency payload 移到 hidden namespace 并
+更新 runtime。已有 hidden record 无论是否可达 direct root 都会进入本轮结果；具有有效 metadata 的 node
+先在原 hidden path 对齐，再移动回 normal path，仅该 node 返回 `unhidden`，其 descendants 仍独立遍历。
+
+Hook result 不分页，按 install ID 返回 item state/count；每个 blocked item 使整体 status 为 warning，但不会
+撤销 host checkout。证据：`test_hook_install_is_idempotent_and_preserves_foreign_hook`、
+`test_post_checkout_aligns_direct_commit_and_revision_provenance` 与
+`test_hook_rechecks_hidden_dependencies_and_unhides_from_parent_manifest`。

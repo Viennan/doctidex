@@ -163,6 +163,8 @@ def run(
                 "safe_state",
                 "responsible_index",
             },
+            "hook_install": {"host_repository", "hook_path", "state"},
+            "hook_run": {"host_repository", "items", "counts"},
             "worktree_open": {"worktree", "reuse_candidate_count"},
             "worktree_list": {"items"},
             "worktree_close": {"worktree"},
@@ -820,6 +822,158 @@ def test_portable_broken_link_dependency_can_be_flattened(
     assert available["target_state"] == "available"
     assert Path(available["working_path"]).is_dir()
     assert portable_link.is_symlink() and not portable_link.exists()
+
+
+def test_hook_install_is_idempotent_and_preserves_foreign_hook(cli_env: dict[str, str], tmp_path: Path) -> None:
+    root = create_repository(tmp_path / "host")
+    installed = run(["hook", "--install", "--root", str(root)], tmp_path, cli_env)
+    hook_path = Path(installed["hook_path"])
+    assert installed["state"] == "installed"
+    assert hook_path.is_file()
+    assert hook_path.stat().st_mode & stat.S_IXUSR
+    assert f"--root {root}" in hook_path.read_text(encoding="utf-8")
+
+    repeated = run(["hook", "--install", "--root", str(root)], tmp_path, cli_env)
+    assert repeated["state"] == "unchanged"
+    assert repeated["changed"] == []
+
+    foreign_root = create_repository(tmp_path / "foreign-host")
+    foreign_hook = foreign_root / ".git" / "hooks" / "post-checkout"
+    foreign_hook.write_text("#!/bin/sh\necho foreign\n", encoding="utf-8")
+    foreign_hook.chmod(0o755)
+    blocked = run(["hook", "--install", "--root", str(foreign_root)], tmp_path, cli_env, expected=2)
+    assert blocked["operation"] == "hook_install"
+    assert blocked["findings"][0]["code"] == "hook_occupied"
+    assert foreign_hook.read_text(encoding="utf-8") == "#!/bin/sh\necho foreign\n"
+
+
+def test_post_checkout_aligns_direct_commit_and_revision_provenance(
+    cli_env: dict[str, str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    root = create_repository(tmp_path / "host")
+    source = create_repository(tmp_path / "source")
+    first_commit = add_source_content(source, "first.md")
+    direct = run(
+        ["external", "install", "--url", str(source), "--branch", "main", "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    git(root, "add", "index.md", ".gitignore", ".doctidex/git/manifest.json")
+    git(root, "commit", "-m", "record first external revision")
+    run(["hook", "--install", "--root", str(root)], tmp_path, cli_env)
+
+    second_commit = add_source_content(source, "second.md")
+    common = Path(git(Path(direct["working_path"]), "rev-parse", "--path-format=absolute", "--git-common-dir"))
+    git(common, "fetch", str(source), "main")
+
+    storage = RootStorage(root)
+    manifest = storage.read_manifest()
+    manifest["installs"][direct["install_id"]]["resolved_commit"] = second_commit
+    manifest["installs"][direct["install_id"]]["default_branch"] = "main"
+    storage.write_manifest(manifest)
+    git(root, "add", ".doctidex/git/manifest.json")
+    git(root, "commit", "-m", "record second external revision")
+
+    monkeypatch.setenv("DOCTIDEX_GIT_CACHE", cli_env["DOCTIDEX_GIT_CACHE"])
+    monkeypatch.setenv("PATH", f"{Path(sys.executable).parent}:{os.environ['PATH']}")
+    git(root, "checkout", "HEAD^")
+    assert git(Path(direct["working_path"]), "rev-parse", "HEAD") == first_commit
+    git(root, "checkout", "main")
+
+    assert git(Path(direct["working_path"]), "rev-parse", "HEAD") == second_commit
+    runtime = RootStorage(root).read_runtime()["installs"][direct["install_id"]]
+    assert runtime["resolved_commit"] == second_commit
+    assert runtime["revision_selector"] == {"kind": "branch", "value": "main"}
+    assert runtime["default_branch"] == "main"
+
+
+def test_hook_rechecks_hidden_dependencies_and_unhides_from_parent_manifest(
+    cli_env: dict[str, str], tmp_path: Path
+) -> None:
+    root = create_repository(tmp_path / "host")
+    parent_source = create_repository(tmp_path / "parent-source")
+    child_source = create_repository(tmp_path / "child-source")
+    child_commit = add_source_content(child_source, "child.md")
+    parent = run(
+        ["external", "install", "--url", str(parent_source), "--branch", "main", "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    child = run(
+        [
+            "external",
+            "install",
+            "--url",
+            str(child_source),
+            "--commit",
+            child_commit,
+            "--dependency-of",
+            parent["install_id"],
+            "--root",
+            str(root),
+            "--apply",
+        ],
+        tmp_path,
+        cli_env,
+    )
+
+    hidden = run(["hook", "--run", "--root", str(root)], tmp_path, cli_env)
+    hidden_item = next(item for item in hidden["items"] if item["install_id"] == child["install_id"])
+    assert hidden_item["state"] == "hidden"
+    hidden_path = root / ".doctidex" / "git" / "installs" / ".hidden" / child["install_id"]
+    assert hidden_path.is_dir()
+    assert git(root, "check-ignore", "-q", str(hidden_path)) == ""
+    assert RootStorage(root).read_runtime()["installs"][child["install_id"]]["managed_state"] == "hidden"
+
+    preserved = run(
+        ["external", "remove", child["install_id"], "--root", str(root), "--apply"], tmp_path, cli_env
+    )
+    assert preserved["state"] == "preserved_hidden"
+    assert preserved["applied"] is False
+    assert hidden_path.is_dir()
+
+    host_storage = RootStorage(root)
+    host_manifest = host_storage.read_manifest()
+    parent_portable = host_manifest["installs"].pop(parent["install_id"])
+    host_storage.write_manifest(host_manifest)
+    rechecked = run(["hook", "--run", "--root", str(root)], tmp_path, cli_env)
+    rechecked_item = next(item for item in rechecked["items"] if item["install_id"] == child["install_id"])
+    assert rechecked_item["state"] == "hidden"
+    assert hidden_path.is_dir()
+
+    run(
+        [
+            "external",
+            "install",
+            "--url",
+            str(child_source),
+            "--commit",
+            child_commit,
+            "--root",
+            str(parent_source),
+            "--apply",
+        ],
+        tmp_path,
+        cli_env,
+    )
+    git(parent_source, "add", "index.md", ".gitignore", ".doctidex/git/manifest.json")
+    git(parent_source, "commit", "-m", "declare child dependency")
+    parent_commit = git(parent_source, "rev-parse", "HEAD")
+    common = Path(git(Path(parent["working_path"]), "rev-parse", "--path-format=absolute", "--git-common-dir"))
+    git(common, "fetch", str(parent_source), "main")
+
+    parent_portable["resolved_commit"] = parent_commit
+    host_storage.write_manifest(
+        {"schema_version": "1.0", "installs": {parent["install_id"]: parent_portable}, "links": {}}
+    )
+    unhidden = run(["hook", "--run", "--root", str(root)], tmp_path, cli_env)
+    unhidden_item = next(item for item in unhidden["items"] if item["install_id"] == child["install_id"])
+    assert unhidden_item["state"] == "unhidden"
+    assert Path(child["working_path"]).is_dir()
+    assert git(Path(child["working_path"]), "rev-parse", "HEAD") == child_commit
+    runtime = RootStorage(root).read_runtime()["installs"][child["install_id"]]
+    assert runtime["managed_state"] == "complete"
+    assert runtime["install_path"] == child["install_path"]
 
 
 def test_worktree_dirty_preservation_and_close(cli_env: dict[str, str], tmp_path: Path) -> None:

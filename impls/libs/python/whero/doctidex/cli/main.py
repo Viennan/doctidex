@@ -8,6 +8,7 @@ from typing import Any
 from whero.doctidex.errors import DoctidexError
 from whero.doctidex.git.diagnostics import write_diagnostic
 from whero.doctidex.git.external import ExternalService
+from whero.doctidex.git.hooks import HookService
 from whero.doctidex.git.source import RevisionSelector
 from whero.doctidex.git.storage import RootStorage
 from whero.doctidex.git.worktrees import CacheService, WorktreeService
@@ -124,6 +125,16 @@ def _dispatch(args: argparse.Namespace) -> dict[str, Any]:
             cursor=args.cursor,
         )
 
+    if args.command == "hook":
+        operation = "hook_install" if args.install else "hook_run"
+        context = select_root(
+            operation=operation,
+            explicit=Path(args.root) if args.root else None,
+            default=cwd,
+        )
+        service = HookService(context)
+        return service.install() if args.install else service.run()
+
     if args.command == "worktree":
         if args.worktree_command == "close":
             path = Path(args.worktree).absolute()
@@ -232,6 +243,12 @@ def _parser() -> Parser:
     cache_selector.add_argument("--url")
     cache_selector.add_argument("--auto", action="store_true")
     _mode(clean)
+
+    hook = commands.add_parser("hook")
+    hook.add_argument("--root")
+    hook_mode = hook.add_mutually_exclusive_group(required=True)
+    hook_mode.add_argument("--install", action="store_true")
+    hook_mode.add_argument("--run", action="store_true")
     return parser
 
 
@@ -398,6 +415,8 @@ def _operation_name(args: argparse.Namespace | None) -> str:
         return f"worktree_{args.worktree_command}"
     if args.command == "cache":
         return "cache_clean"
+    if args.command == "hook":
+        return "hook_install" if getattr(args, "install", False) else "hook_run"
     return str(args.command)
 
 

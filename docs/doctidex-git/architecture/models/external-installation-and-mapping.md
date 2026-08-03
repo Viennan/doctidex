@@ -18,7 +18,7 @@ selector/commit；未命中时 resolve 为 fixed selector，再形成稳定 Inst
 | Default provenance | 是否来自省略 selector，以及当时观察到的 default branch；供幂等 lookup 与解释使用。 |
 | Role | `direct` 或 `dependency`。 |
 | Parents | 显式 dependency parent install IDs 的去重集合。 |
-| Managed state | complete 或可诊断的 incomplete。 |
+| Managed state | `complete`，或仅 dependency install 可进入的 `hidden`。 |
 | Recovery relation | direct install 对应 portable manifest entry；dependency-only 没有。 |
 
 同 key 重试复用 ID/path/commit；不同 selector 通常形成不同 key，default provenance 的物理 key
@@ -82,10 +82,13 @@ Durable Link 具有 owner root、presentation target、source install、reposito
 relative symlink target、safe state、responsible index 与 current/portable records。Target 是用户
 选择的 root 内路径；install path 由工具分配，两者不能合并成一个概念。
 
-`complete` payload 至少要求 stable path、managed record 与 exact Git HEAD 自洽。Variant 可以
-增加 working-tree cleanliness 或更强 ownership checks，并在 Impls 中说明；无法证明当前记录所
-指 snapshot 时是 `damaged`，缺失 path 是 `missing`。Permission hardening 只实现 logical
-read-only，不单独证明 complete。Restore 只自动创建 missing payload，对 damaged payload 保留现场。
+`complete` payload 至少要求 normal install path、managed record、exact Git HEAD 与 revision
+provenance 自洽。`resolved_commit` 是 hard revision fact；`revision_selector`、`default_branch` 和
+其他 schema 定义的 revision provenance 是 best-effort alignment facts。commit 已匹配但 provenance
+未能安全同步时，payload 不能被描述为 fully aligned，必须保留 field-level outcome。Variant 可以增加
+working-tree cleanliness 或更强 ownership checks，并在 Impls 中说明；无法证明当前记录所指 snapshot
+时是 `damaged`，缺失 path 是 `missing`。Permission hardening 只实现 logical read-only，不单独证明
+complete。Restore 只自动创建 missing payload，对 damaged payload 保留现场。
 
 Link creation 必须证明 source 属于 complete direct install，target 未占用且不 overlap managed
 payload，host Git 可以追踪 link/manifest，relative symlink capability 可用。Safe state 要求
@@ -133,9 +136,22 @@ frontmatter 与其他 root-shared layout 不属于 remove effect。
 ## 6. 状态机
 
 Install lifecycle 与 link relation 分开：Install role 是 `dependency` 或 `direct`；promotion 只允许
-dependency -> direct。Payload state 是 `planned`、`complete`、`missing` 或 `damaged`，restore 只执行
-missing -> complete；damaged 必须先由用户处理，不能被自动覆盖。一个 direct install 可以被零到
-多个 Durable Links 引用；link 的新增/缺失不改变 install role 或 payload state。
+dependency -> direct。Payload state 是 `planned`、`complete`、`missing`、`damaged`，以及仅 dependency
+install 的 `hidden`。restore 只执行 missing -> complete；damaged 必须先由用户处理，不能被自动覆盖。
+一个 direct install 可以被零到多个 Durable Links 引用；link 的新增/缺失不改变 install role 或
+payload state。
+
+`hidden` 表示 hook 在当前 checkout 无法从一个已对齐 direct ancestor 的 doctidex manifest 取得该
+dependency node 的 revision metadata。它必须保留 runtime parent edges 和实际 Git worktree，但从 normal
+install path 迁移到不被 normal mapping 或 symlink 命中的 managed location；hidden node 不可成为 durable
+link source。每次 hook 都重新判定所有 hidden nodes：无法重新进入可处理 forest 时保持 hidden，找到
+有效 child metadata 时只有该 node 返回 complete。其 descendants 独立重新判定，不因 parent unhide
+而自动恢复。
+
+Hook Registration 连接一个 owner root、其 Host Git Repository 和该 repository 的 `post-checkout`
+trigger。`hook --install` 为该 registration 建立可重复的 entrypoint；一个已存在且非本产品管理的
+`post-checkout` hook 是可观察 conflict，不能被覆盖。Hook run 只消费 registration 所选 owner root 的
+current manifest/runtime，不把 host repository 的其他 roots 纳入隐式范围。
 
 ```mermaid
 stateDiagram-v2
@@ -146,6 +162,8 @@ stateDiagram-v2
     CompleteDirect --> MissingDirect: payload removed
     MissingDirect --> CompleteDirect: exact restore
     CompleteDirect --> DamagedDirect: identity/status no longer matches
+    CompleteDependency --> HiddenDependency: checkout lacks child revision metadata
+    HiddenDependency --> CompleteDependency: checkout metadata reconciles this node
     CompleteDependency --> Removed: reference-free remove
     CompleteDirect --> Removed: reference-free remove
 ```

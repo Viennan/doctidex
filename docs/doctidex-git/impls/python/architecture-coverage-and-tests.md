@@ -15,7 +15,7 @@ coverage row，material limitation 必须说明实际影响而不能只列字段
 | [Tree/configuration](../../architecture/models/doctidex-tree-and-configuration.md) | `DoctidexDocument`, `MarkdownLink`, `IndexInfo`, `TreeObservations`, `_Validator`；annotation/edge 是局部 helper facts | [Protocol interpreter](components/protocol-interpreter.md) | `test_boundary_unsafe_annotation_and_reachability`, `test_tree_observations_share_link_resolution`, `test_tree_observations_preserve_boundary_unsafe_and_symlink_scan`。 |
 | [Root/ownership/path](../../architecture/models/root-ownership-and-paths.md) | `RootContext`, root/path owner selectors、runtime records | [Protocol](components/protocol-interpreter.md)、[External](components/external-installation-and-mapping.md) | `test_valid_tree_and_scopes`, `test_portable_broken_link_dependency_can_be_flattened`, `test_unrecorded_worktree_namespace_path_is_preserved`。 |
 | [Git source/revision](../../architecture/models/git-source-revision-and-repository.md) | `RevisionSelector`, `ResolvedSource`, `WorktreeSource`, source cache | [Git source/storage](components/git-source-and-storage.md) | `test_default_revision_is_fixed_and_self_dependency_is_bounded`, `test_explicit_branch_retry_stays_fixed_and_root_is_part_of_identity`, `test_different_selectors_keep_distinct_install_paths`, `test_worktree_source_kinds_managed_bare_and_submodule`。 |
-| [External/mapping](../../architecture/models/external-installation-and-mapping.md) | runtime/manifest install/link records、`ExternalService` | [External](components/external-installation-and-mapping.md)、[Physical data](physical-data-and-storage.md) | `test_link_restore_and_current_owner_parse`, `test_restore_rebuilds_requested_default_provenance`, `test_portable_broken_link_dependency_can_be_flattened`, `test_manifest_rejects_duplicate_and_inconsistent_portable_facts`, `test_link_retry_rejects_a_changed_symlink_target`。 |
+| [External/mapping](../../architecture/models/external-installation-and-mapping.md) | complete/hidden runtime install records、manifest/link records、`ExternalService`、`HookService` | [External](components/external-installation-and-mapping.md)、[Physical data](physical-data-and-storage.md) | `test_link_restore_and_current_owner_parse`, `test_restore_rebuilds_requested_default_provenance`, `test_portable_broken_link_dependency_can_be_flattened`, `test_hook_rechecks_hidden_dependencies_and_unhides_from_parent_manifest`, `test_post_checkout_aligns_direct_commit_and_revision_provenance`。 |
 | [Worktree/cache](../../architecture/models/worktree-and-cache.md) | `WorktreeService`, `CacheService`, Git registrations | [Worktree/cache](components/worktree-and-cache.md) | `test_worktree_dirty_preservation_and_close`, `test_cache_cleanup_preserves_active_then_removes_eligible`, `test_cache_cleanup_accepts_prunable_registration`, `test_cache_cleanup_auto_isolated_candidates`, `test_cache_cleanup_auto_rechecks_each_candidate`。 |
 | [Operation/result/failure](../../architecture/models/operation-result-and-failure.md) | `DoctidexError`, envelope/finding/cursor helpers、CLI main/render | [CLI/results](components/cli-results-and-rendering.md) | `test_parser_rejects_old_surface_with_json`, `test_restore_preserves_blocked_item_and_restores_other_item`, `test_scoped_validation_filters_output_and_cursor_is_state_bound`。 |
 
@@ -28,6 +28,7 @@ coverage row，material limitation 必须说明实际影响而不能只列字段
 | [Link](../../architecture/system/external-workflows.md#2-link) | `external link` | mapping preflight、round-trip index、relative symlink、manifest/runtime | `test_link_retry_rejects_a_changed_symlink_target`, `test_link_classifies_only_a_complete_doctidex_root_as_safe`, `test_link_reports_symlink_unsupported_before_persistent_changes`。 |
 | [Restore](../../architecture/system/external-workflows.md#3-restore) | `external restore` | manifest identity、item restore、exact cache、runtime provenance rebuild | `test_link_restore_and_current_owner_parse`, `test_restore_rebuilds_requested_default_provenance`, `test_restore_preserves_blocked_item_and_restores_other_item`。 |
 | [Remove](../../architecture/system/external-workflows.md#4-remove) | `external remove` | `ExternalService.remove` + shared tree observations + source/root locks | `test_external_remove_direct_dry_run_apply_and_cache`, `test_external_remove_dependency_and_reference_blocks`, `test_external_remove_excludes_unsafe_boundary_and_installs`。 |
+| [Checkout hook](../../architecture/system/external-workflows.md#6-checkout-hook-reconciliation) | `hook --install` / `hook --run` | `HookService` + existing Git objects + source/root locks | `test_hook_install_is_idempotent_and_preserves_foreign_hook`, `test_post_checkout_aligns_direct_commit_and_revision_provenance`, `test_hook_rechecks_hidden_dependencies_and_unhides_from_parent_manifest`。 |
 | [Link parse](../../architecture/system/external-workflows.md#5-link-parse) | Read Skill / CLI | current + portable mapping resolver | `test_portable_broken_link_dependency_can_be_flattened`, `test_link_retry_rejects_a_changed_symlink_target`。 |
 | [Worktree](../../architecture/system/worktree-and-cache-workflows.md) | Maintenance Skill / open/list/close | `WorktreeService` + Git detached worktrees + runtime | `test_worktree_dirty_preservation_and_close`, `test_unrecorded_worktree_namespace_path_is_preserved`, `test_interrupted_worktree_publication_leaves_orphan_evidence`。 |
 | [Cache clean](../../architecture/system/worktree-and-cache-workflows.md#4-cache-clean) | human/program CLI | `CacheService.clean`/`clean_auto` + Git registration classification | `test_cache_cleanup_preserves_active_then_removes_eligible`, `test_cache_cleanup_accepts_prunable_registration`, `test_cache_cleanup_auto_isolated_candidates`, `test_cache_cleanup_auto_rechecks_each_candidate`。 |
@@ -43,7 +44,8 @@ commands are rejected and no stable Python import surface is promised.
 ## 4. Realization 结论与限制
 
 Native progressive read、full/scoped validation、fixed snapshot、flat dependency、exact restore、offline
-mapping、native-current maintenance、isolated worktree、explicit source-cache cleanup、agent routing、
+mapping、checkout 后的 exact commit/provenance reconciliation、hidden dependency 重判、native-current
+maintenance、isolated worktree、explicit source-cache cleanup、agent routing、
 bounded JSON 与 subprocess integration 均有当前 realization 和 tests。
 
 第二阶段列出的 17 项 differences 已按新边界重分类：metadata-based validation fingerprint、
@@ -75,6 +77,8 @@ substitutes for domain tests.
 | Regression | Boundary/evidence |
 |---|---|
 | moving ref refreshes existing install | recorded normalized selector/exact commit reused; moving branch tests。 |
+| checkout 将现有 payload 以 moving ref 替代 manifest commit | `HookService._checkout_exact` 只使用 current manifest exact object；真实 post-checkout test。 |
+| hidden dependency 被 remove 删除或因上轮 hidden 而忽略 | `preserved_hidden` no-op；每轮 hook 重读 runtime/parent manifest test。 |
 | dependency recursively installs inside snapshot | outer runtime parent edges + portable mapping tests。 |
 | copy/junction replaces unavailable symlink | native relative symlink only + `symlink_unsupported` test。 |
 | dirty/unmanaged close deletes results | exact ownership + current Git status tests。 |

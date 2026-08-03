@@ -10,14 +10,17 @@ Owner-root layout 固定为：
 
 ```text
 <root>/.doctidex/git/
-|-- installs/<install-id>/
+|-- installs/
+|   |-- <install-id>/
+|   `-- .hidden/<install-id>/
 |-- worktrees/<worktree-id>/
 |-- manifest.json
 |-- runtime.json
 `-- .mutation.lock/
 ```
 
-`manifest.json` 可被 host Git track；其余四类 exact paths 进入 host repository `.gitignore`。
+`manifest.json` 可被 host Git track；install（含 `.hidden`）、worktree、runtime 和 lock exact paths 进入
+host repository `.gitignore`。
 User cache layout 为 `<cache-root>/sources/<source-id>.git`、`locks/<source-id>.lock/` 与
 `diagnostics/<diagnostic-id>.log`。`cache_root()` 的 platform 选择见
 [Platform/package](platform-package-and-dependencies.md)。
@@ -29,7 +32,8 @@ User cache layout 为 `<cache-root>/sources/<source-id>.git`、`locks/<source-id
 | Portable manifest | `RootStorage` | schema 1.0、direct installs、durable links | duplicate/schema/path/reference check；atomic JSON | versioned path/state 与 portable facts 公开。 |
 | Runtime records | `RootStorage` | schema 1.0、installs/links/worktrees | full identity/path/reference validation；atomic JSON | internal，结果投影 decision facts。 |
 | Source cache | `git.source/storage` | per canonical source bare Git repository + registrations | source boundary、Git commands | physical path internal。 |
-| Install payload | `git.external/source` | detached exact-commit worktree under owner namespace | runtime/manifest/HEAD consistency、permission hardening | working/install path 公开。 |
+| Install payload | `git.external/source/hooks` | detached exact-commit worktree under normal 或 hidden owner namespace | runtime/manifest/HEAD consistency、permission hardening | working/install path 公开。 |
+| Checkout hook | `git.hooks.HookService` | host Git `post-checkout` executable entrypoint | exact managed content or occupancy block | hook path/state 公开。 |
 | Maintenance worktree | `git.worktrees` | detached writable worktree + runtime record | Git status/identity recheck | path/state 公开。 |
 | Diagnostic | `git.diagnostics` | opaque-ID traceback file in user cache | best effort bounded write | 仅 ID 公开。 |
 | Locks/temp files | `git.storage` | cache/root lock directories、same-dir temp | bounded acquire、finally cleanup | internal。 |
@@ -50,7 +54,7 @@ Top-level 是 `schema_version: "1.0"` 与 object-valued `installs`, `links`, `wo
 
 | Field | Python/physical constraint |
 |---|---|
-| `install_id` / `install_path` | non-empty string；path 必须为 `/.doctidex/git/installs/<id>`。 |
+| `install_id` / `install_path` | non-empty string；complete record 使用 `/.doctidex/git/installs/<id>`，hidden dependency 使用 `/.doctidex/git/installs/.hidden/<id>`；后者不会匹配 normal install ID path。 |
 | `source_url` / `canonical_source` | non-empty string；前者 sanitized/public，后者 runtime equality。 |
 | `source_relation` | `host_repository|other|unknown`。 |
 | `revision_selector` | dict `{kind, value}`；kind 为 commit/tag/branch，value non-empty。 |
@@ -58,7 +62,7 @@ Top-level 是 `schema_version: "1.0"` 与 object-valued `installs`, `links`, `wo
 | `requested_default` | bool；省略 revision 创建时为 true，供 idempotent lookup。 |
 | `resolved_commit` | 40/64 lowercase hex string。 |
 | `role` / `parents` | `direct|dependency`；parents 为去重 non-empty ID list。 |
-| `managed_state` | 当前只接受 literal `complete`；incomplete 现场不伪造 valid record。 |
+| `managed_state` | `complete`，或仅 `dependency` 可用的 `hidden`；后者保留 parent edge，但不位于 normal presentation path。 |
 
 Link record fields 与 Architecture PortableLink 同型，target key/root-relative path 和 install
 reference 必须自洽。Worktree fields：
@@ -92,6 +96,11 @@ state。该投影使重建 record 满足 `_valid_install(portable=False)`，同�
 `RootStorage.manifest_identity` 以 `json.dumps(sort_keys=True, separators=(",", ":"))` 的 ASCII
 escaped UTF-8 bytes 求 SHA-256 前 24 hex，用于本 variant 的 restore pagination/state consistency。
 Write 前使用与 read 相同 validator，保证 CLI 不发布自身无法读取的 state。
+
+Checkout hook 不改写 portable manifest；它只更新 runtime 与 owned linked worktree location/HEAD。进入
+hidden 前先由 Git 注册移动 payload，再原子替换 runtime record；反向恢复则先在 hidden worktree 对齐 exact
+commit，成功后移动回 normal location 并发布 complete record。中断遗留的路径/record 不一致不会自动猜测或
+删除，后续 hook 只在可证明 identity 时继续。
 
 ## 4. Cache 与 IDs
 

@@ -224,7 +224,7 @@ def remove_detached_worktree(path: Path, *, operation: str) -> None:
 
     if not path.exists():
         return
-    _make_logically_writable(path)
+    make_logically_writable(path)
     common = git(
         ["-C", str(path), "rev-parse", "--path-format=absolute", "--git-common-dir"],
         operation=operation,
@@ -246,7 +246,34 @@ def remove_detached_worktree(path: Path, *, operation: str) -> None:
     )
 
 
-def _make_logically_writable(path: Path) -> None:
+def move_detached_worktree(path: Path, destination: Path, *, operation: str) -> None:
+    """Move an owned linked worktree without losing its Git registration."""
+
+    make_logically_writable(path)
+    common = git(
+        ["-C", str(path), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        operation=operation,
+        check=False,
+    )
+    if common.returncode != 0:
+        raise DoctidexError(
+            "The managed install path is not a movable Git worktree.",
+            operation=operation,
+            affected=[str(path)],
+            actions=["Preserve the path and repair the managed install before retrying."],
+            code="install_damaged",
+            domain="external",
+            path=str(path),
+        )
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    git(
+        ["--git-dir", common.stdout.strip(), "worktree", "move", str(path), str(destination)],
+        operation=operation,
+    )
+    make_logically_read_only(destination)
+
+
+def make_logically_writable(path: Path) -> None:
     for item in sorted(path.rglob("*"), key=lambda value: len(value.parts), reverse=True):
         if item.is_symlink():
             continue

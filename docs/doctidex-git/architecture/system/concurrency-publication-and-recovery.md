@@ -10,6 +10,7 @@ file 和 Git command 属于 Impls；Architecture 只规定必须保持的行为�
 | Source mutation | 同 canonical source 的 object update、worktree create/remove、cache clean | 不同 canonical sources。 |
 | Root mutation | 同 owner root 的 frontmatter、ignore、manifest、runtime、install/link/worktree publication | 不同 owner roots。 |
 | Install identity | 同 install key 的 role/parents/publication | 不同 selector keys，可共享 readonly objects。 |
+| Hook registration | 同 host repository 的 `post-checkout` hook 与同 owner root 的 hook configuration | 不同 host repositories。 |
 | Result observation | 同 query identity 的 state fingerprint | independent read-only queries。 |
 
 全局资源顺序是 source preparation -> root revalidation/publication。Network/object acquisition
@@ -49,6 +50,8 @@ ownership 或串行集成。
 | boundary/ignore 已写、payload 缺失 | internal namespace 已可解释 | 重试同 install；不回退无关 frontmatter。 |
 | payload 已建、record 缺失 | orphan/incomplete managed evidence | 诊断 identity；不得自动 delete/adopt。 |
 | runtime 已写、manifest 缺失 | direct recovery 不完整 | 重试同 direct publication；保留 payload。 |
+| hook payload 已切换、runtime provenance 尚未同步 | payload 对应 exact commit 但 metadata outcome 不完整 | 下次 hook 重新观察并完成同步或报告 preserved field。 |
+| hidden path 已迁移、runtime 尚未标记 hidden | normal path 不可用且 Git registration 可诊断 | 保留 payload，重新观察后只在 identity 可证明时补齐 hidden state。 |
 | mapping/symlink 只有一侧已写 | record 与 presentation 不一致 | 保留两侧证据；以同 mapping 重试或由用户修复，不跟随未证实 target。 |
 | remove payload 已移除、per-install record 尚在 | record 指向 missing install，shared cache/root layout 未变 | 以同 Install ID 重试 remove；重新证明没有 target reference 后仅补齐 record removal。 |
 | worktree 已建、record 缺失 | Git registration/orphan path | 保留并报告；用户确认前不 cleanup。 |
