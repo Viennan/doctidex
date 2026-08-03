@@ -11,3 +11,5 @@ doctidex:
 
 - [`0.1.0`](v0.1.0/index.md)：基于旧 mount/filter/projection/scope 模型的完整设计与
   Python 实现地图。
+- [文档基线](baselines/index.md)：同一产品版本在 DX-REQ-0015 文档重构前的 Architecture 与
+  Impls 快照；它们保留为 evidence，不定义当前 authority。

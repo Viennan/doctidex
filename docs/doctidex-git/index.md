@@ -12,16 +12,18 @@ doctidex:
 落实状态。它不是 doctidex 协议正文；协议要求只以
 [`spec/overview.md`](../../spec/overview.md) 为准。
 
-`v1.0.0` Architecture、Python Impls、实现与三个 Published Skills 已对齐；`0.1.0` 设计和
-匹配实现说明已归档。两个版本不能混作同一个当前 surface。
+当前 `v1.0.0` Architecture 与 Python Impls 以可解释的跨 variant 工作现场重新组织；
+[DX-REQ-0015](../requirements/0015-architecture-and-impls-document-principles.md) 已记录 paired reader/verifier
+evidence 和当前 Python limitation。`0.1.0` 设计、以及本次重构前的文档基线均已归档，不能与当前
+surface 混用。
 
 ## 按阅读目的进入
 
 | 目的 | 入口 | 内容边界 |
 |---|---|---|
-| 理解 v1.0.0 的共同能力 | [Architecture](architecture/index.md) | 当前 user surface、完整能力、公共接口、逻辑模型、数据流与协作关系。 |
-| 使用或维护具体 variant | [Impls](impls/index.md) | 按实现条件进入 Python 等 variant 的接入画面、完整方案、代码地图、测试与 coverage。 |
-| 排查 0.1.0 历史 | [Version Archive](archive/index.md) | 进入旧 Architecture 与匹配 Python 实现说明；不是 v1 使用说明。 |
+| 理解 v1.0.0 的共同能力或已有工作现场 | [Architecture](architecture/index.md) | 当前 user surface、共同 state/workflow、配置/artifact 语义、跨 variant handoff 与 public interface。 |
+| 使用或维护具体 variant | [Impls](impls/index.md) | 按实现条件进入 Python 等 variant 的接入、工作现场构造、physical realization、source/test evidence 与 limitation。 |
+| 排查历史 | [Archive](archive/index.md) | `0.1.0` 版本 archive 与 DX-REQ-0015 前文档 baseline；都不是当前 authority。 |
 | 追溯需求如何演进 | [Project Requirements](../requirements/index.md) | 从项目级历史中查找影响 doctidex-git 的需求、状态与双向依赖。 |
 
 正常使用已发布插件时，应优先阅读插件自身的 Skills。Architecture 定义不同实现共同覆盖
@@ -60,10 +62,11 @@ Python 包内的类和函数属于当前实现内部接口，不承诺为稳定�
 
 ## 文档维护规则
 
-- Architecture 先说明场景和 user surface，再完整定义共同能力、逻辑模型、数据流、协作、
-  约束与失败；不包含 Python 文件布局、函数名或物理缓存路径。
-- Impls 完整说明 variant 的使用入口、适用条件、技术方案、物理数据、代码 ownership、测试
-  和 Architecture coverage，不只是代码地图。
+- Architecture 先说明场景和 user surface，再完整定义共同能力、逻辑模型、工作现场配置/artifact、
+  交接、协作、约束与失败；它不承担不影响正确 user-surface 实现的 Python 算法、函数名、lock 或
+  cache/temp mechanics。
+- Impls 完整说明 variant 的使用入口、适用条件、工作现场构造、技术方案、物理数据、代码 ownership、
+  测试和 Architecture coverage，不只是代码地图。
 - 项目级 Requirements 使用 `draft`、`implemented`、`approved` 三态，保留用户审阅的
   需求意图、决策、实现影响和双向依赖；只有用户可显式批准实现或回退批准状态。
 - 同一事实只保留一个权威说明，其他文档通过链接引用。

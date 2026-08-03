@@ -36,6 +36,11 @@ Keep the record focused on the user's scope. Preserve reviewed intent, design in
 implementation impact, provenance, and outcome without copying raw conversation or attributing
 unreviewed inference to the user.
 
+For records under `docs/`, Chinese must carry the heading, prose, and table logic. Preserve exact
+identifiers, commands, paths, schemas, code symbols, established technical terms, and quotations in
+English when needed, but do not leave a long English-only explanatory passage behind Chinese
+headings or a Chinese lead-in.
+
 ## Maintain Status
 
 Give every standalone Requirement, large-Requirement `overview.md`, and sub-requirement exactly one
@@ -137,6 +142,8 @@ meaning; otherwise report the exact pending authorization and keep the active Re
 
 Check status and approval provenance, all live comments and question/answer pairs, large-Requirement
 aggregate gates, reciprocal dependencies, affected-surface links, acceptance criteria, navigation,
-and whitespace. Record completed validation and any out-of-scope gap without silently expanding the
-Requirement. Mark `implemented` only when all authorized work is complete and no live comment or
-blocking decision remains.
+whitespace, and whether Chinese actually organizes explanatory logic. Treat English-only prose as a
+validation failure unless it is an exact identifier, command, path, schema, code symbol, established
+technical term, or quotation. Record completed validation and any out-of-scope gap without silently
+expanding the Requirement. Mark `implemented` only when all authorized work is complete and no live
+comment or blocking decision remains.

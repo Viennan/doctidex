@@ -29,9 +29,9 @@ batch capability，不是对既有接口的文字澄清。
 相关 current-artifact authority：
 
 - [CLI 用户接口](../doctidex-git/architecture/interfaces/cli.md)；
-- [Worktree 与 cache 模型](../doctidex-git/architecture/models/worktree-and-cache.md)；
-- [Worktree 与 cache workflows](../doctidex-git/architecture/system/worktree-and-cache-workflows.md)；
-- [Python worktree/cache realization](../doctidex-git/impls/python/components/worktree-and-cache.md)；
+- [Worktree 与 cache 模型](../doctidex-git/architecture/worktrees-and-cache.md)；
+- [Worktree 与 cache workflows](../doctidex-git/architecture/worktrees-and-cache.md)；
+- [Python worktree/cache realization](../doctidex-git/impls/python/components/worktrees-and-cache-cleanup.md)；
 - [`CacheService`](../../impls/libs/python/whero/doctidex/git/worktrees.py) 与
   [`source_cache` storage](../../impls/libs/python/whero/doctidex/git/storage.py)。
 

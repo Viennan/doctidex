@@ -60,17 +60,23 @@ design goals are interoperability, extensibility, and minimal format constraints
 
 ## Documentation Authority and Routing
 
-Documents under `docs/` are primarily Chinese. Use established English for identifiers, schemas,
-commands, and technical terms when it is more precise. This language rule does not apply outside
-`docs/`.
+Current explanatory documents under `docs/` use Chinese to organize their logic. Headings,
+paragraphs, and table cells that state a judgment, relationship, reason, or conclusion must be
+readable through Chinese; English may remain for exact identifiers, schemas, commands, paths, code
+symbols, established technical terms, or necessary quotations. Do not leave a long English-only
+explanatory passage behind a Chinese heading or lead-in. This does not require mechanical translation
+of code, protocol literals, or a term for which established English is more precise. Review this
+boundary manually whenever creating, rewriting, or materially revising documentation. It does not
+authorize rewriting approved history or archive prose solely for language form, and does not apply
+outside `docs/`.
 
 Each document type has one repository-local authoring authority:
 
 | Document | Current authority | Use when |
 |---|---|---|
 | Requirement | `.agents/skills/write-doctidex-requirement-docs/` | Recording intent, refining an active Requirement, handling user feedback, status, dependencies, approval, or implementation tracking. |
-| Architecture | `.agents/skills/write-doctidex-architecture-docs/` | Defining current language-neutral user surfaces, common capabilities, key models, mechanisms, policies, workflows, and observable contracts. |
-| Impls | `.agents/skills/write-doctidex-impls-docs/` | Defining a language/runtime/platform realization, physical design, code ownership, evidence, coverage, and material limitations. |
+| Architecture | `.agents/skills/write-doctidex-architecture-docs/` | Defining current language-neutral user surfaces, common capabilities, key models, worksite/handoff semantics, policies, workflows, and observable contracts. |
+| Impls | `.agents/skills/write-doctidex-impls-docs/` | Defining a language/runtime/platform realization, worksite construction and physical design, code ownership, evidence, coverage, and material limitations. |
 
 Use this order when work spans layers:
 
@@ -85,6 +91,13 @@ Use this order when work spans layers:
 Do not create a Requirement merely to document already-current behavior when there is no recording
 intent or corresponding active record. Keep one authoritative explanation per fact and cross-link
 Architecture, Impls, and Requirements where the relationship aids traceability.
+
+For a user-surface worksite, Architecture must directly explain every materialized configuration
+file/option and artifact well enough for another variant to preserve required behavior or safely
+convert, preserve, or reject it. Its completeness stops at what is needed for correct user-surface
+implementation; source-local algorithms, lock/cache/temp mechanics and call paths that do not affect
+that behavior remain Impls/source evidence. Impls constructs the actual worksite matrix and maps each
+object to its Architecture authority and source/test evidence.
 
 Prioritize coherent current Architecture and Impls over historical page compatibility. Requirements
 and archives preserve provenance rather than current structure. Structural replacement and

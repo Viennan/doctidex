@@ -1,8 +1,10 @@
 # CLI 用户接口
 
 本文是 doctidex-git `v1.0.0` 命令、参数、省略行为和副作用的权威说明。结果字段见
-[JSON Schema](cli-schema.md)，任务步骤见 [Architecture workflows](../index.md#系统与-workflow)。本篇不重复 JSON
-字段类型或内部发布算法。当前 `1.0.0` 可执行程序实现本篇命令 surface。
+[JSON Schema](cli-schema.md)，共同任务语义分别见 [树与 validation](../tree-and-validation.md)、
+[external snapshot](../external-snapshots-and-presentations.md)、[worktree/cache](../worktrees-and-cache.md)
+与 [operation safety](../operation-safety-and-recovery.md)。本篇不重复 JSON 字段类型或内部发布算法。
+当前 `1.0.0` 可执行程序实现本篇命令 surface。
 
 `external` 与 `worktree` 命令定义可选受管工作流；`validate` 直接检查可观察目录树，不以
 任何管理记录为前提。受管命令也不是 agent 的唯一读取或维护入口，原生 Git、手工
@@ -92,7 +94,7 @@ envelope；未请求 JSON 时可以使用标准 stderr usage，但退出码仍�
 root；初始 index/marker 不可用时返回 `root_not_found` blocked。已经选中的 root 在扫描期间变得
 不可读或结构失效时，validation 通过 finding 与 `scan_complete` 表达观察结果。
 
-## 4. Revision 选择
+## 4. 修订选择（revision）
 
 `--commit`、`--tag`、`--branch` 互斥：
 

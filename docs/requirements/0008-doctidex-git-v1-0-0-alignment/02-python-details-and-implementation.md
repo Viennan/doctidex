@@ -79,13 +79,13 @@ Git worktree 基础能力，但不能仅因已有类型或模块存在而保留�
 
 | Architecture 权威 | Python/Details 必须提供的证据 |
 |---|---|
-| [用户接口](../../doctidex-git/architecture/product-and-users.md) | 支持与不支持场景、受管工作流可选性和 public/internal 边界测试。 |
-| [用户工作流](../../doctidex-git/architecture/index.md#系统与-workflow) | 每个步骤、可观察结果、失败后的下一决定及端到端场景测试。 |
+| [用户接口](../../doctidex-git/architecture/product-and-user-surfaces.md) | 支持与不支持场景、受管工作流可选性和 public/internal 边界测试。 |
+| [用户工作流](../../doctidex-git/architecture/index.md) | 每个步骤、可观察结果、失败后的下一决定及端到端场景测试。 |
 | [CLI](../../doctidex-git/architecture/interfaces/cli.md) | parser invocation、参数/default、root selection、副作用与 network matrix 测试。 |
 | [CLI JSON Schema](../../doctidex-git/architecture/interfaces/cli-schema.md) | required/null 字段、枚举、Finding、Collection、failure 和 exit code 契约测试。 |
-| [领域模型](../../doctidex-git/architecture/index.md#模型层) | 对应 Python types/records 的全部属性、不变量和可见性映射。 |
-| [子系统与生命周期](../../doctidex-git/architecture/system/components-and-dependencies.md) | ownership、依赖方向、状态迁移、锁顺序、部分成功和中断恢复测试。 |
-| [约束与失败](../../doctidex-git/architecture/models/operation-result-and-failure.md) | 禁止行为、凭据清理、逻辑只读、有界输出、保留结果和人工升级测试。 |
+| [领域模型](../../doctidex-git/architecture/index.md) | 对应 Python types/records 的全部属性、不变量和可见性映射。 |
+| [子系统与生命周期](../../doctidex-git/architecture/product-and-user-surfaces.md) | ownership、依赖方向、状态迁移、锁顺序、部分成功和中断恢复测试。 |
+| [约束与失败](../../doctidex-git/architecture/operation-safety-and-recovery.md) | 禁止行为、凭据清理、逻辑只读、有界输出、保留结果和人工升级测试。 |
 | [Skill 系统](../../doctidex-git/architecture/skill-system.md) | 三 Skill 分工、无环阅读链、installed-product wording 和公开 artifact forward test。 |
 | [程序集成](../../doctidex-git/architecture/interfaces/programmatic-integration.md) | JSON consumer、分页、幂等、兼容失败和无稳定 Python API 的集成测试。 |
 
@@ -236,7 +236,7 @@ CLI 的公开契约，不能读取这些内部模块或 records。
 
 manifest 是可由宿主 Git 追踪、clone 后用于 restore 和 install 内 portable link-parse 的
 版本化产品文件。其 schema 至少表达 Architecture
-[恢复清单](../../doctidex-git/architecture/models/external-installation-and-mapping.md#2-recovery-manifest)定义的全部
+[恢复清单](../../doctidex-git/architecture/external-snapshots-and-presentations.md#3-可移植恢复清单)定义的全部
 install/link facts；序列化必须稳定、可 round-trip、拒绝重复 identity，并在写入前完成
 schema 与路径自洽校验。未知 major schema blocked；同 major 的向后兼容字段按实现 Details
 定义。manifest 可审阅但不是稳定的手工编辑 API，CLI 必须把无效或并发修改报告为冲突，
@@ -382,7 +382,7 @@ Skills 必须保持同一可用版本，不能把目标 Skill 指向尚未存在
 | Protocol validation | 已实现协议 `v1.0.0`、最近负责制、局部配置、可达性、CommonMark inline/reference link 注释关联，以及由实际 scope 与 support closure 驱动的 scoped validation。 |
 | External 与状态 | 已实现 fixed-commit install、default branch provenance、direct/dependency/self/cycle 截止、shared bare source cache、portable manifest、runtime records、相对 symlink、restore 与跨 owner 的 portable broken-link mapping；manifest 拒绝重复 key、重复 identity 及不自洽路径。 |
 | Worktree 与 cache | 已实现 managed path、working tree、bare gitdir、gitfile、submodule 与 URL source 分类，扁平 detached worktree 的 open/list/close、dirty/orphan 保留、common gitdir 归一化，以及按 Git worktree facts 保护的单 source cache cleanup。 |
-| Details 与追踪 | 当前 [Python Details](../../doctidex-git/impls/python/index.md) 已按 ownership unit 记录模块、类型、属性、效果、失败、并发和测试；[Architecture 追踪矩阵](../../doctidex-git/impls/python/architecture-coverage-and-tests.md)逐页连接 producer、consumer 与测试，并列出禁止偏离行为的证据。 |
+| Details 与追踪 | 当前 [Python Details](../../doctidex-git/impls/python/index.md) 已按 ownership unit 记录模块、类型、属性、效果、失败、并发和测试；[Architecture 追踪矩阵](../../doctidex-git/impls/python/architecture-coverage-evidence-and-worksite-validation.md)逐页连接 producer、consumer 与测试，并列出禁止偏离行为的证据。 |
 | Published plugin | 已用 Overview、Read、Maintenance 三个 installed-product Skills 替换旧八 Skill；阅读链无环，`cache clean` 与内部 storage/debug 信息不进入用户 surface。三个 Skill validator 与 containing plugin validator 均通过。 |
 | 自动验证 | Ruff format/check 与 `31` 个 pytest 用例通过；CI 在 Linux、macOS、Windows 和 Python 3.11/3.12 上执行 editable install、Ruff 与 pytest，并保留 symlink capability 的成功/不支持分支。 |
 | 独立 forward test | 独立 agent 仅凭公开 artifacts 完成 scoped validation、install 仓库内 broken portable symlink 解析，以及 dirty managed worktree 的检查、交付权限停点与安全 close；发现的问题已在实现或 Skill 中修正后复验。 |

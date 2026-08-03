@@ -25,9 +25,9 @@ checkout reconciliation 与 dependency hidden-state capability，不是既有 in
 已核对的 current-artifact authority：
 
 - [external CLI interface](../doctidex-git/architecture/interfaces/cli.md)；
-- [external installation and mapping model](../doctidex-git/architecture/models/external-installation-and-mapping.md)；
-- [external workflows](../doctidex-git/architecture/system/external-workflows.md)；
-- [Python external realization](../doctidex-git/impls/python/components/external-installation-and-mapping.md)；
+- [external installation and mapping model](../doctidex-git/architecture/external-snapshots-and-presentations.md)；
+- [external workflows](../doctidex-git/architecture/external-snapshots-and-presentations.md)；
+- [Python external realization](../doctidex-git/impls/python/components/external-presentation-and-mapping.md)；
 - [`ExternalService`](../../impls/libs/python/whero/doctidex/git/external.py)；
 - [Published Skill system](../doctidex-git/architecture/skill-system.md)。
 

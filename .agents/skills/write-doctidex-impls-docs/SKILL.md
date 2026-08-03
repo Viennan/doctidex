@@ -13,13 +13,16 @@ without turning the document into either a thin code map or a line-by-line sourc
 1. Read `AGENTS.md` for repository scope and Skill routing.
 2. If a corresponding active Requirement must change and its Skill is not already loaded, use
    `$write-doctidex-requirement-docs` first, then resume here without reopening this Skill.
-3. Read the complete applicable Architecture before treating a capability as required or optional.
+3. Read the complete applicable Architecture before treating a capability as required or optional,
+   including its worksite/handoff authority when the variant can materialize configuration or
+   artifacts.
 4. Verify realization claims against the variant's source, tests, packaging, public interfaces, and
    published Skills. Current code is evidence for implementation fact; it cannot silently override
    Architecture.
 
-Write documents under `docs/` primarily in Chinese while preserving exact identifiers, symbols,
-schemas, commands, and established technical terms.
+Write documents under `docs/` with Chinese carrying the heading, prose, and table logic while
+preserving exact identifiers, symbols, schemas, commands, paths, established technical terms, and
+quotations. Do not leave a long English-only explanatory passage behind a Chinese heading or lead-in.
 
 ## State Applicability and User Surface
 
@@ -31,6 +34,14 @@ effects, observable results, failures, and next actions. Link common semantics t
 describe only variant-specific setup, calls, examples, and operating boundaries locally. Do not
 duplicate published Skill tutorials.
 
+For every materialized user-surface worksite, create one variant inventory/construction authority.
+It must enumerate actual configuration files, every materializable option/state, artifacts, selected
+root/host/managed/cache/diagnostic locations, producer/consumer/use/lifecycle, physical
+representation, source/test evidence, and the direct Architecture authority for shared semantics.
+It must also define isolated fixture construction and a scenario matrix covering all semantically
+distinct retained states; only evidence-backed equivalent scenarios may merge. Do not let component
+pages independently redefine the same physical inventory.
+
 ## Explain the Realization
 
 Organize around stable implementation responsibilities rather than mirroring every source file.
@@ -41,6 +52,12 @@ Cover the significant realization of each Architecture model and workflow:
 - end-to-end control and data flows, subprocess or network effects, and publication order;
 - failure translation, partial success, concurrency, cancellation, recovery, and cleanup;
 - code ownership and representative source and test evidence.
+
+For each worksite object, distinguish explicitly between a common contract that the variant realizes,
+a variant choice that Architecture leaves open, a private mechanic that cannot affect correct
+user-surface implementation or handoff, and a material limitation. If a current file/option/artifact
+cannot be explained from Architecture, route the missing semantic definition back to Architecture;
+do not label it private merely because Python/source currently owns its bytes.
 
 For a major module or equivalent ownership unit, explain its purpose, intended callers, important
 types and entry points, owned state, effects, and failure/concurrency boundary. Link directly to
@@ -54,8 +71,9 @@ the realization design.
 ## Maintain Architecture Coverage
 
 Map every required Architecture capability to its variant user entry, main implementation support,
-and representative evidence. Keep the matrix at the level of key models and major workflows; avoid
-turning internal differences into product requirements.
+materialized worksite inventory row when applicable, and representative evidence. Keep the matrix at
+the level of key models and major workflows; avoid turning internal differences into product
+requirements.
 
 Classify a difference before calling it a gap:
 
@@ -68,8 +86,9 @@ Classify a difference before calling it a gap:
 A missing optional capability is valid only when Architecture marks it optional. A missing required
 capability blocks a Requirement that introduces, changes, or claims that realization. A
 documentation-only Requirement may still complete when it accurately exposes a pre-existing,
-out-of-scope implementation gap and makes no false completeness claim; leave product repair to a
-separate Requirement.
+out-of-scope implementation gap and makes no false completeness claim; record the concrete public
+contract/source/test difference in the active Requirement and leave product repair to a separate
+authorized Requirement.
 
 Impls must not supply a missing common definition back into Architecture. If its Skill is not
 already loaded, use `$write-doctidex-architecture-docs` when a stable concept or behavior belongs
@@ -83,7 +102,13 @@ Replace a current Impls tree structurally only with explicit user authority, and
 links only when the authorized successor is unambiguous.
 
 Validate applicability, user surface, Architecture coverage, component and physical-state design,
-source/test targets, limitations, links, anchors, navigation, and whitespace. Run relevant tests and
-static checks in proportion to the changed realization claims. For a substantial Architecture and
-Impls reorganization, follow the bounded combined-read contract in
-`$write-doctidex-architecture-docs`; do not start an extra cold-read cycle from this Skill.
+source/test targets, limitations, links, anchors, navigation, whitespace, and Chinese logical
+organization of explanatory prose. English-only prose is not acceptable merely because a page title
+or surrounding labels are Chinese; retain English only where it is a precise term, literal, symbol,
+command, path, schema, or quotation. Run relevant tests and static checks in proportion to the
+changed realization claims. For a substantial Architecture and Impls reorganization, construct the
+worksite fixtures and evidence matrix here, then follow the bounded Architecture-only reader plus
+full-knowledge verifier contract in `$write-doctidex-architecture-docs`; do not start an extra
+cold-read cycle from this Skill. The verifier evaluates whether reader understanding is sufficient
+to implement user-surface behavior, not whether it recreated every source algorithm, lock, call
+path, byte layout, or helper.

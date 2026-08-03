@@ -38,7 +38,7 @@ records 和物理 storage path 不承诺兼容。精确 argv 与 schema 分别�
 8. `requires_user` 非 null 时停止自动重试，向上层请求对应决定。
 9. 重试前保存 `changed`、`result` 和仍可用 paths，不能假设 blocked 已回滚。
 
-## 3. Dry-run 与 apply
+## 3. 计划模式（dry-run）与执行模式（apply）
 
 程序集成把 external mutation 建模为两个独立调用：
 

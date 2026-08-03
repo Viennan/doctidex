@@ -54,7 +54,7 @@ install、link、link-parse、worktree 等依赖 runtime 的后续 workflow，�
 
 事实入口：
 
-- [restore realization](../doctidex-git/impls/python/components/external-installation-and-mapping.md#restore)
+- [restore realization](../doctidex-git/impls/python/components/external-presentation-and-mapping.md)
   在修复前记录该 limitation，现已描述修复后的 runtime provenance rebuild；
 - [`external.py`](../../impls/libs/python/whero/doctidex/git/external.py) 的 `_restore_item` 构造
   runtime record；

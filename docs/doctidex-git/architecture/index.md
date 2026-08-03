@@ -4,72 +4,68 @@ doctidex:
   type: index
 ---
 
-# doctidex-git v1.0.0 Architecture
+# doctidex-git v1.0.0 架构
 
-本 Architecture 是 doctidex-git 当前、语言无关的共同设计。它从使用者问题进入，以关键
-模型、机制、策略、state ownership、依赖与 workflow 为主体；独立实现者不需要读取 Python
-Impls 就能理解必须保持的能力和 observable semantics，也不被要求复制 Python 的内部对象、
-算法或物理表示。
+本目录定义 doctidex-git 当前、语言无关的共同产品设计。它让独立 variant 能正确实现同一
+user surface，并能解释、接手、转换或保守保留另一个 variant 遗留的产品工作现场。它不要求
+复制 Python 的 package、module、algorithm、storage primitive、lock 或调用链。
 
-设计依据为 [DX-REQ-0008.1](../../requirements/0008-doctidex-git-v1-0-0-alignment/01-doctidex-git-alignment.md)，
-模型化重构依据为
-[DX-REQ-0009](../../requirements/0009-architecture-and-details-maintenance-rules.md)。协议语义只由
-[`spec/overview.md`](../../../spec/overview.md) 定义；本层解释产品，不增加 protocol rule。
+Architecture 的充分性以 user surface 的正确实现为止：它定义输入、默认值、持久状态与
+artifact 的语义、可观察结果、失败、恢复、交接、兼容和安全边界；不改变这些行为的 bytes、
+hash、temporary layout、publication algorithm 或 local optimization 属于 Impls evidence。
+协议要求只由 [`spec/overview.md`](../../../spec/overview.md) 定义；本层不增加 protocol rule。
 
 ## 阅读路径
 
-1. 从 [产品与使用者](product-and-users.md)理解问题、使用画面、共同心智模型与产品边界。
-2. 按任务读取下方关键模型，再进入消费这些模型的 system workflows。
-3. 从 [组件与依赖](system/components-and-dependencies.md)理解责任、state owner 和禁止反向依赖。
-4. 进入对应 workflow，最后以 interfaces 和 Skill system 核对公共 surface。
-5. 具体 Python realization、物理 state 与 tests 见 [Python Impls](../impls/python/index.md)。
+1. 从 [产品与 user surface](product-and-user-surfaces.md) 确定使用者、能力、前提、结果与
+   非目标。
+2. 面对一个已有目录或 host repository 时，先读 [工作现场与跨 variant 接手](worksite-handoff.md)：
+   它列出可出现的配置和 artifact，并路由到每项的唯一 authority。
+3. 按问题进入共同模型和 workflow：
+   [树与 validation](tree-and-validation.md)、[external snapshot 与 presentation](external-snapshots-and-presentations.md)、
+   [worktree 与 cache](worktrees-and-cache.md)，以及 [operation safety 与 recovery](operation-safety-and-recovery.md)。
+4. 调用或集成时，读取 [CLI](interfaces/cli.md)、[JSON schema](interfaces/cli-schema.md) 或
+   [programmatic integration](interfaces/programmatic-integration.md)。
+5. 已安装 agent 的路由和信息边界由 [Published Skill system](skill-system.md) 定义；当前
+   Python 如何落实所有共同事实见 [Python Impls](../impls/python/index.md)。
 
-## 模型层
+## 共同 authority
 
-| Authority | 定义内容 |
+| 权威页面 | 唯一负责的事实 |
 |---|---|
-| [Tree 与 configuration](models/doctidex-tree-and-configuration.md) | document/directory/index/log、local configuration、link annotation、shared tree observations、reachability、scope/support closure。 |
-| [Root、ownership 与 paths](models/root-ownership-and-paths.md) | doctidex root、owner/content root、host Git、path types、selection 与 ownership proof。 |
-| [Git source、revision 与 repository](models/git-source-revision-and-repository.md) | locator/canonical identity、selector/exact commit、repository/worktree、objects、network 与 source boundary。 |
-| [External installation 与 mapping](models/external-installation-and-mapping.md) | install identity/role/parents、recovery manifest、durable link、current/portable mapping。 |
-| [Worktree 与 cache](models/worktree-and-cache.md) | writable worktree ownership/lifecycle、shared cache registrations、cleanup eligibility。 |
-| [Operation、result 与 failure](models/operation-result-and-failure.md) | command context、plan/apply、result/finding、partial success、pagination/cursor 与 diagnostics。 |
+| [产品与 user surface](product-and-user-surfaces.md) | 产品问题、使用者、共同能力与非目标、逻辑责任和高层依赖。 |
+| [工作现场与跨 variant 接手](worksite-handoff.md) | 实际遗留配置/artifact 的分类、发现方式、reader 读取边界和接手决策。 |
+| [树与 validation](tree-and-validation.md) | doctidex root、owner/content/host 关系、`index.md` configuration、validation 语义。 |
+| [External snapshot 与 presentation](external-snapshots-and-presentations.md) | install、manifest/runtime/link/hook、fixed snapshot、restore、mapping、hidden 与 host integration。 |
+| [Worktree 与 cache](worktrees-and-cache.md) | writable worktree、runtime worktree record、shared source cache 和 cleanup 边界。 |
+| [Operation safety 与 recovery](operation-safety-and-recovery.md) | plan/apply、result/failure、partial success、concurrency、diagnostic、transient artifact 和 recovery。 |
+| [CLI](interfaces/cli.md) | argv grammar、command effect、default、write/network boundary 与 human next action。 |
+| [JSON schema](interfaces/cli-schema.md) | stable JSON envelope、operation payload、code、pagination 与 field compatibility。 |
+| [Programmatic integration](interfaces/programmatic-integration.md) | subprocess consumer 的 call/order/retry/compatibility discipline。 |
+| [Published Skill system](skill-system.md) | 已安装 agent 的 audience、reading chain、command sufficiency 和 information boundary。 |
 
-模型依赖方向是：tree/configuration 与 Git source 各自独立；root/ownership 为 root-scoped
-composition 提供边界；external 组合 root + Git；worktree/cache 组合 Git 与可选 owner；operation
-包装所有 workflow。任何 interface、Skill 或 Impls 都不能创建第二套模型语义。
+一个事实只在其中一页作为正文 authority 出现。接口页可引用模型和 workflow，但不重定义它们；
+Impls 说明当前 variant 如何实现，不能以 source 或 test 静默改写共同语义。
 
-## 系统与 workflow
+## 工作现场与实现边界
 
-| Authority | 设计问题 |
-|---|---|
-| [组件、责任与依赖](system/components-and-dependencies.md) | 组件 DAG、inputs/outputs/non-responsibilities、state ownership。 |
-| [Validation](system/validation-workflow.md) | root/scope、configuration、reachability、finding/candidate 与 coverage。 |
-| [External](system/external-workflows.md) | install/link/restore/remove/link-parse，以及 checkout hook reconciliation 的完整 state flow 与下一决策。 |
-| [Worktree 与 cache](system/worktree-and-cache-workflows.md) | open/list/close、cache clean 与 native Git boundary。 |
-| [并发、publication 与 recovery](system/concurrency-publication-and-recovery.md) | mutation domains、资源顺序、partial publication、conflict、interruption 与 destructive boundary。 |
+当 variant 在 user surface 操作后留下 `index.md` configuration、host `.gitignore`、manifest、
+runtime、install payload、presentation symlink、hook、worktree、cache、diagnostic 或中断证据时，
+Architecture 必须令另一 variant 能解释其 identity、owner、状态、使用方式、lifecycle 和安全
+处置。另一 variant 可以：
 
-## 公共 surface
+- 直接读写一个明确共同的 representation；
+- 将已知 representation 转换为自己的 representation，同时保持 observable semantics；
+- 在无法证明安全转换时保留现场并返回可行动的 blocked/diagnostic result。
 
-| Surface | Authority |
-|---|---|
-| CLI grammar/effects | [CLI 用户接口](interfaces/cli.md) |
-| JSON fields/codes | [CLI JSON Schema](interfaces/cli-schema.md) |
-| Program subprocess | [程序集成](interfaces/programmatic-integration.md) |
-| Installed agent workflows | [Published Skill system](skill-system.md) |
+它不得把存在的配置文件或 artifact 当作未定义的内部黑箱。反之，若 local mechanism 不出现为
+工作现场配置/artifact，且不影响上述解释或 user surface 正确性，它不需要提升到 Architecture。
 
-Surface 页面只定义调用方式与可观察 contract；领域模型和 workflow 链接回上述 authority，不以
-command 表格作为系统信息架构。Variant-specific parser、serialization、storage layout、lock、
-hash 与辅助模型属于 Impls，除非某个 exact representation 明确成为公共互操作 contract。
+## 当前变体与历史边界
 
-## 能力与非目标
+当前唯一实现变体是 [Python `1.0.0`](../impls/python/index.md)。它的 source、tests 和
+Published Skills 是当前事实 evidence，不是 Architecture authority。重构前的页面保存在
+[DX-REQ-0015 前 baseline](../archive/baselines/pre-dx-req-0015/index.md)，并统一标注
+`format-illegal`；它们仅保留历史证据，不能用于定义本目录的当前结构或产品行为。
 
-必需能力包括：原生渐进读取、full/scoped validation、fixed external snapshot、扁平 dependency、
-durable presentation、exact restore、checkout 后的受管 snapshot reconciliation、reference-protected remove、
-offline mapping、native/managed maintenance choice、isolated worktree、explicit source-cache cleanup、bounded
-results 和 installed agent routing。当前 Python coverage 见
-[coverage and tests](../impls/python/architecture-coverage-and-tests.md)。
-
-doctidex-git 不生成语义正文、不替代 native read/search/edit/Git delivery、不把 managed state
-提升为 protocol/trust/permission，也不提供跨 repository transaction、moving-ref auto refresh、
-dirty cleanup 或隐式 cache reclamation。
+本设计细化 [DX-REQ-0015](../../requirements/0015-architecture-and-impls-document-principles.md)。

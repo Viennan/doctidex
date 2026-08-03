@@ -1,8 +1,8 @@
 # CLI JSON Schema 契约
 
 本文是 doctidex-git `v1.0.0` 稳定 JSON surface 的权威说明。调用语法和副作用见
-[CLI](cli.md)，概念关系从 [Architecture models](../index.md#模型层)进入。本篇只定义可观察数据结构，
-不重复用户步骤或内部 storage。未知 optional field 可以忽略；本篇标为 required 的字段
+[CLI](cli.md)，共同模型与 workflow 从 [Architecture index](../index.md) 的 authority 路径进入。
+本篇只定义可观察数据结构，不重复用户步骤或内部 storage。未知 optional field 可以忽略；本篇标为 required 的字段
 缺失或类型变化是兼容失败。
 
 ## 1. 公共结果结构
@@ -31,9 +31,9 @@ Blocked unexpected failure 可额外提供 `details: {"diagnostic_id": string}`�
 `status` 不替代 operation domain：validate 的 `protocol_structure: fail` 是已完成的 warning，
 worktree dirty 是 list item state，只有当前请求无法按契约完成时才是 blocked。
 
-## 2. Finding 与候选项
+## 2. 发现项（Finding）与候选项
 
-### 2.1 Finding
+### 2.1 发现项（Finding）
 
 | 字段 | 类型 | 含义 |
 |---|---|---|
@@ -82,7 +82,7 @@ wire identity，也不要求特定 canonical JSON/hash。Restore 使用 recovery
 normalized filter/install-ID selection，不包含 invocation 时观察到的 payload state，因此前页
 apply 不使后页 cursor 失效。Cursor encoding 可以因实现而异。
 
-## 4. RevisionSelector
+## 4. 修订选择器（RevisionSelector）
 
 ```json
 {"kind": "commit|tag|branch", "value": "string"}
@@ -106,7 +106,7 @@ repository object format 的完整 commit ID。
 | `semantic_review` | `clear`/`required` | candidate 是否非空。 |
 | `semantic_candidates` | array[SemanticCandidate] | 需要人或 agent 判断的候选。 |
 
-`coverage: scoped` 的支持闭包按 [tree model](../models/doctidex-tree-and-configuration.md#5-reachability-与-scope)
+`coverage: scoped` 的支持闭包按 [树与验证](../tree-and-validation.md#3-验证工作流)
 包含 scopes 外的 root/祖先负责 index、适用局部配置、必要 navigation support 和 scopes 内 link
 的必要目标。`findings` 与 `semantic_candidates` 只包含 scope
 内事项，或直接阻止解释/验证 scope 的支持路径事项；collection totals 对该结果集合计数，
@@ -360,7 +360,7 @@ schema、identity、path containment、record reference 或 owner 证据不自�
 时才 blocked。两者都使用 `mapping_damaged` finding 并保留仍可靠字段，不能伪装成 unmanaged 或
 dependency_not_installed。
 
-## 8. WorktreeItem
+## 8. 工作树项（WorktreeItem）
 
 | 字段 | 类型 | 含义 |
 |---|---|---|

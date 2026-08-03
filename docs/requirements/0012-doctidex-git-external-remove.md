@@ -24,9 +24,9 @@ Skill 的顺序完成。实现与验证完成后，用户于 2026-08-02 明确�
 相关 current-artifact authority：
 
 - [CLI 用户接口](../doctidex-git/architecture/interfaces/cli.md)；
-- [External installation、link 与 mapping 模型](../doctidex-git/architecture/models/external-installation-and-mapping.md)；
-- [External workflows](../doctidex-git/architecture/system/external-workflows.md)；
-- [Python external realization](../doctidex-git/impls/python/components/external-installation-and-mapping.md)；
+- [External installation、link 与 mapping 模型](../doctidex-git/architecture/external-snapshots-and-presentations.md)；
+- [External workflows](../doctidex-git/architecture/external-snapshots-and-presentations.md)；
+- [Python external realization](../doctidex-git/impls/python/components/external-presentation-and-mapping.md)；
 - [`ExternalService`](../../impls/libs/python/whero/doctidex/git/external.py) 与
   [`main.py`](../../impls/libs/python/whero/doctidex/cli/main.py)。
 

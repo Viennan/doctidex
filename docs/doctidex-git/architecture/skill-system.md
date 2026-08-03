@@ -4,7 +4,9 @@
 `impls/agent-plugins/doctidex-git/skills/` 的当前设计约束。仓库维护者在创建、修改或删除该产品
 的 Skill 或其 metadata 前，必须先读本篇及受影响 workflow 的 Architecture 和 public interface。
 
-产品工作流以 [Architecture system](index.md#系统与-workflow)为准，精确 public command contract 由
+产品工作流以 [产品与 user surface](product-and-user-surfaces.md)、[树与 validation](tree-and-validation.md)、
+[external snapshot](external-snapshots-and-presentations.md)、[worktree/cache](worktrees-and-cache.md) 和
+[operation safety](operation-safety-and-recovery.md) 为准，精确 public command contract 由
 [CLI](interfaces/cli.md) 和 [JSON Schema](interfaces/cli-schema.md) 负责。Skill 应使已安装产品中的
 agent 能完成支持的工作流，却不成为另一份 Architecture authority，也不把维护过程带入产品。
 
@@ -108,7 +110,7 @@ Overview 只向专项 Skill 路由，不反向要求重读；专项之间不能�
 Overview 在同一任务中不重复打开。Overview 加一个相关专项 Skill 必须足以完成单一受支持
 场景。
 
-## 4. Read 的不可访问 Symlink 引导
+## 4. 读取不可访问 symlink 时的引导
 
 Read Skill 保持原生工具优先，但必须为无法访问的 symlink 提供确定的升级路径：
 
