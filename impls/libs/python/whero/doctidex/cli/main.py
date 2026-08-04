@@ -120,6 +120,15 @@ def _dispatch(args: argparse.Namespace) -> dict[str, Any]:
             return service.rebind(Path(args.source_directory), args.target_path, apply=args.apply)
         if args.external_command == "unlink":
             return service.unlink(args.target_path, apply=args.apply)
+        if args.external_command == "list":
+            return service.list_installs(
+                repository_path=args.repository,
+                source_host=args.host,
+                selector=_selector(args),
+                roles=args.role,
+                limit=args.limit,
+                cursor=args.cursor,
+            )
         if args.external_command == "remove":
             return service.remove(args.install_id, apply=args.apply)
         return service.restore(
@@ -224,6 +233,14 @@ def _parser() -> Parser:
     restore.add_argument("--install", action="append", default=[])
     _pagination(restore)
     _mode(restore)
+
+    list_external = external_commands.add_parser("list")
+    list_external.add_argument("--root")
+    list_external.add_argument("--repository")
+    list_external.add_argument("--host")
+    _revision(list_external, required=False)
+    list_external.add_argument("--role", action="append", choices=("direct", "dependency"), default=[])
+    _pagination(list_external)
 
     remove = external_commands.add_parser("remove")
     remove.add_argument("install_id")

@@ -23,7 +23,7 @@ required；空值使用 null 或空 collection，不依赖 key 缺失表达状�
 | `next_actions` | array[string] | 已完成结果的建议后续；默认空。 |
 | `affected` | array[string] | blocked/partial result 影响对象；默认空。 |
 | `requires_user` | string/null | 继续所需的用户输入类别；无需用户时 null。 |
-| `collection` | Collection/null | validate/external restore/worktree list 的分页事实；其他 operation 为 null。 |
+| `collection` | Collection/null | validate/external restore/external list/worktree list 的分页事实；其他 operation 为 null。 |
 
 Blocked unexpected failure 可额外提供 `details: {"diagnostic_id": string}`；其他 details fields
 不是 stable public contract。Diagnostic ID 只用于报告内部诊断，不是 path、authorization 或 cursor。
@@ -61,7 +61,7 @@ candidate 不进入 `findings`，也不改变 `protocol_structure`。
 | 字段 | 类型 | 含义 |
 |---|---|---|
 | `limit` | integer | 本页每个顶层列表的预算。 |
-| `lists` | object | `field -> {total, returned, truncated}`；validate 使用 findings/semantic_candidates，external restore 与 worktree list 使用 items。 |
+| `lists` | object | `field -> {total, returned, truncated}`；validate 使用 findings/semantic_candidates，external restore/external list/worktree list 使用 items。 |
 | `truncated` | boolean | 任一列表还有后续项时 true。 |
 | `next_cursor` | string/null | 同时恢复所有列表位置的 opaque token；没有下一页时 null。 |
 
@@ -74,6 +74,7 @@ cursor 与 operation、root、规范化 scope/filter、limit 及命令定义的�
 | validate findings | `(path-or-empty, code, message)`。 |
 | semantic candidates | `(path, code, message)`。 |
 | restore items | `install_id`。 |
+| external list items | `(repository_path, source_host-or-empty, revision_selector.kind, revision_selector.value, resolved_commit, install_id)`。 |
 | worktree items | `worktree_path`。 |
 
 同 key item 必须保持 deterministic order。Observed-state identity 由 Impls 根据该 operation 可
@@ -144,7 +145,40 @@ DependencyParents：
 pagination，因为 agent 建立或判断当前 edge 不需要枚举整个依赖图；`truncated: true` 时不得
 把 items 当作完整集合。
 
-### 6.1 `external_install`
+### 6.1 InstallReference 与 ExternalListQuery
+
+InstallReference 是 selected owner root 的一个 current runtime install record 的只读 public view：
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| `install_id` | opaque string | 当前 owner root 内精确 target；不是要求 human/agent 记忆的显示名称。 |
+| `source_url` | sanitized string | 不含 credential 的 source identity。 |
+| `source_host` | string/null | 从 source identity 可公开得出的 host；local source 为 null。 |
+| `repository_path` | non-empty string | source repository 的可读路径线索，例如 `Viennan/wiki`；不是完整 URL 或 filesystem path。 |
+| `revision_selector` | RevisionSelector | 原 install selector provenance；不用于刷新 ref。 |
+| `resolved_commit` | full commit ID | install 的 exact fixed snapshot。 |
+| `install_role` | `direct`/`dependency` | 是否进入 portable recovery manifest。 |
+| `managed_state` | `complete`/`hidden` | current runtime record 状态；hidden 仅适用于 dependency。 |
+| `presentation_paths` | array[root-relative POSIX path] | current runtime link record 中指向此 install 的 target paths，按字典序稳定排序；没有 link 时为空。 |
+
+ExternalListQuery 回显已规范化的 filter：`repository_path`、`source_host`、`revision_selector` 和
+`resolved_commit` 均为 string/object 或 null；`roles` 是去重排序后的 `direct`/`dependency` array，未指定时为空
+array。该 object 只表达 query，不是 stored alias 或可跨 root 复用的 identity。
+
+### 6.2 `external_list`
+
+非 blocked result 的 fields：
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| `operation` | `external_list` | 操作判别字段。 |
+| `query` | ExternalListQuery | 已规范化并绑定 cursor 的查询事实。 |
+| `items` | array[InstallReference] | 当前有界页；空 array 与多项都表示成功查询。 |
+
+`changed` 为空、`network` 为 false、`requires_user` 为 null。runtime schema/record 无法安全读取或 cursor 不匹配时
+operation blocked，不返回混合或伪造 items。完整匹配集合的计数由 `collection.lists.items` 表示。
+
+### 6.3 `external_install`
 
 非 blocked result 的 fields：
 
@@ -179,7 +213,7 @@ pagination，因为 agent 建立或判断当前 edge 不需要枚举整个依赖
 selector 的 lookup，是否形成额外 physical key 维度由 Impls 定义。同 key 重试保持
 `install_id`/`install_path`，dependency-only 可提升为 direct。
 
-### 6.2 `external_link`
+### 6.4 `external_link`
 
 非 blocked result 的 fields：
 
@@ -216,7 +250,7 @@ FrontmatterChanges：
 }
 ```
 
-### 6.3 `external_rebind`
+### 6.5 `external_rebind`
 
 非 blocked result 的 fields：
 
@@ -234,7 +268,7 @@ FrontmatterChanges：
 siblings。旧/新 mapping、target symlink、payload 或 index declaration 不能完整证明时整体 blocked；调用方保留
 target 并修复精确 evidence，不将 blocked 当作“可以先手工删除 link”。
 
-### 6.4 `external_unlink`
+### 6.6 `external_unlink`
 
 非 blocked result 的 fields：
 
@@ -255,7 +289,7 @@ target 并修复精确 evidence，不将 blocked 当作“可以先手工删除 
 `affected` evidence。旧 link record 缺少 frontmatter ownership 时不是 damage；result 报告 `preserved` configuration
 effect，apply 保留无法归属的 index state。
 
-### 6.5 `external_restore`
+### 6.7 `external_restore`
 
 RestoreItem：
 
@@ -288,7 +322,7 @@ dependency edges 不在无 filter 集合中。任一 item blocked 令顶层 stat
 不可识别或无法选择宿主 repository 时，operation blocked。`collection.lists.items` 对 filter
 后的记录计数；恢复载荷不改变 manifest identity，也不使后续 cursor 失效。
 
-### 6.6 `external_remove`
+### 6.8 `external_remove`
 
 非 blocked result 的 fields：
 
@@ -310,7 +344,7 @@ result 的 `findings` 为空；target reference、unknown/damaged install 或 re
 `affected`，并以 `install_referenced` external finding 说明 remove 未执行。command 不公开或推断 shared
 cache object identity。
 
-### 6.7 `hook_install` 与 `hook_run`
+### 6.9 `hook_install` 与 `hook_run`
 
 HookInstall 的非 blocked result fields：
 

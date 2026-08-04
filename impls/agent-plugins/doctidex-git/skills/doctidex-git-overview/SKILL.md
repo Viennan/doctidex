@@ -1,6 +1,6 @@
 ---
 name: doctidex-git-overview
-description: Establish the installed doctidex-git mental model, shared CLI grammar, root and path semantics, result handling, safety boundaries, and workflow routing. Use at the first doctidex-git task in a conversation, when product terms or output contracts are unfamiliar, or when choosing between reading and maintenance workflows; do not use it as a substitute for the selected specialist.
+description: Establish the installed doctidex-git mental model, shared CLI grammar, root and path semantics, result handling, safety boundaries, and workflow routing. Use at the first doctidex-git task in a conversation, when product terms or output contracts are unfamiliar, or when choosing a reading, mention-resolution, or maintenance workflow; do not use it as a substitute for the selected specialist.
 ---
 
 # Use doctidex-git
@@ -21,8 +21,10 @@ specify how to choose, create, or install a `.venv`.
 
 ## Choose a Workflow
 
-- Load `$doctidex-git-read` to navigate indexes and links, search content with native tools, or
-  diagnose an inaccessible symlink.
+- Load `$doctidex-git-read` to navigate indexes and links, search content with native tools, diagnose
+  an inaccessible symlink, or continue native reading after mention resolution.
+- Load `$doctidex-git-mentions` to resolve a repository-path, optional host/revision, complete
+  external-link, or partial external-link mention to managed candidates or diagnostics.
 - Load `$doctidex-git-maintenance` to validate structure, install or restore external Git content,
   create/rebind/unlink a durable external presentation, or open/list/close an optional isolated worktree.
 - When a task crosses that boundary, load the second specialist once and resume there. Do not form a

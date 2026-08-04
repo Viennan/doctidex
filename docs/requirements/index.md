@@ -50,6 +50,7 @@ overview 才可成为 `approved`。详见 [DX-REQ-0006](0006-large-requirement-d
 | 0017 | [为 Python CLI 与 Git hook 选定 `.venv` 运行环境](0017-python-venv-cli-and-hook-runtime.md) | 要求当前 Python variant 的 agent 选定已安装代码包的 `.venv`，并以其运行 CLI 与不依赖 shell `PATH` 的 Git hook。 | `approved` |
 | 0018 | [限定 hook 只安装在 owner root 的宿主仓库](0018-owner-root-hook-install-guidance.md) | 限定 agent 仅为当前 owner root 的 host Git repository 安装 hook，不在其受管 install repository 中安装。 | `approved` |
 | 0019 | [就近 external link 映射与受管重绑定](0019-nearby-external-link-rebinding.md) | 以就近、按需的 external presentation 组织文档内容，并定义安全重绑定同名 link 至新 fixed install 的工作流。 | `approved` |
+| 0020 | [installed repository 的可读提及与消歧](0020-installed-repository-mentions.md) | 定义用户与 agent 以可读 repository reference 发现、消歧并选择 owner-root-scoped installed repository 的工作流，避免要求记忆 opaque `install_id`。 | `approved` |
 
 新记录按全项目连续编号。`draft` 中可使用 `<question>` 与紧邻的 `<answer>` 块协作；
 用户也可以用 `<comment>...</comment>` 在相关位置留下评论。agent 不得代用户创建评论，

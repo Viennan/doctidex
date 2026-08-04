@@ -25,6 +25,13 @@ Overview. Use the exact source, commit, owner root, and parent install fields al
 starting here and an inaccessible symlink must first be interpreted, load Read once, collect the
 facts, then return here without causing Read to reload Maintenance.
 
+## Resolve a Mention
+
+When a task refers to a repository path or complete/partial external link instead of an exact managed
+target, load `$doctidex-git-mentions` once and return here with its candidate or diagnostic. Do not run
+`external list` or `link-parse` to recreate that Skill's result. After it proves a unique candidate or the
+user chooses one, retain its exact ID only for the authorized maintenance command that needs it.
+
 ## Preserve Layer Boundaries
 
 Use validation for observable doctidex protocol structure only. Do not turn a managed-state issue,

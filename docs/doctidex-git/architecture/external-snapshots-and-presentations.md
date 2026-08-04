@@ -21,6 +21,7 @@ reference-protected remove 和 checkout 后的离线 reconciliation；不替代 
 | Recovery manifest | direct installs + durable links 的 portable record。 | clone/clean 后按 exact commit/path 恢复，不重写 link。 |
 | Runtime record | host-local install/link/worktree record。 | 支撑当前 owner mapping、dependency edges、hidden state 与 maintenance ownership。 |
 | Hook registration | owner root + host Git repository + `post-checkout` trigger。 | checkout 后对已存在 managed snapshot 做离线 reconciliation。 |
+| InstallReference | selected owner root + one current runtime install record 的只读查询视图。 | 让 human/agent 以可读 source repository path、host、fixed revision、role、state 和 recorded presentation 查找、比较及消歧，不把 opaque Install ID 当作对话名称。 |
 
 不同 fixed selector 一般是不同 install identity；省略 selector 的 default provenance 只参与相同
 intent 的 lookup，不授权以后刷新 branch/tag。dependency install 不在 install 内递归 materialize；
@@ -112,6 +113,31 @@ mapping。两者已知不一致、target/symlink identity 不能证明或 record
 当前 `schema_version: 1.0` 读者必须逐项解释上述 option。无法安全读取当前 runtime 的 variant 可以
 保留该文件、从 manifest 处理 portable direct state，并对需要 current mapping/hidden/worktree 的操作
 返回 blocked/migration diagnostic；不能以空 runtime 覆盖它。
+
+### 4.1 Managed install reference 与只读发现
+
+`InstallReference` 是 `external list` 在一个 selected owner root 内对 current runtime install record 形成的
+瞬时公开视图，不是 manifest/runtime 新字段、install 的第二 identity 或可变 alias。其精确 target 始终是
+`(owner root, install_id)`；可读字段只用于人和 agent 在对话中重新发现或比较该 target，不能跨 root 复用，也
+不能令 fixed snapshot 跟随 branch/tag。
+
+每个 reference 至少公开 sanitized `source_url`、由 source 可读呈现得到的 `repository_path`、可为 null 的
+`source_host`、`revision_selector`、`resolved_commit`、`install_role`、`managed_state`、opaque `install_id`，以及
+该 owner root 当前 runtime link record 中关联此 ID 的 root-relative `presentation_paths`。`repository_path` 是
+source repository 的路径线索，例如 `git@github.com:Viennan/wiki.git` 的 `Viennan/wiki`；它不是完整 URL、
+credential、payload path 或跨 host 的全局名。不同 host 的相同 repository path 必须保持为不同 reference 候选。
+没有 host 的 local source 公开 null `source_host`；没有 durable presentation 的 `presentation_paths` 为空。
+
+`external list` 只读取该 owner root 的 current managed install/link records，包含 direct、complete dependency 和
+hidden dependency；它不枚举 filesystem 中普通 repository、remote source、未展开的 portable dependency 或其它
+owner root。它不验证、restore、install、删除或刷新 payload，也不把 recorded presentation path 当成已被 native
+filesystem 读取成功的保证。agent 以完整实际 path 解释 external link 时，仍按需调用 `link-parse`；不完整 path 的
+context-first 补全是 agent responsibility，不是本命令或 runtime 的搜索行为。
+
+查询的 repository path、host、revision 和 role filters 只在已记录 facts 上比较：tag/branch 只匹配 selector
+provenance，commit 只匹配 fixed resolved commit，绝不访问 network 或重新解析 moving ref。空集和多项都是成功的
+读结果；只有 agent 能结合用户上下文选择唯一项。运行时 schema/record 无法安全读取时 operation 返回 existing
+diagnostic/blocked result，不伪造部分 reference。
 
 ## 5. 安装载荷、隐藏状态与持久呈现
 

@@ -179,6 +179,7 @@ def run(
                 "install_filter",
                 "items",
             },
+            "external_list": {"query", "items"},
             "external_remove": {
                 "applied",
                 "install_id",
@@ -410,6 +411,146 @@ def test_different_selectors_keep_distinct_install_paths(cli_env: dict[str, str]
     assert branch["resolved_commit"] == tag["resolved_commit"] == commit
     assert branch["install_id"] != tag["install_id"]
     assert branch["install_path"] != tag["install_path"]
+
+
+def test_external_list_discovers_managed_installs_and_rejects_stale_cursor(
+    cli_env: dict[str, str], tmp_path: Path, symlink_capable: None
+) -> None:
+    root = create_repository(tmp_path / "host")
+    source = create_repository(tmp_path / "sources" / "Viennan" / "wiki")
+    commit = add_source_content(source)
+    git(source, "tag", "v1")
+    branch = run(
+        ["external", "install", "--url", str(source), "--branch", "main", "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    tagged = run(
+        ["external", "install", "--url", str(source), "--tag", "v1", "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    run(
+        ["external", "link", branch["working_path"], "external/wiki", "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    dependency_source = create_repository(tmp_path / "sources" / "Viennan" / "dependency")
+    dependency_commit = add_source_content(dependency_source, "dependency.md")
+    dependency = run(
+        [
+            "external",
+            "install",
+            "--url",
+            str(dependency_source),
+            "--commit",
+            dependency_commit,
+            "--dependency-of",
+            branch["install_id"],
+            "--root",
+            str(root),
+            "--apply",
+        ],
+        tmp_path,
+        cli_env,
+    )
+
+    listed = run(["external", "list", "--root", str(root)], tmp_path, cli_env)
+    assert listed["network"] is False
+    assert listed["changed"] == []
+    assert listed["collection"]["lists"]["items"] == {"total": 3, "returned": 3, "truncated": False}
+    branch_item = next(item for item in listed["items"] if item["install_id"] == branch["install_id"])
+    assert branch_item["source_host"] is None
+    assert branch_item["repository_path"].endswith("sources/Viennan/wiki")
+    assert branch_item["presentation_paths"] == ["external/wiki"]
+    assert "install_path" not in branch_item
+
+    repository_path = branch_item["repository_path"]
+    direct = run(
+        ["external", "list", "--root", str(root), "--repository", repository_path, "--role", "direct"],
+        tmp_path,
+        cli_env,
+    )
+    assert {item["install_id"] for item in direct["items"]} == {branch["install_id"], tagged["install_id"]}
+    assert direct["query"]["repository_path"] == repository_path
+    assert direct["query"]["roles"] == ["direct"]
+
+    by_tag = run(
+        ["external", "list", "--root", str(root), "--repository", repository_path, "--tag", "v1"],
+        tmp_path,
+        cli_env,
+    )
+    assert [item["install_id"] for item in by_tag["items"]] == [tagged["install_id"]]
+    by_commit = run(
+        ["external", "list", "--root", str(root), "--commit", commit], tmp_path, cli_env
+    )
+    assert {item["install_id"] for item in by_commit["items"]} == {branch["install_id"], tagged["install_id"]}
+    dependencies = run(
+        ["external", "list", "--root", str(root), "--role", "dependency"], tmp_path, cli_env
+    )
+    assert [item["install_id"] for item in dependencies["items"]] == [dependency["install_id"]]
+
+    paged = run(["external", "list", "--root", str(root), "--limit", "1"], tmp_path, cli_env)
+    assert paged["collection"]["truncated"] is True
+    assert paged["collection"]["next_cursor"]
+    extra_source = create_repository(tmp_path / "sources" / "Viennan" / "extra")
+    run(
+        ["external", "install", "--url", str(extra_source), "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    stale = run(
+        [
+            "external",
+            "list",
+            "--root",
+            str(root),
+            "--limit",
+            "1",
+            "--cursor",
+            paged["collection"]["next_cursor"],
+        ],
+        tmp_path,
+        cli_env,
+        expected=2,
+    )
+    assert stale["operation"] == "external_list"
+    assert stale["findings"][0]["code"] == "cursor_invalid"
+
+    invalid = run(
+        ["external", "list", "--root", str(root), "--repository", "https://github.com/Viennan/wiki.git"],
+        tmp_path,
+        cli_env,
+        expected=2,
+    )
+    assert invalid["operation"] == "external_list"
+    assert invalid["findings"][0]["code"] == "argument_invalid"
+
+    def set_colliding_source_hosts(runtime: dict) -> None:
+        runtime["installs"][branch["install_id"]]["source_url"] = "git@github.com:Viennan/wiki.git"
+        runtime["installs"][tagged["install_id"]]["source_url"] = "ssh://git@gitlab.com/Viennan/wiki.git"
+
+    RootStorage(root).update_runtime(set_colliding_source_hosts)
+    same_path = run(
+        ["external", "list", "--root", str(root), "--repository", "Viennan/wiki"],
+        tmp_path,
+        cli_env,
+    )
+    assert {
+        (item["source_host"], item["install_id"])
+        for item in same_path["items"]
+        if item["repository_path"] == "Viennan/wiki"
+    } == {
+        ("github.com", branch["install_id"]),
+        ("gitlab.com", tagged["install_id"]),
+    }
+    github = run(
+        ["external", "list", "--root", str(root), "--repository", "Viennan/wiki", "--host", "GITHUB.COM"],
+        tmp_path,
+        cli_env,
+    )
+    assert github["query"]["source_host"] == "github.com"
+    assert [item["install_id"] for item in github["items"]] == [branch["install_id"]]
 
 
 def test_missing_revision_is_blocked_without_creating_root_state(cli_env: dict[str, str], tmp_path: Path) -> None:
@@ -1198,6 +1339,22 @@ def test_hook_rechecks_hidden_dependencies_and_unhides_from_parent_manifest(
     assert hidden_path.is_dir()
     assert git(root, "check-ignore", "-q", str(hidden_path)) == ""
     assert RootStorage(root).read_runtime()["installs"][child["install_id"]]["managed_state"] == "hidden"
+    hidden_list = run(
+        ["external", "list", "--root", str(root), "--role", "dependency"], tmp_path, cli_env
+    )
+    assert hidden_list["items"] == [
+        {
+            "install_id": child["install_id"],
+            "source_url": child["source_url"],
+            "source_host": None,
+            "repository_path": child["source_url"].lstrip("/"),
+            "revision_selector": {"kind": "commit", "value": child_commit},
+            "resolved_commit": child_commit,
+            "install_role": "dependency",
+            "managed_state": "hidden",
+            "presentation_paths": [],
+        }
+    ]
 
     preserved = run(
         ["external", "remove", child["install_id"], "--root", str(root), "--apply"], tmp_path, cli_env
@@ -1248,6 +1405,10 @@ def test_hook_rechecks_hidden_dependencies_and_unhides_from_parent_manifest(
     runtime = RootStorage(root).read_runtime()["installs"][child["install_id"]]
     assert runtime["managed_state"] == "complete"
     assert runtime["install_path"] == child["install_path"]
+    complete_list = run(
+        ["external", "list", "--root", str(root), "--role", "dependency"], tmp_path, cli_env
+    )
+    assert complete_list["items"][0]["managed_state"] == "complete"
 
 
 def test_worktree_dirty_preservation_and_close(cli_env: dict[str, str], tmp_path: Path) -> None:

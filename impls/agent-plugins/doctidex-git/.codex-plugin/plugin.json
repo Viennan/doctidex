@@ -14,7 +14,7 @@
     "category": "Productivity",
     "capabilities": ["Read", "Write"],
     "defaultPrompt": [
-      "Navigate this doctidex tree and diagnose an inaccessible external link.",
+      "Resolve a managed repository or external-link mention.",
       "Validate selected doctidex directories without changing the tree.",
       "Maintain external doctidex content in an isolated writable worktree."
     ]

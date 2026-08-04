@@ -100,7 +100,7 @@ def resolve_source(
     if selector is None:
         branch, commit = _default_revision(canonical, local)
         return ResolvedSource(value, public, canonical, RevisionSelector("commit", commit), branch, commit, network)
-    _validate_selector(selector)
+    validate_revision_selector(selector, operation="external_install")
     commit = _resolve_revision(canonical, local, selector)
     normalized = RevisionSelector(selector.kind, commit if selector.kind == "commit" else selector.value)
     resolution_used_network = local is None
@@ -303,7 +303,7 @@ def source_relation(root: Path, canonical: str) -> str:
 
 
 def resolve_local_revision(gitdir: Path, selector: RevisionSelector, *, operation: str) -> str:
-    _validate_selector(selector)
+    validate_revision_selector(selector, operation=operation)
     if selector.kind == "commit":
         expression = f"{selector.value}^{{commit}}"
     elif selector.kind == "tag":
@@ -424,14 +424,14 @@ def _require_full_object(gitdir: Path, commit: str, *, operation: str) -> None:
         )
 
 
-def _validate_selector(selector: RevisionSelector) -> None:
+def validate_revision_selector(selector: RevisionSelector, *, operation: str) -> None:
     if selector.kind not in {"commit", "tag", "branch"} or not selector.value:
-        raise _revision_error("external_install")
+        raise _revision_error(operation)
     if selector.kind == "commit":
         if not _HEX_OBJECT.fullmatch(selector.value):
             raise DoctidexError(
                 "A commit selector must be a full SHA-1 or SHA-256 object ID.",
-                operation="external_install",
+                operation=operation,
                 affected=[selector.value],
                 actions=["Pass the full commit object ID."],
                 requires_user="revision",
@@ -448,7 +448,7 @@ def _validate_selector(selector: RevisionSelector) -> None:
     if invalid or check.returncode != 0:
         raise DoctidexError(
             "The tag or branch selector is not a single valid Git ref name.",
-            operation="external_install",
+            operation=operation,
             affected=[selector.value],
             actions=["Pass a branch or tag name, not a revspec."],
             requires_user="revision",

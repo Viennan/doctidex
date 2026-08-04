@@ -13,7 +13,7 @@ file/Git 工具不能可靠取得的 doctidex/Git 交叉事实处获得确定性
 | 使用者 | 入口 | 稳定承诺 | 不应依赖 |
 |---|---|---|---|
 | Human | CLI human output、原生 file/Git | 可观察路径、状态、failure 和下一步。 | Python module、cache/runtime file 的私自修改。 |
-| Agent | Overview + Read/Maintenance Skill、CLI `--json`、原生工具 | 足够的任务路由、确定性事实、保留原生工具选择。 | repository Architecture、Impls、source 或 tests。 |
+| Agent | Overview + Mentions/Read/Maintenance Skill、CLI `--json`、原生工具 | 足够的任务路由、确定性事实、保留原生工具选择。 | repository Architecture、Impls、source 或 tests。 |
 | Program | CLI `--json` subprocess | versioned envelope、operation schema、stable code、bounded collection。 | human output、private import、current storage layout。 |
 | Variant maintainer | Architecture + 对应 Impls | 共同 contract、接手/compatibility boundary、realization evidence。 | 以另一 variant 的 source 推断未定义的产品语义。 |
 
@@ -44,10 +44,11 @@ native Git、手工 worktree、submodule 或第三方 symlink 不因其存在而
 | 验证根或 scope | `validate ROOT [--scope PATH]...` | 省略 scope 为完整 root；重复 scope 合并。 | coverage、findings、semantic candidates；scoped pass 不等于全根 pass。 |
 | 安装 external snapshot | `external install SOURCE [REVISION]` | 默认 dry-run；省略 revision 记录 default provenance，实际读取固定 commit。 | install ID/path、manifest/runtime/ignore 的计划或变更；审阅后才 `--apply`。 |
 | 展开 dependency | `external install SOURCE REVISION --dependency-of ID` | parent 必须是当前 complete install。 | 扁平 dependency edge；需要 durable restore/link 时再提升为 direct。 |
+| 解析 repository 提及 | Mentions Skill -> `external list [FILTER]` | 只读 selected owner root；可用 repository path、host、固定 revision 与 role 收窄。 | 可读 InstallReference 候选和分页事实；agent 结合上下文消歧后才把 exact ID 交给其他命令。 |
 | 建立 presentation | `external link SOURCE_DIR TARGET` | TARGET 是 user 选择且须可 track。 | relative symlink、safe/index declaration、durable mapping；Git 审阅随后由原生工具完成。 |
 | 替换或解除 presentation | `external rebind SOURCE_DIR TARGET` / `external unlink TARGET` | rebind 选择已审阅的新 direct snapshot；unlink 只接受 exact managed target。 | 同 path 切换到新 snapshot，或在 reference-free 时移除一个 presentation；不改变 install lifecycle。 |
 | 恢复 direct install | `external restore [ID...]` | 默认 dry-run；只依 manifest exact commit/path。 | `planned`、`restored`、`unchanged` 或 `blocked`；不刷新 moving ref 或改写 link。 |
-| 解析 path 或 broken link | `external link-parse PATH` | PATH 可以在 owner 或 installed content 中。 | current/portable mapping 与 target state；据此继续读取、restore、安装 dependency 或诊断。 |
+| 解析 external-link 提及 | Mentions Skill -> `external link-parse PATH` | PATH 可以在 owner 或 installed content 中；不完整 spelling 先由任务上下文补全为唯一实际 path。 | current/portable mapping 与 target state；据此继续读取、restore、安装 dependency 或诊断。 |
 | 协调 checkout snapshot | `hook --install` 后 Git `post-checkout` | 用户明确安装一次；run 是离线。 | existing payload 对齐、hidden/preserved/blocked item；不 materialize missing direct install。 |
 | 移除 install | `external remove INSTALL_ID` | 默认 dry-run；只接受 exact ID。 | reference-free 才移除；reference 或 hidden state 时保留现场和 evidence。 |
 | 隔离维护 | `worktree open/list/close` | 当前 working tree 优先原生维护；open 仅在需要隔离时。 | owner 内 writable worktree；changed/unavailable 一律保留并要求决定。 |
@@ -85,7 +86,7 @@ doctidex tree/configuration      Git source/revision
 | Tree observer | root、`index.md`、Markdown links。 | protocol observation、validation finding、responsible-index fact。 | 不读取 Git source/runtime 以判定 protocol。 |
 | Root/host resolver | filesystem/Git context、selected input。 | root、owner/content/host relation。 | 不从 managed record 伪造 root。 |
 | Source resolver | public locator、revision request。 | sanitized source fact、selector、exact commit、source availability。 | 不定义 presentation 或 user permission。 |
-| External coordinator | root/host/source/install records。 | install, manifest/runtime, link, restore/remove/link-parse outcome。 | 不把 cache/lock mechanics 变成 product state。 |
+| External coordinator | root/host/source/install records。 | install、manifest/runtime、link、managed-install discovery、restore/remove/link-parse outcome。 | 不把 cache/lock mechanics 变成 product state。 |
 | Hook coordinator | registration、manifest/runtime、existing payload。 | offline alignment/hidden/preserved item result。 | 不重建 missing direct payload 或改写 manifest commit。 |
 | Worktree/cache coordinator | source relation、runtime worktree record、Git registration。 | writable lifecycle 或 explicit cache-clean result。 | 不因 one root 回收 shared cache。 |
 | Result boundary | domain outcome/finding。 | human/JSON observable result、pagination、next action。 | 不凭 renderer/Skill 创造领域事实。 |

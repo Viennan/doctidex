@@ -1,6 +1,6 @@
 # 已发布 Skill 系统
 
-本篇定义三个 Published Skills 的职责、阅读链、命令说明充分性和用户/内部信息边界，也是维护
+本篇定义四个 Published Skills 的职责、阅读链、命令说明充分性和用户/内部信息边界，也是维护
 `impls/agent-plugins/doctidex-git/skills/` 的当前设计约束。仓库维护者在创建、修改或删除该产品
 的 Skill 或其 metadata 前，必须先读本篇及受影响 workflow 的 Architecture 和 public interface。
 
@@ -10,29 +10,30 @@
 [CLI](interfaces/cli.md) 和 [JSON Schema](interfaces/cli-schema.md) 负责。Skill 应使已安装产品中的
 agent 能完成支持的工作流，却不成为另一份 Architecture authority，也不把维护过程带入产品。
 
-## 1. 三 Skill 结构
+## 1. 四 Skill 结构
 
 | Skill | 负责 | 不负责 | CLI |
 |---|---|---|---|
-| `doctidex-git-overview` | 共同心智模型、术语、根选择、输出/失败约定、安全边界和任务路由。 | 重复专项步骤或要求每次重读。 | 说明共享语法，不独占命令。 |
-| `doctidex-git-read` | index/link 渐进阅读、原生搜索、边界/unsafe/结构化注释，以及不可访问 symlink 的按需解析。 | 强制阅读顺序、替代文件工具、自动安装依赖或修改外部内容。 | 按需 `external link-parse`。 |
-| `doctidex-git-maintenance` | protocol/product 分层、validation、可选 external presentation 和 worktree 多根维护。 | 强制使用受管工作流、替用户写语义正文、判断权限或执行 Git 交付。 | `validate`、`external`、`worktree`。 |
+| `doctidex-git-overview` | 共同心智模型、术语、根选择、输出/失败约定、安全边界和任务路由。 | 重复专项步骤、把可读提及当跨 root identity，或要求每次重读。 | 说明共享语法；把专项调用路由至 Mentions、Read 或 Maintenance。 |
+| `doctidex-git-mentions` | owner-root-scoped managed-install 的只读提及解析、上下文补全、候选回显、消歧与 external-link evidence。 | 自然语言 CLI parser、persistent alias、一般 Git repository discovery，或 install/restore/remove/link 等写入。 | `external list`、`external link-parse`。 |
+| `doctidex-git-read` | index/link 渐进阅读、原生搜索、边界/unsafe/结构化注释，以及从 Mention result 继续读取。 | 强制阅读顺序、替代文件工具、重新解析提及、自动安装依赖或修改外部内容。 | 不直接调用提及解析命令；按需路由 Mentions。 |
+| `doctidex-git-maintenance` | protocol/product 分层、validation、可选 external presentation 和 worktree 多根维护，以及从确认的 Mention result 继续维护。 | 强制使用受管工作流、替用户写语义正文、把提及结果当用户授权、重新解析提及，或判断权限与 Git 交付。 | `validate`、除只读提及查询外的 `external`、`worktree`。 |
 
 旧 Setup、Mount、Workspace、Validate、Review 和 Maintain 的仍有效用户信息分别并入这
-三个 Skill；mount/filter/projection 和旧 maintenance scope planning 的专属内容删除，
+四个 Skill；mount/filter/projection 和旧 maintenance scope planning 的专属内容删除，
 不作为兼容教程保留。新的 validation `--scope` 只表示本次关注目录集合，不建立持久维护
 计划或写入边界。
 
 `doctidex-git cache clean` 是面向 human/program operator 的已安装 CLI 管理接口，当前明确
-排除在三个 Published Skills 之外。Overview 不把它列为共享命令或路由目标，Read 与
-Maintenance 不提及、推荐或调用它；Skill 也不因 close、restore 或 objects 缺失暗示隐式
+排除在四个 Published Skills 之外。Overview 不把它列为共享命令或路由目标，任何 Skill
+都不提及、推荐或调用它；Skill 也不因 close、restore 或 objects 缺失暗示隐式
 cleanup。
 
 ## 2. 维护设计约束
 
 ### 2.1 范围、受众与 metadata
 
-每次变更先确认所涉用户场景、公共命令、Architecture 和当前三个 Skill；改变产品行为时，先更新
+每次变更先确认所涉用户场景、公共命令、Architecture 和当前四个 Skill；改变产品行为时，先更新
 相应 Architecture authority，而不是以 Skill 文本暗中定义新行为。Published Skill 只面向已安装
 产品，不能要求 agent 阅读本仓库源码、Architecture、Impls、tests、repository-local path 或开发
 命令，也不得先于对应命令实现写入发布目标 Skill。
@@ -50,13 +51,14 @@ setup、测试或诊断实现；必要的用户路径、状态和操作不能因
 
 ### 2.2 阅读链与内容归属
 
-Overview 是共同心智模型、术语、共享 CLI grammar、结果与安全边界的唯一 owner；专项 Skill 只补充
-自身工作流。运行时阅读关系以第 3 节为唯一约束；任何 "if not already read" 路由都必须说明返回
-位置，且不得在一个任务中重新打开已经加载的 Skill。
+Overview 是共同心智模型、术语、共享 CLI grammar、结果与安全边界的唯一 owner。Mentions 是提及
+解析、命令调用与消歧边界的唯一 owner；Read 与 Maintenance 只说明获得 Mention result 后各自如何继续。
+运行时阅读关系以第 3 节为唯一约束；任何 "if not already read" 路由都必须说明返回位置，且不得在
+一个任务中重新打开已经加载的 Skill。
 
 不要把共同段落复制到每个 Skill。`SKILL.md` 保持简短、命令式且少于 500 行；详细 command contract
-可置于紧邻的 reference，但每个 reference 必须由主 Skill 直接链接并声明读取条件。一个 Overview
-加一个相关专项必须足以完成一个受支持场景。
+可置于紧邻的 reference，但每个 reference 必须由主 Skill 直接链接并声明读取条件。Overview 加
+Mentions 必须足以完成一个只读提及解析场景；无需解析提及的读取或维护场景则由 Overview 加相应专项完成。
 
 ### 2.3 工作流、命令与决定边界
 
@@ -75,11 +77,14 @@ Skill 第一次引入某命令时，Overview 与该专项合起来必须让 agen
   limit、filter、summary、truncation 和 opaque cursor；
 - stable failure code 的用户原因、可安全恢复动作及何时必须停下取得用户输入。
 
-Skill 必须转述其实际公开的当前命令事实，包括 fixed commit 与 selector provenance、direct/dependency
-install 和 promotion、owner/content root、managed path、validation scope/coverage、link-parse target
-state、worktree lifecycle 及 remove 的 reference protection；这些事实仍由模型、workflow、CLI 和 JSON
-Schema authority 定义。`cache clean` 是仅供 human/program operator 使用的已安装 CLI 管理接口，三个
-Published Skills 都不得路由、推荐或调用它，也不得暗示其他 lifecycle command 会触发 cleanup。
+Mentions 必须说明 managed-install 的 repository path/host/revision 提及、external link path、上下文补全、候选
+回显和消歧边界，并在其自身及直接 reference 中提供 `external list` 和 `link-parse` 的完整提及场景契约。Read 与
+Maintenance 只能路由到 Mentions，并消费返回的候选或诊断，不得复制其查询、补全或消歧策略。各 Skill 仍须说明
+本工作流所需的 fixed commit 与 selector provenance、direct/dependency install 和 promotion、owner/content root、
+managed path、validation scope/coverage、link-parse target state、worktree lifecycle 及 remove 的 reference protection；
+这些事实仍由模型、workflow、CLI 和 JSON Schema authority 定义。`cache clean` 是仅供 human/program operator 使用的
+已安装 CLI 管理接口，四个 Published Skills 都不得路由、推荐或调用它，也不得暗示其他 lifecycle command 会触发
+cleanup。
 
 默认使用精确的 ROOT、PATH、SOURCE 或 WORKTREE；只在任务确实聚焦部分目录时使用 validation scope。
 先读取 coverage、scope 和 collection 统计，再分页，不得以最大 limit 代替收窄。失败引导必须区分
@@ -100,26 +105,50 @@ catalog 取得当前 validator 路径，不把这些仓库维护命令复制进 
 ## 3. 阅读链
 
 ```text
-选择专项 Skill
+选择当前专项 Skill
   -> 尚未加载 Overview？只加载一次
   -> 返回已选择的专项 Skill
+  -> 遇到人类可读提及且尚未加载 Mentions？加载一次并返回当前专项
   -> 仅在任务确实跨越工作流边界时路由到另一个专项 Skill
 ```
 
-Overview 只向专项 Skill 路由，不反向要求重读；专项之间不能互相形成强制循环。已加载的
-Overview 在同一任务中不重复打开。Overview 加一个相关专项 Skill 必须足以完成单一受支持
-场景。
+Overview 只向专项 Skill 路由，不反向要求重读。Mentions 可以把其结果交回 Read 或 Maintenance，
+但不能要求任一专项重新加载自己；专项之间也不能形成强制循环。已加载的 Overview 或 Mentions
+在同一任务中不重复打开。提及解析本身由 Overview 加 Mentions 完成；后续读取或维护从原专项继续。
 
-## 4. 读取不可访问 symlink 时的引导
+## 4. 专用 Mention Skill
+
+用户在协作中以 repository path、可选 host/revision、完整 external link path 或不完整 path spelling 指向内容时，
+agent 使用 `doctidex-git-mentions`。这是一个高频但独立的只读对话能力：它把用户提供的线索、当前任务上下文和一个
+明确 owner root 中可观察的 managed facts 组织为可审阅 candidate 或可解释的无法解析结果。它不是自然语言 CLI parser、
+persistent alias、一般 Git repository discovery 或任何写入授权。
+
+Mentions 必须要求 agent：
+
+1. 先选择/回显 owner root；repository path、`install_id` 与同名 source 不能跨 root 复用。
+2. 对 repository path（如 `Viennan/wiki`）与 optional host/tag/branch/full commit，在当前 managed install record
+   中调用 `external list`。它只读，不能用最近安装、current directory 或模糊 URL 自动补齐
+   target；同 path 的不同 host 保持多个 candidate。
+3. 对完整、实际存在的 external link path、link 自身或其内部目录，先原生读取；只在需要 mapping/source/revision/
+   install/target-state facts 时调用 exact `external link-parse`。`link-parse` 不是 path 搜索器。
+4. 对不完整 external link spelling，只从当前任务相关文件与 link target、附近负责的 `index.md`、已回显的
+   `presentation_paths` 和对话事实补全候选；只有得到唯一的实际 path 后才可 parse，不得扫描无关目录、猜测 suffix 或
+   创建 mapping/install。
+5. 对零 candidate、多个 candidate、root/runtime/mapping damage、unmanaged path 或未展开 portable dependency，
+   回显可读 evidence 与保留状态并请求澄清或必要授权。只有唯一或用户明确确认的 InstallReference 才能把其 opaque
+   `install_id` 交给后续 exact command；list/parse result 本身不是执行授权。
+
+Mentions 只返回 candidate、唯一已确认的 opaque `install_id` 或诊断；result 本身不是执行授权。Read 用 available
+`working_path` 继续原生读取，Maintenance 只在得到唯一或用户确认的 InstallReference 后才把 exact ID 传给已获授权的
+维护命令。普通 repository、native worktree、submodule 和 unmanaged clone 继续使用原生工具；不因用户提及名称而
+进入此 Skill。
+
+## 5. 读取不可访问 symlink 时的引导
 
 Read Skill 保持原生工具优先，但必须为无法访问的 symlink 提供确定的升级路径：
 
 1. 在任一按 doctidex 规范阅读的主仓库或 install 内容中，原生读取遇到 symlink target 不存在
-   或无法进入时，对 symlink 自身运行：
-
-   ```text
-   doctidex-git external link-parse PATH --json
-   ```
+   或无法进入时，带 symlink 自身路由到 Mentions，并取得其 `external link-parse` result。
 
 2. 先读取 `mapping_origin`、`target_state`、`root` 和 `content_root`：
    - `available`：使用 `working_path` 继续原生读取；
@@ -131,12 +160,12 @@ Read Skill 保持原生工具优先，但必须为无法访问的 symlink 提供
    - `not_applicable`：回到普通文件系统/Git 诊断，不把未受管状态当作产品失败；
    - `unavailable`：按 finding 修复真实 manifest/mapping damage。
 3. Read Skill 不自动调用 install/restore，不改写 broken symlink，也不要求在只读 install
-   内递归创建依赖。依赖安装完成后重新 link-parse，并从外层 `working_path` 继续读取。
+   内递归创建依赖。依赖安装完成后重新路由 Mentions，并从外层 `working_path` 继续读取。
 
 该引导是访问失败时的按需辅助，不把每个 symlink 或普通目录都变成 CLI 前置检查，也不把
 产品 target state 当作 protocol validation 结论。
 
-## 5. 维护决策顺序
+## 6. 维护决策顺序
 
 Maintenance Skill 先帮助 agent 选择工作方式，再介绍命令：
 
@@ -148,8 +177,11 @@ Maintenance Skill 先帮助 agent 选择工作方式，再介绍命令：
    作为 `--dependency-of`；不要在只读 install 内运行嵌套 checkout。
 4. 只需临时阅读 dependency 时保留 dependency-only；需要提交 external link 或恢复时，
    以相同 source/selector 普通 install 将其提升为 direct。
-5. 已不需要某个 managed install 且已获删除授权时，先从 link-parse 或之前的 result 取得 exact
-   Install ID，dry-run remove 并阅读 reference evidence；出现 blocked reference 时回到用户决定，
+5. 用户以 repository path、可选 host/revision 或 external link path 提及时，路由 Mentions 获得 owner-root-scoped
+   candidate 或 path evidence。不存在 presentation 的 list item 仍可作为 managed install candidate，但不把它编造成
+   external link path。
+6. 已不需要某个 managed install 且已获删除授权时，先从确认过的 Mention result、已读取的 link-parse result 或之前的
+   lifecycle result 取得 exact Install ID，dry-run remove 并阅读 reference evidence；出现 blocked reference 时回到用户决定，
    不让 Skill 自动删除文档、symlink、mapping 或 dependency edge。
 
 “优先”表达默认建议，不是禁止隔离；“受管”表达产品承诺，不是协议符合性或工具排他性。

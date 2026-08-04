@@ -1,6 +1,6 @@
 # External presentation 与 mapping 的实现
 
-[`git/external.py`](../../../../../impls/libs/python/whero/doctidex/git/external.py) 负责 Python 对 install、link、
+[`git/external.py`](../../../../../impls/libs/python/whero/doctidex/git/external.py) 负责 Python 对 install、list、link、
 rebind、unlink、restore、remove 和 link-parse 的编排。它消费 `RootContext`、source/storage 和 current managed records，落实
 [external snapshot/presentation](../../../architecture/external-snapshots-and-presentations.md)，但不把
 `ExternalService` 或其 helper records 变为 public API。
@@ -10,6 +10,7 @@ rebind、unlink、restore、remove 和 link-parse 的编排。它消费 `RootCon
 | 入口 | Python 协调器的副作用 | 所落实的 Architecture 契约 |
 |---|---|---|
 | `ExternalService.install` | resolve/fix source revision，创建或复用 detached payload，确保 host layout，发布 runtime 以及 direct manifest entry 或 dependency parent edge。 | install identity、fixed snapshot、direct/dependency/promotion、plan/apply。 |
+| `ExternalService.list_installs` | 仅读取已验证的 runtime install/link records，将 source URL 拆为可读 repository path/host，按 query 过滤、稳定排序并分页。 | root-scoped managed-install discovery、候选消歧、无网络/无副作用与 cursor invalidation。 |
 | `ExternalService.link` | 证明 complete direct source，校验 target/tracking/safe state，写入 relative symlink 和 responsible-index declaration，并发布 runtime/manifest mapping。 | durable presentation、`safe_state`、trackability、mapping。 |
 | `ExternalService.rebind` | 验证既有 direct presentation 的 runtime/manifest/symlink/index/payload，再按 link source resolution 解析新 direct mapping，准备 sibling symlink 并在 root mutation 内发布新 mapping。 | 同 target 的 fixed-snapshot 切换、old/new result、没有 temporary broken symlink。 |
 | `ExternalService.unlink` | 验证 exact durable target，使用 tree observation 查找 safe reference，reference-free 时删除 symlink/两种 link record，并只按 record ownership 更新 index。 | presentation-specific reference protection、frontmatter 保守清理、install 保留。 |
@@ -41,6 +42,15 @@ mutation mechanics，不进入 public result。Runtime/manifest/index 是分别 
 `dependency_not_installed` state。Remove 扫描 Architecture 定义的 reference classes，明确不会为求成功而
 删除 references。
 
+`list_installs` 不 materialize worksite，也不读取 manifest、payload、source cache 或 remote。它仅从 runtime 的
+`installs` 和 `links` 建立 `InstallReference`：SCP-like 或 URL source 公开其 host 与去除 `.git` 后的 repository
+path，local source 的 host 为 null。重复 `--role`、repository path、host、selector provenance 或 fixed commit 在
+已记录事实上交集过滤；tag/branch 不会重新解析，commit 使用完整 object ID validation。结果按公开 schema 的 key
+排序，`presentation_paths` 从指向该 install ID 的 runtime link target 稳定得出。cursor state 是 runtime
+`schema_version`、installs 和 links 的 deterministic identity，因此任何相关 record 变化都会拒绝下一页，而不会将
+新旧候选混合。runtime 无法验证时，`RootStorage.read_runtime()` 保留原有 `mapping_damaged` blocked result；缺失或损坏
+manifest 不影响这项当前 managed-record 查询。
+
 link record 在现有 portable 字段以外可保存 `frontmatter_ownership`。Python 在创建 link 时比较 responsible
 index 的 exact declaration，分别记录 `managed`、`preserved`、`removed` 或 `absent`；rebind 在 safe/unsafe
 分类转换时重算这些状态。unlink 只移除 `managed` entry、恢复 `removed` 的 `unsafe` entry；没有该 optional
@@ -59,5 +69,6 @@ evidence 的一部分；caller 不假定 rollback。Locks、publication order �
 [publication/recovery](../publication-recovery-and-private-mechanics.md)。
 
 [`test_git_plugin.py`](../../../../../impls/libs/python/tests/test_git_plugin.py) 中的 representative tests 覆盖
-fixed default revision、dependency cycle/promotion、link safe classification/retry、link-parse portable mapping、
-restore runtime projection、remove reference protection 和 retained cache boundary。
+fixed default revision、managed-install list 的 direct/dependency/hidden/presentation/filter/pagination/cursor 与同路径跨
+host 候选、dependency cycle/promotion、link safe classification/retry、link-parse portable mapping、restore runtime
+projection、remove reference protection 和 retained cache boundary。

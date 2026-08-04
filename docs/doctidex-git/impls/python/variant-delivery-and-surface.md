@@ -20,7 +20,7 @@ Python distribution 位于 [`impls/libs/python`](../../../../impls/libs/python/)
 <a id="2-human-agent-and-program-integration"></a>
 ## 2. 人、agent 与程序的集成
 
-Human 使用其选定 runtime 的 console script；涉及 automation、精确审阅或 bug report 时选择 `--json`。agent 由 Published Overview 先选定 `.venv`，并在该 task 的全部 CLI command 中使用同一 executable；它不在 Published Skill 中获得环境选择、创建或安装教程。`hook --install` 将该 runtime 的 executable 写入 host hook，之后 Git checkout 不依赖 shell `PATH`。Python 只提供 subprocess boundary，不承诺 service/dataclass import。Program 必须验证 `schema_version`、`status`、`operation`、collection/cursor 与 stable codes，不能解析私有 `runtime.json`、cache 或 human message。
+Human 使用其选定 runtime 的 console script；涉及 automation、精确审阅或 bug report 时选择 `--json`。agent 由 Published Overview 先选定 `.venv`，并在该 task 的全部 CLI command 中使用同一 executable；它不在 Published Skill 中获得环境选择、创建或安装教程。对 selected owner root 的 doctidex managed install，agent 以 `external list` 的 repository path/host/revision/role query 取得可读候选，再在唯一或经用户确认后将返回的 opaque ID 交给精确 command；不通过 private `runtime.json` 发现 repository。`hook --install` 将该 runtime 的 executable 写入 host hook，之后 Git checkout 不依赖 shell `PATH`。Python 只提供 subprocess boundary，不承诺 service/dataclass import。Program 必须验证 `schema_version`、`status`、`operation`、collection/cursor 与 stable codes，不能解析私有 `runtime.json`、cache 或 human message。
 
 Overview、Read、Maintenance Skills 与 console script 必须作为同一 product release 对齐。Overview 对已安装 hook 只作自动行为提示；没有要求 agent 主动 install/diagnose hook。`cache clean` 是 human/program operator surface，因此三项 Published Skills 不路由它。相关 audience/reading-chain constraint 见[Skill system](../../architecture/skill-system.md)。
 

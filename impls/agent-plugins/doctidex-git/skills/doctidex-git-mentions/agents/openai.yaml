@@ -1,0 +1,4 @@
+interface:
+  display_name: "Resolve doctidex Git Mentions"
+  short_description: "Resolve doctidex managed repository mentions"
+  default_prompt: "Use $doctidex-git-mentions to resolve a managed repository or external link mention."

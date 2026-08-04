@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
 import tempfile
 from pathlib import Path, PurePosixPath
 from typing import Any
+from urllib.parse import urlsplit
 
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
 
@@ -27,6 +29,7 @@ from .source import (
     remove_detached_worktree,
     resolve_source,
     source_relation,
+    validate_revision_selector,
     verify_exact_commit,
 )
 from .storage import RootStorage, git_file_state, source_mutation
@@ -879,6 +882,69 @@ class ExternalService:
             items=items,
         )
 
+    def list_installs(
+        self,
+        *,
+        repository_path: str | None,
+        source_host: str | None,
+        selector: RevisionSelector | None,
+        roles: list[str],
+        limit: int,
+        cursor: str | None,
+    ) -> dict[str, Any]:
+        runtime = self.storage.read_runtime()
+        normalized_path = _normalize_repository_filter(repository_path)
+        normalized_host = _normalize_host_filter(source_host)
+        normalized_selector = _normalize_list_selector(selector)
+        normalized_roles = sorted(set(roles))
+        state = _runtime_identity(runtime)
+
+        references = [
+            _install_reference(runtime, record)
+            for record in runtime["installs"].values()
+            if isinstance(record, dict)
+        ]
+        filtered = [
+            reference
+            for reference in references
+            if _matches_install_reference(
+                reference,
+                repository_path=normalized_path,
+                source_host=normalized_host,
+                selector=normalized_selector,
+                roles=normalized_roles,
+            )
+        ]
+        filtered.sort(key=_install_reference_sort_key)
+        query_fields = _external_list_query(normalized_path, normalized_host, normalized_selector, normalized_roles)
+        query = query_identity(
+            "external_list",
+            root=str(self.root),
+            limit=limit,
+            **query_fields,
+        )
+        try:
+            pages, collection = paginate_lists(
+                {"items": filtered}, limit=limit, identity=query, state=state, cursor=cursor
+            )
+        except ValueError as exc:
+            raise DoctidexError(
+                "The managed install list changed or the cursor does not match this query.",
+                operation="external_list",
+                affected=[str(self.storage.runtime_path)],
+                actions=["Run external list again from the first page."],
+                code="cursor_invalid",
+                domain="external",
+            ) from exc
+        return envelope(
+            "external_list",
+            result="Managed install list page completed.",
+            root=str(self.root),
+            collection=collection,
+            query=query_fields,
+            items=pages["items"],
+        )
+
     def _restore_item(self, record: dict[str, Any], *, apply: bool) -> tuple[dict[str, Any], list[Path], bool]:
         identifier = record.get("install_id")
         if record.get("missing") or not isinstance(identifier, str):
@@ -1445,6 +1511,153 @@ def _dependency_summary(parents: list[str]) -> dict[str, Any]:
         "truncated": len(ordered) > 100,
         "items": ordered[:100],
     }
+
+
+def _normalize_repository_filter(value: str | None) -> str | None:
+    if value is None:
+        return None
+    candidate = value.strip()
+    if (
+        not candidate
+        or candidate.startswith(("/", "\\"))
+        or "://" in candidate
+        or _is_scp_like(candidate)
+    ):
+        raise _external_list_argument_error(
+            "--repository must be a repository path, not a URL or filesystem path.", value
+        )
+    normalized = _repository_path(candidate)
+    if not normalized:
+        raise _external_list_argument_error("--repository must name a repository path.", value)
+    return normalized
+
+
+def _normalize_host_filter(value: str | None) -> str | None:
+    if value is None:
+        return None
+    candidate = value.strip().lower()
+    if not candidate or any(token in candidate for token in ("://", "/", "@", " ")):
+        raise _external_list_argument_error("--host must be a source host without URL syntax.", value)
+    return candidate
+
+
+def _normalize_list_selector(selector: RevisionSelector | None) -> RevisionSelector | None:
+    if selector is None:
+        return None
+    validate_revision_selector(selector, operation="external_list")
+    return RevisionSelector(selector.kind, selector.value.lower() if selector.kind == "commit" else selector.value)
+
+
+def _external_list_argument_error(message: str, value: str) -> DoctidexError:
+    return DoctidexError(
+        message,
+        operation="external_list",
+        affected=[value],
+        actions=["Use repository path, host, or revision filters in the documented external list syntax."],
+        code="argument_invalid",
+        domain="command",
+    )
+
+
+def _install_reference(runtime: dict[str, Any], record: dict[str, Any]) -> dict[str, Any]:
+    source_host, repository_path = _source_reference(record["source_url"])
+    identifier = record["install_id"]
+    presentations = sorted(
+        target
+        for target, link in runtime["links"].items()
+        if isinstance(link, dict) and link.get("install_id") == identifier
+    )
+    return {
+        "install_id": identifier,
+        "source_url": record["source_url"],
+        "source_host": source_host,
+        "repository_path": repository_path,
+        "revision_selector": record["revision_selector"],
+        "resolved_commit": record["resolved_commit"],
+        "install_role": record["role"],
+        "managed_state": record["managed_state"],
+        "presentation_paths": presentations,
+    }
+
+
+def _source_reference(source_url: str) -> tuple[str | None, str]:
+    parsed = urlsplit(source_url)
+    if parsed.scheme:
+        return parsed.hostname.lower() if parsed.hostname else None, _repository_path(parsed.path)
+    if _is_scp_like(source_url):
+        prefix, path = source_url.split(":", 1)
+        return prefix.rsplit("@", 1)[-1].lower(), _repository_path(path)
+    return None, _repository_path(source_url)
+
+
+def _repository_path(value: str) -> str:
+    normalized = value.replace("\\", "/").strip().strip("/")
+    parts = [part for part in normalized.split("/") if part and part not in {".", ".."}]
+    result = "/".join(parts)
+    return result[:-4] if result.endswith(".git") else result
+
+
+def _is_scp_like(value: str) -> bool:
+    colon = value.find(":")
+    return colon > 0 and "/" not in value[:colon] and "\\" not in value[:colon]
+
+
+def _matches_install_reference(
+    reference: dict[str, Any],
+    *,
+    repository_path: str | None,
+    source_host: str | None,
+    selector: RevisionSelector | None,
+    roles: list[str],
+) -> bool:
+    if repository_path is not None and reference["repository_path"] != repository_path:
+        return False
+    if source_host is not None and reference["source_host"] != source_host:
+        return False
+    if roles and reference["install_role"] not in roles:
+        return False
+    if selector is None:
+        return True
+    if selector.kind == "commit":
+        return reference["resolved_commit"] == selector.value
+    return reference["revision_selector"] == selector.as_dict()
+
+
+def _install_reference_sort_key(reference: dict[str, Any]) -> tuple[str, str, str, str, str, str]:
+    selector = reference["revision_selector"]
+    return (
+        reference["repository_path"],
+        reference["source_host"] or "",
+        selector["kind"],
+        selector["value"],
+        reference["resolved_commit"],
+        reference["install_id"],
+    )
+
+
+def _external_list_query(
+    repository_path: str | None,
+    source_host: str | None,
+    selector: RevisionSelector | None,
+    roles: list[str],
+) -> dict[str, Any]:
+    return {
+        "repository_path": repository_path,
+        "source_host": source_host,
+        "revision_selector": selector.as_dict() if selector and selector.kind != "commit" else None,
+        "resolved_commit": selector.value if selector and selector.kind == "commit" else None,
+        "roles": roles,
+    }
+
+
+def _runtime_identity(runtime: dict[str, Any]) -> str:
+    observed = {
+        "schema_version": runtime["schema_version"],
+        "installs": runtime["installs"],
+        "links": runtime["links"],
+    }
+    encoded = json.dumps(observed, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _host_repository(root: Path) -> Path:

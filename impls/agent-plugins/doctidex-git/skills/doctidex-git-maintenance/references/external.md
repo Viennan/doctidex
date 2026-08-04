@@ -164,10 +164,10 @@ pagination alternative. ROOT is the owner root or defaults from cwd. Omission of
 an offline dry-run. The command never contacts a source, stages/commits, changes Markdown,
 presentations, frontmatter, ignore rules, or shared cache.
 
-When the ID is not already known, run `DOCTIDEX_GIT external link-parse PATH [--root ROOT] --json`
-first. Only its non-null current `install_id` may be passed to remove. Do not use
-`dependency_parent_install_id`: it describes a parent edge, not the install at PATH. An unmanaged
-or `dependency_not_installed` result has no current removable target; report that fact and stop.
+When the ID is not already known, load `$doctidex-git-mentions` with PATH and use only its non-null
+current `install_id` result. Do not use `dependency_parent_install_id`: it describes a parent edge,
+not the install at PATH. An unmanaged or `dependency_not_installed` result has no current removable
+target; report that fact and stop.
 
 Read `status`, `findings`, `affected`, `applied`, `install_id`, `install_role`, `install_path`,
 `manifest_included`, `state`, `changed`, and `planned_changes`. A reference-free dry-run returns

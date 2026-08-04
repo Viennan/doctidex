@@ -10,6 +10,7 @@
 | 树、根、配置与验证 | `validate`；`protocol.document/root/validation`。 | [protocol/root 观察](components/protocol-and-root-observation.md)、[`test_protocol.py`](../../../../impls/libs/python/tests/test_protocol.py)。 |
 | 结果、finding、JSON 与分页 | CLI 分发器、`errors`、`results` 与渲染器。 | [CLI/结果](components/cli-results-and-rendering.md)、protocol/plugin 的结果测试。 |
 | 固定 external snapshot 与 manifest/runtime | `external install/restore`；`ExternalService`、source/storage。 | [external 实现](components/external-presentation-and-mapping.md)、[工作现场清单](worksite-inventory-and-construction.md)、插件 install/restore 测试。 |
+| 受管 install 发现与消歧 | `external list`；`ExternalService.list_installs` 只读 runtime install/link records。 | external component、插件 direct/dependency/hidden/presentation/filter/pagination/stale-cursor 与同路径跨 host 测试。 |
 | 持久呈现与 link lifecycle | `external link/rebind/unlink/link-parse`；external mapping 辅助逻辑。 | [工作现场清单](worksite-inventory-and-construction.md)中的 link/mapping 行、插件 safe/retry/portable-link/rebind/unlink 测试。 |
 | 受引用保护的 remove | `external remove`；树观察加 source/root storage。 | external component、插件 remove/reference 测试。 |
 | checkout 注册、协调与隐藏 | `hook --install/run`；`HookService`。 | [hook component](components/checkout-hook-reconciliation.md)、插件 foreign/alignment/hidden 测试。 |
@@ -21,7 +22,7 @@
 <a id="2-worksite-evidence-matrix"></a>
 ## 2. 工作现场证据矩阵
 
-[工作现场清单](worksite-inventory-and-construction.md#3-scenario-construction-matrix)是必需的 Python 证据矩阵。它覆盖的是语义类别而非每一个本地分支：空现场/dry-run、直接 selector 变体、dependency/promotion、安全/不安全 link、缺失后的 restore、portable dependency、hook/hidden、remove 保护、worktree 状态、cache 状态以及 interruption/damage。每个类别都把实际物化的配置/artifact 映射到 Architecture 权威说明及测试/fixture 证据。
+[工作现场清单](worksite-inventory-and-construction.md#3-scenario-construction-matrix)是必需的 Python 证据矩阵。它覆盖的是语义类别而非每一个本地分支：空现场/dry-run、直接 selector 变体、dependency/promotion、安全/不安全 link、缺失后的 restore、portable dependency、hook/hidden、remove 保护、worktree 状态、cache 状态以及 interruption/damage。`external list` 只观察现有 runtime install/link records，不物化配置或 artifact；其 direct/dependency/hidden、presentation、有/无 filter、分页、stale cursor 和同路径跨 host 候选由插件 CLI fixture 直接验证。每个物化类别都把实际配置/artifact 映射到 Architecture 权威说明及测试/fixture 证据。
 
 只有源码/测试证据能证明物化文件、选项值、artifact 状态和用户可见效果完全相同时，才可以合并等价场景。私有 cache path/hash、JSON 格式、lock primitive 和 helper call graph 无须单列场景，除非它们改变这些可观察的 handoff 语义。
 
