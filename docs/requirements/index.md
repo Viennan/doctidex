@@ -46,6 +46,7 @@ overview 才可成为 `approved`。详见 [DX-REQ-0006](0006-large-requirement-d
 | 0013 | [增加 doctidex-git cache clean --auto](0013-doctidex-git-cache-clean-auto.md) | 自动枚举 shared bare Git cache，并仅回收无有效 linked worktree 的 cache；不修改 Published Skills。 | `approved` |
 | 0014 | [增加 doctidex-git checkout Git hook 命令](0014-doctidex-git-checkout-hook.md) | 以 `hook --install` 配置 checkout 后 direct/dependency install 的 commit 与 revision metadata 对齐，并以 hidden dependency 保留无法安全确定 revision 的子树。 | `approved` |
 | 0015 | [Architecture 与 Impls 文档重构](0015-architecture-and-impls-document-principles.md) | 以可解释的跨变体工作现场、强直接 evidence、独立全知复核与中文逻辑组织为基准，重构 Architecture / Impls 职责、当前文档和作者规则。 | `approved` |
+| 0016 | [在 doctidex-git Skill 中引导主动执行 hook run](0016-doctidex-git-hook-run-skill-guidance.md) | 在 `post-checkout` hook failure/warning 的可恢复问题解决后，引导 agent 直接运行 `hook --run` 重试协调，无需通过无业务目的的 `git checkout` 间接触发。 | `approved` |
 
 新记录按全项目连续编号。`draft` 中可使用 `<question>` 与紧邻的 `<answer>` 块协作；
 用户也可以用 `<comment>...</comment>` 在相关位置留下评论。agent 不得代用户创建评论，

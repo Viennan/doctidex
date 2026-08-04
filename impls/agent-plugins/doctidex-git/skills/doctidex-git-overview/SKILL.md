@@ -23,8 +23,18 @@ doctidex/Git facts; it does not author prose, judge semantic quality, grant writ
 perform Git delivery.
 
 After `doctidex-git hook --install` has been installed for a root, its Git checkouts automatically
-reconcile managed external dependency state. Do not repeat equivalent manual reconciliation after
-those checkouts; inspect the hook result only when Git reports a warning.
+reconcile managed external dependency state. Do not repeat equivalent manual reconciliation after an
+ordinary checkout. If Git reports a `post-checkout` hook failure or warning, inspect its result and
+resolve any issue that is within the current authority. Then rerun reconciliation directly for the
+exact affected owner root:
+
+```text
+doctidex-git hook --run --root ROOT --json
+```
+
+Read the new result before proceeding. If it remains blocked or requests a user decision, preserve
+the reported state and stop. Do not create an otherwise unneeded `git checkout` merely to trigger
+the hook again.
 
 ## Shared Terms
 
