@@ -26,7 +26,7 @@ runtime/cache state 来绕过这些 owner。console/package assembly 见
 ## 证据与限制
 
 [`test_protocol.py`](../../../../../impls/libs/python/tests/test_protocol.py) 和
-[`test_git_plugin.py`](../../../../../impls/libs/python/tests/test_git_plugin.py) 覆盖 JSON parser failure、
-envelope/finding/pagination behavior 和 operation results。当前 hook-specific `metadata_warning` limitation
+[`test_git_plugin.py`](../../../../../impls/libs/python/tests/test_git_plugin.py) 通过已安装的 console script 覆盖
+JSON parser failure、envelope/finding/pagination behavior 和 operation results。当前 hook-specific `metadata_warning` limitation
 不会由 generic rendering 修复；其记录仍在
 [coverage](../architecture-coverage-evidence-and-worksite-validation.md#5-known-gaps-and-limits)。

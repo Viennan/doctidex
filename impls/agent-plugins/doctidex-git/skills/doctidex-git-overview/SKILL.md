@@ -8,6 +8,17 @@ description: Establish the installed doctidex-git mental model, shared CLI gramm
 Read this Skill once for a task, then load only the selected specialist. Do not reopen this Skill
 when a specialist refers back to shared terms.
 
+## Select a Python Runtime
+
+Before invoking this product's CLI, select one compatible `.venv` that contains the current
+`doctidex-git` package. For the entire task, use that environment's exact console script. In this
+Skill and its specialist references, `DOCTIDEX_GIT` denotes that executable; it is a notation to
+replace with the selected path, not a shell variable or a bare command name.
+
+Do not rely on global `PATH`, shell activation, or another Python environment. If no selected
+environment has the executable, stop and report the runtime prerequisite. This product does not
+specify how to choose, create, or install a `.venv`.
+
 ## Choose a Workflow
 
 - Load `$doctidex-git-read` to navigate indexes and links, search content with native tools, or
@@ -22,14 +33,14 @@ file, search, shell, editing, and Git tools whenever they suit the task. The CLI
 doctidex/Git facts; it does not author prose, judge semantic quality, grant write authority, or
 perform Git delivery.
 
-After `doctidex-git hook --install` has been installed for a root, its Git checkouts automatically
+After `DOCTIDEX_GIT hook --install` has been installed for a root, its Git checkouts automatically
 reconcile managed external dependency state. Do not repeat equivalent manual reconciliation after an
 ordinary checkout. If Git reports a `post-checkout` hook failure or warning, inspect its result and
 resolve any issue that is within the current authority. Then rerun reconciliation directly for the
 exact affected owner root:
 
 ```text
-doctidex-git hook --run --root ROOT --json
+DOCTIDEX_GIT hook --run --root ROOT --json
 ```
 
 Read the new result before proceeding. If it remains blocked or requests a user decision, preserve
@@ -54,7 +65,7 @@ the hook again.
 
 ## Invoke the CLI
 
-Use `doctidex-git ... --json` for agent decisions. Put `--json` once at the end. JSON results use
+Use `DOCTIDEX_GIT ... --json` for agent decisions. Put `--json` once at the end. JSON results use
 `schema_version: "1.0"`; unknown major schemas require a compatible product version rather than
 guessing fields.
 

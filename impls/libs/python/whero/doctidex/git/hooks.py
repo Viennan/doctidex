@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shlex
+import sys
 import tempfile
 from collections import Counter
 from pathlib import Path
@@ -32,13 +33,12 @@ class HookService:
         lock_path = hook_path.parent / ".doctidex-git-post-checkout.lock"
         with directory_lock(lock_path, operation="hook_install"):
             if hook_path.exists() or hook_path.is_symlink():
-                if (
-                    hook_path.is_file()
-                    and not hook_path.is_symlink()
-                    and hook_path.read_text(encoding="utf-8") == script
+                if hook_path.is_file() and not hook_path.is_symlink() and _is_managed_hook(
+                    hook_path.read_text(encoding="utf-8"), self.root
                 ):
                     if hook_path.stat().st_mode & 0o111:
-                        return self._install_result(hook_path, "unchanged")
+                        if hook_path.read_text(encoding="utf-8") == script:
+                            return self._install_result(hook_path, "unchanged")
                 else:
                     raise DoctidexError(
                         "The host repository already has a post-checkout hook not managed by doctidex-git.",
@@ -480,9 +480,29 @@ def _host_repository(root: Path) -> Path:
     return Path(result.stdout.strip()).absolute()
 
 
+_HOOK_HEADER = "#!/bin/sh\n# doctidex-git managed post-checkout hook\n"
+
+
 def _hook_script(root: Path) -> str:
-    command = f"exec doctidex-git hook --run --root {shlex.quote(str(root))}"
-    return f"#!/bin/sh\n# doctidex-git managed post-checkout hook\n{command}\n"
+    command = f"exec {shlex.quote(str(_runtime_executable()))} hook --run --root {shlex.quote(str(root))}"
+    return f"{_HOOK_HEADER}{command}\n"
+
+
+def _runtime_executable() -> Path:
+    directory = Path(sys.executable).absolute().parent
+    name = "doctidex-git.exe" if os.name == "nt" else "doctidex-git"
+    return directory / name
+
+
+def _is_managed_hook(content: str, root: Path) -> bool:
+    lines = content.splitlines()
+    suffix = f" hook --run --root {shlex.quote(str(root))}"
+    return (
+        len(lines) == 3
+        and lines[:2] == _HOOK_HEADER.splitlines()
+        and lines[2].startswith("exec ")
+        and lines[2].endswith(suffix)
+    )
 
 
 def _write_executable(path: Path, content: str) -> None:

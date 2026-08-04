@@ -8,7 +8,7 @@ links remain trackable. The CLI never stages or commits them.
 ## Install a Fixed Snapshot
 
 ```text
-doctidex-git external install --url URL [--root ROOT]
+DOCTIDEX_GIT external install --url URL [--root ROOT]
   [--commit COMMIT | --tag TAG | --branch BRANCH]
   [--dependency-of INSTALL_ID]
   [--dry-run | --apply] --json
@@ -57,7 +57,7 @@ credentials/network/revision/tracking/parent/target decisions before retrying.
 ## Create a Durable Relative Link
 
 ```text
-doctidex-git external link SOURCE_DIRECTORY TARGET_PATH [--root ROOT]
+DOCTIDEX_GIT external link SOURCE_DIRECTORY TARGET_PATH [--root ROOT]
   [--dry-run | --apply] --json
 ```
 
@@ -81,7 +81,7 @@ copy fallback.
 ## Restore Direct Installs
 
 ```text
-doctidex-git external restore [--root ROOT] [--install INSTALL_ID]...
+DOCTIDEX_GIT external restore [--root ROOT] [--install INSTALL_ID]...
   [--limit N] [--cursor TOKEN]
   [--dry-run | --apply] --json
 ```
@@ -105,7 +105,7 @@ state under installed content or repair links by changing their targets.
 ## Remove a Managed Install
 
 ```text
-doctidex-git external remove INSTALL_ID [--root ROOT]
+DOCTIDEX_GIT external remove INSTALL_ID [--root ROOT]
   [--dry-run | --apply] --json
 ```
 
@@ -115,7 +115,7 @@ pagination alternative. ROOT is the owner root or defaults from cwd. Omission of
 an offline dry-run. The command never contacts a source, stages/commits, changes Markdown,
 presentations, frontmatter, ignore rules, or shared cache.
 
-When the ID is not already known, run `doctidex-git external link-parse PATH [--root ROOT] --json`
+When the ID is not already known, run `DOCTIDEX_GIT external link-parse PATH [--root ROOT] --json`
 first. Only its non-null current `install_id` may be passed to remove. Do not use
 `dependency_parent_install_id`: it describes a parent edge, not the install at PATH. An unmanaged
 or `dependency_not_installed` result has no current removable target; report that fact and stop.

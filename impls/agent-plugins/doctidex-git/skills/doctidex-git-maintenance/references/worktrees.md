@@ -8,7 +8,7 @@ external recovery manifest.
 ## Open
 
 ```text
-doctidex-git worktree open SOURCE [--root ROOT]
+DOCTIDEX_GIT worktree open SOURCE [--root ROOT]
   (--commit COMMIT | --tag TAG | --branch BRANCH) --json
 ```
 
@@ -28,7 +28,7 @@ but the new independent worktree exists.
 ## List
 
 ```text
-doctidex-git worktree list [--root ROOT]
+DOCTIDEX_GIT worktree list [--root ROOT]
   [--source SOURCE | --worktree WORKTREE]
   [--limit N] [--cursor TOKEN] --json
 ```
@@ -42,7 +42,7 @@ cursor under the same root, filter, and limit; restart on `cursor_invalid`.
 ## Close
 
 ```text
-doctidex-git worktree close WORKTREE --json
+DOCTIDEX_GIT worktree close WORKTREE --json
 ```
 
 Pass the exact `worktree_path` returned by open/list. Close accepts no root and recovers the unique

@@ -7,10 +7,11 @@ dependency preservation。
 
 ## 注册
 
-`HookService.install()` 向 Git 获取 host `hooks/post-checkout` path，序列化带有 managed marker 和精确
-owner-root command 的当前 Python v1 launcher，再在 hook-local lock 内写入可执行文件。只有既有 hook 的
-完整当前 script content 与该 launcher 一致时，它才将该 hook 视为 Python-managed；任何其他 file 或
-symlink 都返回 `hook_occupied` 并保持不动。
+`HookService.install()` 向 Git 获取 host `hooks/post-checkout` path，序列化带有 managed marker、当前 Python
+runtime 中 exact `doctidex-git` executable 和精确 owner-root command 的 launcher，再在 hook-local lock 内写入
+可执行文件。相同 launcher 保持 unchanged；同一 marker、root 和 `hook --run` form 的旧 launcher 会更新为
+当前已选 runtime，任何其他 file 或 symlink 都返回 `hook_occupied` 并保持不动。因此 Git checkout 不依赖当时
+shell 的 `PATH`，但已移除该 runtime 时仍保留 hook 并由 shell 报告其无法执行。
 
 精确的 shell bytes、`shlex` quoting、executable mode 和 text equality 是 Python 的互操作实现机制。共同的
 managed identity/conflict/preserve 规则由 Architecture 负责；不能产生 Python-compatible launcher 的另一
@@ -42,8 +43,9 @@ authority 是 [worksite inventory](../worksite-inventory-and-construction.md)。
 `RootStorage`/source mutation support，并将 manifest/runtime damage、unavailable commit、dirty payload、path
 conflict 和 concurrent change 转换为稳定的 operation results。
 
-[`test_git_plugin.py`](../../../../../impls/libs/python/tests/test_git_plugin.py) 覆盖 managed install idempotence、
-foreign hook preservation、direct commit/provenance alignment，以及 hidden dependency recheck/unhide。公开的
+[`test_git_plugin.py`](../../../../../impls/libs/python/tests/test_git_plugin.py) 通过已安装的 console script 覆盖
+managed install idempotence、foreign hook preservation、无 runtime `PATH` 的 direct commit/provenance alignment，
+以及 hidden dependency recheck/unhide。公开的
 `metadata_warning`/非空 `metadata_mismatches` contract 当前没有 Python producer；其已记录的 material
 limitation [见此处](../architecture-coverage-evidence-and-worksite-validation.md#5-known-gaps-and-limits)，不能被
 本组件 normal-path evidence 掩盖。

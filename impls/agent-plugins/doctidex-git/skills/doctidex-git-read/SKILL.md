@@ -25,7 +25,7 @@ symlink cannot be entered because its target is missing or inaccessible, run the
 symlink itself:
 
 ```text
-doctidex-git external link-parse PATH [--root ROOT] --json
+DOCTIDEX_GIT external link-parse PATH [--root ROOT] --json
 ```
 
 `PATH` is a cwd-relative or absolute existing readable directory or symlink; a broken symlink itself

@@ -15,7 +15,7 @@ doctidex:
 | 运行时 | CPython `>=3.11`；CI 覆盖 3.11/3.12。 |
 | 平台 | Linux、macOS、Windows，且可从 subprocess 调用 system Git。 |
 | 稳定的用户/程序 API | `doctidex-git` console script 与 JSON `schema_version: "1.0"`。 |
-| Agent API | 已发布 Overview、Read、Maintenance Skills；不要求 agent 读取本页。 |
+| Agent API | 已发布 Overview、Read、Maintenance Skills；agent 先选定含当前 package 的兼容 `.venv`，不要求读取本页。 |
 | Import API | `whero.doctidex.*` 是内部实现，不是稳定的 public import API。 |
 
 ## 阅读路线

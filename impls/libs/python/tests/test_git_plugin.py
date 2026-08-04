@@ -36,6 +36,14 @@ def make_writable(path: Path) -> None:
         item.chmod(item.stat().st_mode | stat.S_IWUSR)
 
 
+def cli_executable() -> Path:
+    directory = Path(sys.executable).absolute().parent
+    name = "doctidex-git.exe" if os.name == "nt" else "doctidex-git"
+    executable = directory / name
+    assert executable.is_file(), f"Missing installed doctidex-git console script: {executable}"
+    return executable
+
+
 def run(
     command: list[str],
     cwd: Path,
@@ -44,7 +52,7 @@ def run(
     expected: int = 0,
 ) -> dict:
     process = subprocess.run(
-        [sys.executable, "-m", "whero.doctidex.cli.main", *command, "--json"],
+        [str(cli_executable()), *command, "--json"],
         cwd=cwd,
         env=env,
         text=True,
@@ -831,11 +839,27 @@ def test_hook_install_is_idempotent_and_preserves_foreign_hook(cli_env: dict[str
     assert installed["state"] == "installed"
     assert hook_path.is_file()
     assert hook_path.stat().st_mode & stat.S_IXUSR
-    assert f"--root {root}" in hook_path.read_text(encoding="utf-8")
+    hook_script = hook_path.read_text(encoding="utf-8")
+    assert str(cli_executable()) in hook_script
+    assert "exec doctidex-git" not in hook_script
+    assert f"--root {root}" in hook_script
 
     repeated = run(["hook", "--install", "--root", str(root)], tmp_path, cli_env)
     assert repeated["state"] == "unchanged"
     assert repeated["changed"] == []
+
+    legacy_root = create_repository(tmp_path / "legacy-host")
+    legacy_hook = legacy_root / ".git" / "hooks" / "post-checkout"
+    legacy_hook.write_text(
+        "#!/bin/sh\n"
+        "# doctidex-git managed post-checkout hook\n"
+        f"exec doctidex-git hook --run --root {legacy_root}\n",
+        encoding="utf-8",
+    )
+    legacy_hook.chmod(0o755)
+    upgraded = run(["hook", "--install", "--root", str(legacy_root)], tmp_path, cli_env)
+    assert upgraded["state"] == "installed"
+    assert str(cli_executable()) in legacy_hook.read_text(encoding="utf-8")
 
     foreign_root = create_repository(tmp_path / "foreign-host")
     foreign_hook = foreign_root / ".git" / "hooks" / "post-checkout"
@@ -875,7 +899,12 @@ def test_post_checkout_aligns_direct_commit_and_revision_provenance(
     git(root, "commit", "-m", "record second external revision")
 
     monkeypatch.setenv("DOCTIDEX_GIT_CACHE", cli_env["DOCTIDEX_GIT_CACHE"])
-    monkeypatch.setenv("PATH", f"{Path(sys.executable).parent}:{os.environ['PATH']}")
+    runtime_directory = Path(sys.executable).absolute().parent
+    path_entries = [
+        entry for entry in os.environ["PATH"].split(os.pathsep) if Path(entry).resolve() != runtime_directory
+    ]
+    monkeypatch.setenv("PATH", os.pathsep.join(path_entries))
+    assert runtime_directory not in {Path(entry).resolve() for entry in path_entries}
     git(root, "checkout", "HEAD^")
     assert git(Path(direct["working_path"]), "rev-parse", "HEAD") == first_commit
     git(root, "checkout", "main")
