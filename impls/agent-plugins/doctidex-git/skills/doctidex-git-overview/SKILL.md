@@ -33,6 +33,17 @@ file, search, shell, editing, and Git tools whenever they suit the task. The CLI
 doctidex/Git facts; it does not author prose, judge semantic quality, grant write authority, or
 perform Git delivery.
 
+When authorized to install a checkout hook, identify the current owner root and register it only in
+that root's host Git repository:
+
+```text
+DOCTIDEX_GIT hook --install --root OWNER_ROOT --json
+```
+
+Never run `hook --install` from, or pass as `--root`, a Git repository installed beneath
+`OWNER_ROOT`. Its content root and checkout are not a hook target for the owner root: installing a
+hook for one owner root never recursively installs hooks in its managed repositories.
+
 After `DOCTIDEX_GIT hook --install` has been installed for a root, its Git checkouts automatically
 reconcile managed external dependency state. Do not repeat equivalent manual reconciliation after an
 ordinary checkout. If Git reports a `post-checkout` hook failure or warning, inspect its result and

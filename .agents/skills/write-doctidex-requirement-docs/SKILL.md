@@ -1,6 +1,6 @@
 ---
 name: write-doctidex-requirement-docs
-description: Create, refine, implement, or maintain project Requirement records under docs/requirements, including numbered files, user-selected large Requirement directories, lifecycle status, user questions and comments, authorization boundaries, dependencies, historical intent, and cross-layer implementation tracking. Use when the user asks to create or record a requirement, comments on an active Requirement, changes an artifact governed by an active Requirement, or asks to implement or approve recorded work; do not create historical records for ordinary documentation of already-current behavior without such intent or an active record.
+description: Create, refine, or maintain project Requirement records under docs/requirements, including numbered files, user-selected large Requirement directories, lifecycle status, user questions and comments, authorization boundaries, dependencies, historical intent, and cross-layer implementation tracking. Use when the user asks to create or record a requirement, comments on an active Requirement, changes an artifact governed by an active Requirement, or asks to implement or approve recorded work; coordinate implementation only after explicit user authorization, and do not create historical records for ordinary documentation of already-current behavior without such intent or an active record.
 ---
 
 # Write doctidex Requirement Docs
@@ -11,9 +11,11 @@ implementation, and approved history visibly distinct.
 ## Decide Whether a Requirement Exists
 
 Treat intent equivalent to "create a requirement" or "record this requirement" as authorization to
-create the next project-wide numbered `draft` record immediately. Re-read `docs/requirements/`
-before allocating its zero-padded number, identify affected artifact and repository surfaces, and
-link it from the shared index.
+create the next project-wide numbered `draft` record immediately. This authorizes only the
+Requirement record: by default, create and organize the documented intent without changing
+Architecture, Impls, implementation, tests, Published Skills, or any other affected artifact.
+Re-read `docs/requirements/` before allocating its zero-padded number, identify affected artifact
+and repository surfaces, and link it from the shared index.
 
 Give each record a stable ID, title, date, one status, source/provenance, affected surfaces, reviewed
 intent, design decisions, implementation impact, acceptance criteria, and relevant current-artifact
@@ -115,9 +117,21 @@ history. Record the outbound relationship and exact pending reciprocal edit in t
 report the authorization gap, and keep the relationship incomplete until the user permits the
 approved-history change or chooses another linked follow-up structure.
 
-## Coordinate Artifact Work
+## Coordinate Authorized Artifact Work
 
-For direct feedback on an artifact governed by an active Requirement:
+Creating, refining, or commenting on a Requirement does not authorize its implementation, even when
+the record identifies intended artifact changes, implementation impact, or acceptance criteria. Do
+not infer implementation authority from a request to create a Requirement, design discussion,
+review, validation, or an `implemented` status. Require the user's explicit authorization before
+changing any governed Architecture, Impls, implementation, test, Published Skill, or other artifact.
+
+Without that authorization, complete only the Requirement document work: capture the intended
+change, decisions, impact, dependencies, and acceptance criteria, validate the record and its
+navigation, then leave it `draft`. Do not create a temporary question merely to request routine
+implementation authorization; ask only when a genuine design decision is unresolved.
+
+For direct feedback on an artifact governed by an active Requirement after the user explicitly
+authorizes its implementation:
 
 1. Record the feedback, resulting intent, impact, and acceptance criteria here first.
 2. Return `implemented` to `draft` when the solution changes.
