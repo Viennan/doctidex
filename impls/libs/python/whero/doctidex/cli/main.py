@@ -116,6 +116,10 @@ def _dispatch(args: argparse.Namespace) -> dict[str, Any]:
             )
         if args.external_command == "link":
             return service.link(Path(args.source_directory), args.target_path, apply=args.apply)
+        if args.external_command == "rebind":
+            return service.rebind(Path(args.source_directory), args.target_path, apply=args.apply)
+        if args.external_command == "unlink":
+            return service.unlink(args.target_path, apply=args.apply)
         if args.external_command == "remove":
             return service.remove(args.install_id, apply=args.apply)
         return service.restore(
@@ -203,6 +207,17 @@ def _parser() -> Parser:
     link.add_argument("target_path")
     link.add_argument("--root")
     _mode(link)
+
+    rebind = external_commands.add_parser("rebind")
+    rebind.add_argument("source_directory")
+    rebind.add_argument("target_path")
+    rebind.add_argument("--root")
+    _mode(rebind)
+
+    unlink = external_commands.add_parser("unlink")
+    unlink.add_argument("target_path")
+    unlink.add_argument("--root")
+    _mode(unlink)
 
     restore = external_commands.add_parser("restore")
     restore.add_argument("--root")

@@ -25,6 +25,12 @@ doctidex-git external install --url URL [--root ROOT]
 doctidex-git external link SOURCE_DIRECTORY TARGET_PATH [--root ROOT]
   [--dry-run | --apply] [--json]
 
+doctidex-git external rebind SOURCE_DIRECTORY TARGET_PATH [--root ROOT]
+  [--dry-run | --apply] [--json]
+
+doctidex-git external unlink TARGET_PATH [--root ROOT]
+  [--dry-run | --apply] [--json]
+
 doctidex-git external restore [--root ROOT] [--install INSTALL_ID]...
   [--limit N] [--cursor TOKEN]
   [--dry-run | --apply] [--json]
@@ -59,8 +65,8 @@ doctidex-git cache clean (--url URL | --auto) [--dry-run | --apply] [--json]
 | `--json` | 人读输出 | 输出一个符合 `schema_version: "1.0"` 的 UTF-8 JSON object。可在顶层命令前或最终 subcommand 后出现一次；Skills 统一放在末尾。 |
 | `--limit N` | 100 | 只用于 validate/external restore/worktree list；整数 1..1000，分别限制当前页每个顶层列表。 |
 | `--cursor TOKEN` | 首页 | 只用于 validate/external restore/worktree list；必须原样回传，且 operation、root、规范化 scope/filter、limit 与模式必须符合对应命令的 cursor identity。 |
-| `--dry-run` | 写命令默认值 | install/link/restore/remove/cache clean 计划完整结果，可联网条件见各命令，但不持久写入。 |
-| `--apply` | false | install/link/restore/remove/cache clean 才执行各自契约内写入；与 `--dry-run` 互斥。 |
+| `--dry-run` | 写命令默认值 | install/link/rebind/unlink/restore/remove/cache clean 计划完整结果，可联网条件见各命令，但不持久写入。 |
+| `--apply` | false | install/link/rebind/unlink/restore/remove/cache clean 才执行各自契约内写入；与 `--dry-run` 互斥。 |
 
 不接受无实际效果的 option。parser 在识别 `--json` 后遇到语法错误也返回 JSON blocked
 envelope；未请求 JSON 时可以使用标准 stderr usage，但退出码仍为 2。
@@ -71,7 +77,7 @@ envelope；未请求 JSON 时可以使用标准 stderr usage，但退出码仍�
 |---|---|
 | `ROOT` | 现有、可读取且直接包含 `doctidex.root: true` index 的文件系统目录；相对值以 cwd 为基准。必须是根本身，不接受任意子路径。 |
 | `INTERNAL_DIRECTORY` | `/` 或 `/docs/api` 形式的 doctidex 根绝对 POSIX 目录路径，不是宿主文件系统路径，也不接受 anchor；重复 `/`、`.` 与可在 root 内消去的 `..` 先词法规范化，结果不得越 root 且必须是现有可读目录。 |
-| `TARGET_PATH` | 只用于 external link；所选根下的非空 POSIX relative path，不得以 `/` 开头，不得含空段、`.` 或 `..`，最终目标是 symlink。 |
+| `TARGET_PATH` | 用于 external link/rebind/unlink；所选根下的非空 POSIX relative path，不得以 `/` 开头，不得含空段、`.` 或 `..`，最终目标是 symlink。 |
 | `SOURCE_DIRECTORY` | 现有可读文件系统目录，必须位于所选 root 及其完整受管 external mapping 内；相对值以 cwd 为基准。 |
 | `PATH` | external link-parse 的现有可读目录或 symlink；symlink target 可以不存在。相对值以 cwd 为基准；其他不存在路径不接受。 |
 | `INSTALL_ID` | external install 返回的稳定不透明标识；作为 filter 时可重复，重复值去重。 |
@@ -80,7 +86,7 @@ envelope；未请求 JSON 时可以使用标准 stderr usage，但退出码仍�
 | 命令 | 显式根 | 省略根 |
 |---|---|---|
 | validate | positional `ROOT` | 从 cwd 选择唯一包含根。 |
-| external install/link/restore/remove | `--root ROOT`；link 时还必须包含 SOURCE_DIRECTORY | 从 cwd 选择唯一包含根，link 的 source 必须属于该根。dependency parent 也必须属于该根。 |
+| external install/link/rebind/unlink/restore/remove | `--root ROOT`；link/rebind 时还必须包含 SOURCE_DIRECTORY | 从 cwd 选择唯一包含根，link/rebind 的 source 必须属于该根。dependency parent 也必须属于该根。 |
 | hook | `--root ROOT` | 从 cwd 选择唯一包含根；`--install` 所得 hook 只协调该 root。 |
 | external link-parse | `--root ROOT`，必须包含 PATH 或拥有其外层受管 presentation | PATH 位于受管 install/link 时恢复其 owner root；否则从 PATH 或其可读父目录选择唯一包含根。 |
 | worktree open managed path | `--root ROOT`，必须包含 SOURCE | 从 SOURCE 选择唯一 mapping owner root。 |
@@ -189,7 +195,42 @@ doctidex-git external link SOURCE_DIRECTORY TARGET_PATH [--root ROOT]
 - dependency-only source 返回 `dependency_not_recoverable`；调用方以相同 source/selector 运行
   普通 install 提升为 direct 后重试。
 
-## 8. `external restore`
+## 8. `external rebind`
+
+```text
+doctidex-git external rebind SOURCE_DIRECTORY TARGET_PATH [--root ROOT]
+  [--dry-run | --apply] [--json]
+```
+
+- 这是固定 snapshot 之间替换既有 presentation mapping 的显式命令，不重新解析 revision、fetch source 或修改
+  install；调用方先以 `external install` 建立并审阅新 selector/commit。
+- SOURCE_DIRECTORY 使用 external link 相同的 complete direct mapping 规则。TARGET_PATH 必须已经是一个完整的
+  direct durable link，且 runtime、manifest、symlink、payload、responsible index declaration 彼此可证明；不存在、
+  foreign 或 damaged target 返回 blocked，保留旧 presentation。
+- dry-run 回显 old/new install 与 path facts、configuration change 和计划文件。apply 在 root mutation boundary 内
+  重查，在不先 unlink live path 的情况下用 prepared relative sibling symlink publication 替换它，再同步两种
+  mapping record。过程中不提供 temporary broken presentation。
+- 同 target/同 mapping 返回 `unchanged`；不同 mapping 成功后返回 `rebound`。命令不判断新旧目录结构是否兼容，
+  也不改写 Markdown link、annotation、navigation prose、Git index 或旧 install。调用者阅读新内容后决定这些
+  语义工作是否还需要编辑。
+
+## 9. `external unlink`
+
+```text
+doctidex-git external unlink TARGET_PATH [--root ROOT]
+  [--dry-run | --apply] [--json]
+```
+
+- TARGET_PATH 必须精确命中一个完整 direct durable link；不是 `external remove`，不接受 install ID/source/revision，
+  不删除 payload、cache 或其它 presentation。
+- preflight 验证 mapping/symlink/index configuration，并在 safe tree 中检查 Markdown navigation、filesystem
+  symlink 与其它仍指向 presentation 的 managed reference。reference 返回 `presentation_referenced` blocked，
+  `affected`/finding 给出 document、symlink 或 record evidence；调用者先改写或移除引用后重试。
+- reference-free dry-run 只报告 `planned`。apply 移除 target symlink、portable/runtime link record，并按该 record
+  的 frontmatter ownership 仅撤回 link 自己引入的 declaration 或恢复它先前移除的 `unsafe` entry。legacy record
+  无 ownership 时保留所有 declaration。命令不写文章、Markdown annotation、无关 frontmatter、`.gitignore` 或 Git index。
+
+## 10. `external restore`
 
 ```text
 doctidex-git external restore [--root ROOT] [--install INSTALL_ID]...
@@ -212,7 +253,7 @@ doctidex-git external restore [--root ROOT] [--install INSTALL_ID]...
   和 dry-run/apply mode；清单变化令 cursor invalid，恢复载荷本身不令 cursor 失效。每次调用只
   dry-run/apply 当前页，调用方以 next cursor 继续后续项。
 
-## 9. `external remove`
+## 11. `external remove`
 
 ```text
 doctidex-git external remove INSTALL_ID [--root ROOT]
@@ -239,7 +280,7 @@ doctidex-git external remove INSTALL_ID [--root ROOT]
   record，且对 direct install 移除 manifest install record。它不改写 presentation、frontmatter、
   `.gitignore` 或 shared Git cache，不运行 cache clean。
 
-## 10. `hook`
+## 12. `hook`
 
 ```text
 doctidex-git hook (--install | --run) [--root ROOT] [--json]
@@ -264,7 +305,7 @@ doctidex-git hook (--install | --run) [--root ROOT] [--json]
   dirty、damaged、object 缺失、manifest/runtime 损坏和 concurrent state change 保留现场并以 item finding
   返回；checkout 已完成，不因 hook warning 回滚。
 
-## 11. `external link-parse`
+## 13. `external link-parse`
 
 ```text
 doctidex-git external link-parse PATH [--root ROOT] [--json]
@@ -299,7 +340,7 @@ doctidex-git external link-parse PATH [--root ROOT] [--json]
   warning/blocked 与仍可证明字段。
 - 不判断协议符合性、内容信任、写入授权或 remote 更新。
 
-## 12. `worktree open`
+## 14. `worktree open`
 
 ```text
 doctidex-git worktree open SOURCE [--root ROOT]
@@ -325,7 +366,7 @@ Git ignore，但不进入 external 恢复清单。URL 在 objects 不足时可�
 open 没有 dry-run/apply，不 checkout 用户 branch、不 commit/push/merge。
 相同 source/base commit 的候选不会阻止创建，只令成功 result 为 warning。
 
-## 13. `worktree list`
+## 15. `worktree list`
 
 ```text
 doctidex-git worktree list [--root ROOT]
@@ -338,7 +379,7 @@ doctidex-git worktree list [--root ROOT]
 canonical identity，`--worktree` 要求 exact managed path。无匹配返回空 ok collection。
 列表只给 clean/changed/unavailable 概要；具体 diff 使用原生 Git。
 
-## 14. `worktree close`
+## 16. `worktree close`
 
 ```text
 doctidex-git worktree close WORKTREE [--json]
@@ -348,7 +389,7 @@ close 是显式 destructive lifecycle action，但只允许移除可证明归属
 worktree。changed、unavailable、路径不 exact、归属不明或 Git 检查失败均 blocked 并保留。
 它不回收 shared objects、不影响 presentation，也不处理手工 worktree。
 
-## 15. `cache clean`
+## 17. `cache clean`
 
 ```text
 doctidex-git cache clean (--url URL | --auto) [--dry-run | --apply] [--json]
@@ -386,8 +427,8 @@ doctidex-git cache clean (--url URL | --auto) [--dry-run | --apply] [--json]
 | validate | 只读 | 无 | 从不使用 |
 | install dry-run | 无 | 无；只允许可丢弃的调用期状态 | 可能使用 |
 | install apply | 写入 index、`.gitignore`、恢复清单、install path | objects + install record | 可能使用 |
-| link dry-run | 无 | 无 | 从不使用 |
-| link apply | 写入 index、symlink、恢复清单 | link mapping | 从不使用 |
+| link/rebind/unlink dry-run | 无 | 无 | 从不使用 |
+| link/rebind/unlink apply | 写入 index、symlink、恢复清单 | link mapping | 从不使用 |
 | restore dry-run | 无 | 只读清单；只允许可丢弃的调用期状态 | 可能使用 |
 | restore apply | 重建 install path | objects + install state | 对象不足时可能使用 |
 | remove dry-run | 无 | 只读 owner/tree/managed state | 从不使用 |

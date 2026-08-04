@@ -76,6 +76,7 @@ configuration。schema `1.0` 的 top-level fields 是：
 | `repository_relative_path` | `.` 或 normalized source-repository relative POSIX path。 | 从 payload 得到 symlink source 与 link-parse suffix。 |
 | `safe_state` | `safe` 或 `unsafe`。 | 决定 responsible index 的 protocol declaration；不表示 trust/permission。 |
 | `responsible_index` | normalized root-relative `index.md` path。 | 说明哪个 index 负责 presentation 的 boundary/unsafe state。 |
+| `frontmatter_ownership` | 可选 object；新建记录包含 `boundary_set` 与 `unsafe` 的受管/保留事实。 | `unlink` 据此只撤回本 link 引入的 declaration，或恢复 link 曾临时移除的原有 `unsafe` entry；缺失代表旧记录，解绑时保守保留配置。 |
 
 Duplicate key、invalid required field、unresolvable install reference 或 unknown schema version 使 manifest
 不能作为自动 restore input。未知 additional field 可以保留，但不能改变 required semantics。logical
@@ -104,7 +105,7 @@ Runtime Install 包含 PortableInstall 的所有 fields，另外包含：
 | `managed_state` | `complete`；或仅 dependency 可为 `hidden`。 | hidden payload 不作为 normal mapping/presentation source，必须保留到 hook 重判。 |
 
 Runtime Link 使用与 PortableLink 相同的 `target_path`、`install_id`、`repository_relative_path`、
-`safe_state` 和 `responsible_index`。它是 current owner mapping；manifest link 是 portable recovery
+`safe_state`、`responsible_index` 和可选的 `frontmatter_ownership`。它是 current owner mapping；manifest link 是 portable recovery
 mapping。两者已知不一致、target/symlink identity 不能证明或 record 无法验证时是 `mapping_damaged`，
 不是自动修复或删除的理由。
 
@@ -131,6 +132,35 @@ source/revision provenance 足以相互证明。它是 logical read-only content
 Link apply 只有在 source 属于 complete direct install、target 空闲且不 overlap managed payload、host Git
 能 track link/manifest、symlink capability 可用时才可进行。`safe_state: safe` 还要求 source directory 是
 selected root 且 full validation structural pass/scan complete；否则为 `unsafe` 并维护对应 protocol entry。
+
+一个 durable link 以 root-relative `target_path` 为 presentation identity；它不是 install 的可变别名。
+install 仍是固定 source/commit snapshot。用户或 agent 想引用新版本时，先建立和审阅新的 direct install，
+再在相同 target 上使用 `external rebind SOURCE_DIRECTORY TARGET_PATH`。rebind 只接受一个已经完整、可证明的
+direct durable link：runtime、manifest、旧 symlink、payload 和负责 index declaration 必须相互一致；新 source
+也必须按 link 的 direct-source 规则可证明。它把 target 的 mapping 改为新 install/repository-relative path，
+保持 target spelling 不变，因此兼容目录结构中的既有 Markdown link 不需要改写。它不判断内容语义或目录结构
+兼容性，也不改写 Markdown、navigation prose、annotation、Git index 或旧 install。
+
+rebind 的 dry-run 给出 old/new fixed snapshot、index configuration 和计划效果；apply 在 root mutation boundary
+内重新验证上述事实。实现必须先准备新的 sibling symlink，再以单次 publication 替换 live target，不能先删除
+旧 symlink 形成可观察的 temporary broken presentation。manifest/runtime 或 index publication 不是跨文件 transaction：
+interruption 仍须保留可诊断的实际文件和旧/新可读 target，下一次操作不得猜测或覆盖不一致 mapping。
+同 target/同 source mapping 的 rebind 是 completed no-op；占用、overlap、损坏、缺失 payload、tracking 或 source
+问题都保持旧 presentation 并返回可定位 blocked evidence。
+
+`external unlink TARGET_PATH` 是删除一个 durable presentation 的独立 lifecycle，不是 `external remove` 的
+简写。它先证明 target 的 runtime/manifest/symlink/index 状态，再对 safe Markdown navigation link、safe
+filesystem symlink 及其它仍指向该 presentation 的 managed reference 做 preflight。任何 reference 都以
+`presentation_referenced` blocked 返回定位 evidence；调用方先获得内容编辑授权并改写或删除 reference，apply
+绝不留下一个因此失效的 link。reference-free apply 只移除精确 symlink、两种 link record 和该 link 可证明拥有
+的 index declaration；它不删除 install payload、cache、其它 presentation、文章文字或未知归属的 frontmatter。
+之后如需再呈现内容，使用已有 `external link` 或新的 install 加 `external link`。
+
+新 link record 的 `frontmatter_ownership` 对每个 declaration 记录以下事实：`managed` 表示该 link 添加了
+entry，`preserved` 表示 entry 原已存在并仍保留，`removed` 表示 safe presentation 为保持正确声明而暂时移除了
+原有 `unsafe` entry，`absent` 表示没有该 entry。unlink 移除 `managed`、恢复 `removed`、保留 `preserved`/`absent`；
+rebind 在同一 target 上更新此事实而不删除 boundary identity。v1 旧 record 没有该可选 field 时，变体必须把其
+配置视为未知归属并保留，不能以“可推测是 link 所加”为由删除用户 state。
 
 `external remove INSTALL_ID` 先扫描 Markdown navigation、filesystem symlink、runtime/manifest durable
 mapping 和其它 runtime install 的 parent edge。任一 reference 都返回 `install_referenced` 并保留 payload、
@@ -164,7 +194,7 @@ offline scope、hidden lifecycle 和 incoming preserve/replace boundary。
 
 ## 7. 失败、发布与接手
 
-install/link/restore/remove/hook 各自可能留下部分已完成的 payload、runtime、manifest、frontmatter、
+install/link/rebind/unlink/restore/remove/hook 各自可能留下部分已完成的 payload、runtime、manifest、frontmatter、
 ignore、link 或 hook effect。它们没有跨资源 transaction。调用方按 result 的 `changed`、`affected`、
 finding 和 action 重观测；`index_update_conflict`、mapping/manifest damage、source access failure、hook
 occupancy 或 interruption 不授权强制覆盖。

@@ -15,8 +15,8 @@ native Git, manual worktrees, submodules, symlinks, or another method instead.
 Read exactly one command reference before invoking its workflow:
 
 - Read [validation.md](references/validation.md) for full or directory-scoped protocol validation.
-- Read [external.md](references/external.md) before install, durable link, restore, reference-free
-  install removal, dependency expansion, or promotion from dependency to direct.
+- Read [external.md](references/external.md) before install, durable link, presentation rebind/unlink,
+  restore, reference-free install removal, dependency expansion, or promotion from dependency to direct.
 - Read [worktrees.md](references/worktrees.md) before opening, listing, or closing an isolated
   writable worktree.
 
@@ -44,8 +44,8 @@ writing it. Add one adjacent `doctidex` HTML annotation when required:
 - An `index.md` can derive a cross-boundary point from its valid `boundary-set`, and an ordinary
   safe non-cross-boundary link needs no annotation. Preserve valid existing annotations.
 
-`external link` updates the responsible index's boundary/unsafe configuration for its presentation,
-but it does not write navigation prose or annotations in documents that link to it. Add those
+`external link`/`rebind`/`unlink` update only the responsible index configuration that their durable
+mapping owns or can safely preserve; they do not write navigation prose or annotations in documents that link to it. Add those
 semantic links and their required annotations with native editing before validation reports avoidable
 findings.
 

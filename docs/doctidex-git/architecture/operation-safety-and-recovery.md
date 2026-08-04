@@ -43,7 +43,7 @@ hidden preservation、cache preserved、worktree changed/unavailable 和 hook it
 
 ## 3. 发布、并发与恢复
 
-external, hook, worktree 和 cache mutation 可以同时涉及 owner-root configuration、payload、host Git、
+external（包括 link/rebind/unlink）、hook、worktree 和 cache mutation 可以同时涉及 owner-root configuration、payload、host Git、
 shared source cache 或 hook artifact。这些资源没有全局 transaction。共同安全约束是：
 
 1. 一个 variant 只在能证明 selected owner/source identity 时改变 managed state；

@@ -131,6 +131,47 @@ def run(
                 "recovery_manifest_state",
                 "planned_changes",
             },
+            "external_rebind": {
+                "applied",
+                "state",
+                "target_path",
+                "presentation_path",
+                "previous_install_id",
+                "previous_install_path",
+                "previous_repository_relative_path",
+                "install_id",
+                "install_path",
+                "source_path",
+                "working_path",
+                "repository_relative_path",
+                "source_url",
+                "source_relation",
+                "revision_selector",
+                "default_branch",
+                "resolved_commit",
+                "safe_state",
+                "symlink_tracking",
+                "responsible_index",
+                "frontmatter_changes",
+                "recovery_manifest",
+                "recovery_manifest_state",
+                "planned_changes",
+            },
+            "external_unlink": {
+                "applied",
+                "state",
+                "target_path",
+                "presentation_path",
+                "install_id",
+                "install_path",
+                "repository_relative_path",
+                "safe_state",
+                "responsible_index",
+                "frontmatter_changes",
+                "recovery_manifest",
+                "recovery_manifest_state",
+                "planned_changes",
+            },
             "external_restore": {
                 "applied",
                 "recovery_manifest",
@@ -450,6 +491,210 @@ def test_link_restore_and_current_owner_parse(cli_env: dict[str, str], tmp_path:
     restored_parse = run(["external", "link-parse", str(presentation), "--root", str(root)], tmp_path, cli_env)
     assert restored_parse["mapping_origin"] == "owner_root"
     assert restored_parse["target_state"] == "available"
+
+
+def test_external_rebind_preserves_presentation_path_and_article_link(
+    cli_env: dict[str, str], tmp_path: Path, symlink_capable: None
+) -> None:
+    root = create_repository(tmp_path / "host")
+    source = create_repository(tmp_path / "source")
+    add_source_content(source)
+    git(source, "tag", "v1")
+    first = run(
+        ["external", "install", "--url", str(source), "--tag", "v1", "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    link = run(
+        ["external", "link", first["working_path"], "external/reference", "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    presentation = Path(link["presentation_path"])
+    article = root / "article.md"
+    article.write_text("[Reference](external/reference/guide.md)\n", encoding="utf-8")
+    article_before = article.read_bytes()
+    old_target = os.readlink(presentation)
+    (source / "guide.md").write_text("# version 2\n", encoding="utf-8")
+    (source / "section").mkdir()
+    (source / "section" / "guide.md").write_text("# section version 2\n", encoding="utf-8")
+    git(source, "add", "guide.md")
+    git(source, "add", "section/guide.md")
+    git(source, "commit", "-m", "version 2")
+    git(source, "tag", "v2")
+    second = run(
+        ["external", "install", "--url", str(source), "--tag", "v2", "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+
+    failed = run(
+        ["external", "rebind", str(root), "external/reference", "--root", str(root)],
+        tmp_path,
+        cli_env,
+        expected=2,
+    )
+    assert failed["findings"][0]["code"] == "source_unmanaged"
+    assert (presentation / "guide.md").read_text(encoding="utf-8") == "# guide.md\n"
+
+    planned = run(
+        ["external", "rebind", second["working_path"], "external/reference", "--root", str(root)],
+        tmp_path,
+        cli_env,
+    )
+    assert planned["state"] == "planned"
+    assert (presentation / "guide.md").read_text(encoding="utf-8") == "# guide.md\n"
+    rebound = run(
+        ["external", "rebind", second["working_path"], "external/reference", "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    assert rebound["state"] == "rebound"
+    assert rebound["previous_install_id"] == first["install_id"]
+    assert rebound["install_id"] == second["install_id"]
+    assert article.read_bytes() == article_before
+    assert (presentation / "guide.md").read_text(encoding="utf-8") == "# version 2\n"
+    assert os.readlink(presentation) != old_target
+    runtime = RootStorage(root).read_runtime()
+    manifest = RootStorage(root).read_manifest()
+    assert runtime["links"]["external/reference"] == manifest["links"]["external/reference"]
+    assert runtime["links"]["external/reference"]["install_id"] == second["install_id"]
+    assert first["install_id"] in runtime["installs"]
+
+    unchanged = run(
+        ["external", "rebind", second["working_path"], "external/reference", "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    assert unchanged["state"] == "unchanged"
+
+    markdown_blocked = run(
+        ["external", "unlink", "external/reference", "--root", str(root)],
+        tmp_path,
+        cli_env,
+        expected=2,
+    )
+    assert {item["code"] for item in markdown_blocked["findings"]} == {"presentation_referenced"}
+    assert str(article) in markdown_blocked["affected"]
+    assert presentation.is_symlink()
+    article.unlink()
+    alias = root / "reference-alias"
+    alias.symlink_to("external/reference", target_is_directory=True)
+    symlink_blocked = run(
+        ["external", "unlink", "external/reference", "--root", str(root)],
+        tmp_path,
+        cli_env,
+        expected=2,
+    )
+    assert str(alias) in symlink_blocked["affected"]
+    assert presentation.is_symlink()
+    alias.unlink()
+
+    subdirectory_rebind = run(
+        [
+            "external",
+            "rebind",
+            str(Path(second["working_path"]) / "section"),
+            "external/reference",
+            "--root",
+            str(root),
+            "--apply",
+        ],
+        tmp_path,
+        cli_env,
+    )
+    assert subdirectory_rebind["state"] == "rebound"
+    assert subdirectory_rebind["repository_relative_path"] == "section"
+    assert (presentation / "guide.md").read_text(encoding="utf-8") == "# section version 2\n"
+
+    planned_unlink = run(
+        ["external", "unlink", "external/reference", "--root", str(root)],
+        tmp_path,
+        cli_env,
+    )
+    assert planned_unlink["state"] == "planned"
+    assert presentation.is_symlink()
+    unlinked = run(
+        ["external", "unlink", "external/reference", "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    assert unlinked["state"] == "unlinked"
+    assert not presentation.exists()
+    assert not presentation.is_symlink()
+    assert "external/reference" not in RootStorage(root).read_runtime()["links"]
+    assert "external/reference" not in RootStorage(root).read_manifest()["links"]
+    assert second["install_id"] in RootStorage(root).read_runtime()["installs"]
+    assert "external/reference" not in (root / "index.md").read_text(encoding="utf-8")
+
+
+def test_external_unlink_preserves_legacy_frontmatter_and_damaged_mapping(
+    cli_env: dict[str, str], tmp_path: Path, symlink_capable: None
+) -> None:
+    root = create_repository(tmp_path / "host")
+    source = create_repository(tmp_path / "source")
+    add_source_content(source)
+    install = run(
+        ["external", "install", "--url", str(source), "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    index = root / "index.md"
+    content = index.read_text(encoding="utf-8")
+    content = content.replace(
+        "  - path: .doctidex/git/installs\n  boundary-set:",
+        "  - path: .doctidex/git/installs\n  - path: external/owned\n  boundary-set:",
+    )
+    index.write_text(content, encoding="utf-8")
+    run(
+        ["external", "link", install["working_path"], "external/owned", "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    assert RootStorage(root).read_runtime()["links"]["external/owned"]["frontmatter_ownership"]["unsafe"] == "removed"
+    run(
+        ["external", "unlink", "external/owned", "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    assert "- path: external/owned" in index.read_text(encoding="utf-8")
+    run(
+        ["external", "link", install["working_path"], "external/legacy", "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    storage = RootStorage(root)
+    storage.update_runtime(
+        lambda value: value["links"]["external/legacy"].pop("frontmatter_ownership", None)
+    )
+    manifest = storage.read_manifest()
+    manifest["links"]["external/legacy"].pop("frontmatter_ownership", None)
+    storage.write_manifest(manifest)
+
+    legacy = run(
+        ["external", "unlink", "external/legacy", "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    assert legacy["frontmatter_changes"] == {"boundary_set": "preserved", "unsafe": "preserved"}
+    assert "external/legacy" in (root / "index.md").read_text(encoding="utf-8")
+
+    current = run(
+        ["external", "link", install["working_path"], "external/current", "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    presentation = Path(current["presentation_path"])
+    presentation.unlink()
+    presentation.symlink_to("not-the-managed-target", target_is_directory=True)
+    damaged = run(
+        ["external", "rebind", install["working_path"], "external/current", "--root", str(root)],
+        tmp_path,
+        cli_env,
+        expected=2,
+    )
+    assert damaged["findings"][0]["code"] == "mapping_damaged"
+    assert presentation.is_symlink()
 
 
 def test_external_remove_direct_dry_run_apply_and_cache(cli_env: dict[str, str], tmp_path: Path) -> None:

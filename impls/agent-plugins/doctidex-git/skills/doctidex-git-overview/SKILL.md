@@ -24,7 +24,7 @@ specify how to choose, create, or install a `.venv`.
 - Load `$doctidex-git-read` to navigate indexes and links, search content with native tools, or
   diagnose an inaccessible symlink.
 - Load `$doctidex-git-maintenance` to validate structure, install or restore external Git content,
-  create a durable external link, or open/list/close an optional isolated worktree.
+  create/rebind/unlink a durable external presentation, or open/list/close an optional isolated worktree.
 - When a task crosses that boundary, load the second specialist once and resume there. Do not form a
   reading loop between Skills.
 

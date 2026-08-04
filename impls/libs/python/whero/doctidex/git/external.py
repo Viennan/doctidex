@@ -39,6 +39,131 @@ class ExternalService:
         self.storage = RootStorage(self.root)
         self.host_repository = _host_repository(self.root)
 
+    def _link_source_preflight(
+        self, source_directory: Path, *, operation: str
+    ) -> tuple[Path, dict[str, Any], dict[str, Any], dict[str, Any]]:
+        source_directory = source_directory.absolute()
+        if not source_directory.is_dir() or not os.access(source_directory, os.R_OK):
+            raise DoctidexError(
+                "The external link source must be an existing readable directory.",
+                operation=operation,
+                affected=[str(source_directory)],
+                actions=["Pass a readable directory inside a managed direct install or link."],
+                code="path_not_directory",
+                domain="external",
+                path=str(source_directory),
+            )
+        runtime = self.storage.read_runtime()
+        mapping = _mapping_for_source(self.root, runtime, source_directory)
+        if mapping is None:
+            raise DoctidexError(
+                "The source directory is not inside a complete managed external install or link.",
+                operation=operation,
+                affected=[str(source_directory)],
+                actions=["Install the source first, then pass a directory inside that managed install."],
+                code="source_unmanaged",
+                domain="external",
+                path=str(source_directory),
+            )
+        install = runtime["installs"].get(mapping["install_id"])
+        if not isinstance(install, dict):
+            raise _mapping_error(operation, source_directory)
+        if install.get("role") != "direct" or install.get("managed_state") != "complete":
+            raise DoctidexError(
+                "A dependency-only or incomplete install cannot back a durable external link.",
+                operation=operation,
+                affected=[install["install_id"]],
+                actions=["Run external install with the same source and selector without --dependency-of, then retry."],
+                code="dependency_not_recoverable",
+                domain="external",
+            )
+        _assert_manifest_trackable(self.host_repository, self.storage.manifest_path, operation=operation)
+        manifest = self.storage.read_manifest(required=True)
+        if manifest["installs"].get(install["install_id"]) != _portable_install(install):
+            raise _mapping_error(operation, source_directory)
+        return source_directory, runtime, mapping, install
+
+    def _presentation_preflight(self, target_value: str, *, operation: str) -> dict[str, Any]:
+        target_relative = _validate_target_path(target_value, operation=operation)
+        target = self.root.joinpath(*target_relative.parts)
+        runtime = self.storage.read_runtime()
+        link = runtime["links"].get(target_relative.as_posix())
+        if not isinstance(link, dict):
+            raise DoctidexError(
+                "The target path is not a managed external presentation.",
+                operation=operation,
+                affected=[str(target)],
+                actions=["Pass an existing durable external link target, or create one with external link."],
+                code="presentation_not_found",
+                domain="external",
+                path=str(target),
+            )
+        manifest = self.storage.read_manifest(required=True)
+        portable_link = manifest["links"].get(target_relative.as_posix())
+        if portable_link != link:
+            raise _mapping_error(operation, target)
+        install = runtime["installs"].get(link.get("install_id"))
+        if (
+            not isinstance(install, dict)
+            or install.get("role") != "direct"
+            or install.get("managed_state") != "complete"
+        ):
+            raise _mapping_error(operation, target)
+        if manifest["installs"].get(install["install_id"]) != _portable_install(install):
+            raise _mapping_error(operation, target)
+        install_path = self.root.joinpath(*install["install_path"].lstrip("/").split("/"))
+        if not install_path.is_dir() or _worktree_head(install_path) != install["resolved_commit"]:
+            raise _mapping_error(operation, target)
+        repository_relative = link.get("repository_relative_path")
+        if not isinstance(repository_relative, str):
+            raise _mapping_error(operation, target)
+        source = install_path if repository_relative == "." else install_path.joinpath(*repository_relative.split("/"))
+        expected_symlink = os.path.relpath(source, target.parent)
+        if not target.is_symlink():
+            raise _mapping_error(operation, target)
+        try:
+            if os.readlink(target) != expected_symlink:
+                raise _mapping_error(operation, target)
+        except OSError as exc:
+            raise _mapping_error(operation, target) from exc
+        responsible_value = link.get("responsible_index")
+        if not isinstance(responsible_value, str):
+            raise _mapping_error(operation, target)
+        responsible = self.root.joinpath(*responsible_value.split("/"))
+        if responsible != _responsible_index(self.root, target.parent):
+            raise _mapping_error(operation, target)
+        try:
+            relative_to_index = target.relative_to(responsible.parent).as_posix()
+            _assert_link_frontmatter(responsible, relative_to_index, str(link.get("safe_state")))
+            ownership = _frontmatter_ownership_from_record(link)
+        except (DoctidexError, ValueError) as exc:
+            if isinstance(exc, DoctidexError):
+                raise _mapping_error(operation, target) from exc
+            raise _mapping_error(operation, target) from exc
+        if _git_ignored(self.host_repository, target, operation=operation):
+            raise DoctidexError(
+                "The external link target is ignored by the host Git repository.",
+                operation=operation,
+                affected=[str(target)],
+                actions=["Adjust the host ignore rules so the presentation remains trackable, then retry."],
+                requires_user="git_tracking",
+                code="link_target_ignored",
+                domain="external",
+                path=str(target),
+            )
+        return {
+            "target_relative": target_relative,
+            "target": target,
+            "runtime": runtime,
+            "manifest": manifest,
+            "link": link,
+            "install": install,
+            "install_path": install_path,
+            "responsible": responsible,
+            "relative_to_index": relative_to_index,
+            "ownership": ownership,
+        }
+
     def install(
         self,
         url: str,
@@ -227,17 +352,21 @@ class ExternalService:
         responsible = _responsible_index(self.root, target.parent)
         relative_to_index = target.relative_to(responsible.parent).as_posix()
         frontmatter = _link_frontmatter_plan(responsible, relative_to_index, safe_state)
+        frontmatter_ownership = _link_frontmatter_ownership(responsible, relative_to_index, safe_state)
         planned = [responsible, target, self.storage.manifest_path, self.storage.runtime_path]
         existing_link = runtime["links"].get(target_relative.as_posix())
+        if existing_link is not None and manifest["links"].get(target_relative.as_posix()) != existing_link:
+            raise _mapping_error("external_link", target)
         expected_mapping = {
             "target_path": target_relative.as_posix(),
             "install_id": install["install_id"],
             "repository_relative_path": repository_relative,
             "safe_state": safe_state,
             "responsible_index": str(responsible.relative_to(self.root).as_posix()),
+            "frontmatter_ownership": frontmatter_ownership,
         }
         relative_source = os.path.relpath(source_directory, target.parent)
-        if existing_link is not None and existing_link != expected_mapping:
+        if existing_link is not None and not _same_link_mapping(existing_link, expected_mapping):
             raise DoctidexError(
                 "The target path already belongs to a different external mapping.",
                 operation="external_link",
@@ -248,6 +377,9 @@ class ExternalService:
                 domain="external",
                 path=str(target),
             )
+        if isinstance(existing_link, dict):
+            # A legacy record without ownership remains valid and is never silently claimed.
+            expected_mapping = existing_link
         overlaps = [
             existing_target
             for existing_target in runtime["links"]
@@ -353,6 +485,333 @@ class ExternalService:
             if apply
             else _file_state_or_planned(self.host_repository, self.storage.manifest_path),
             planned_changes=[str(path) for path in planned],
+        )
+
+    def rebind(self, source_directory: Path, target_value: str, *, apply: bool) -> dict[str, Any]:
+        previous = self._presentation_preflight(target_value, operation="external_rebind")
+        source_directory, _runtime, mapping, install = self._link_source_preflight(
+            source_directory, operation="external_rebind"
+        )
+        target_relative = previous["target_relative"]
+        target = previous["target"]
+        repository_relative = _join_repository_path(
+            mapping["repository_relative_path"], source_directory, mapping["base"]
+        )
+        safe_state = _safe_state(source_directory)
+        relative_source = os.path.relpath(source_directory, target.parent)
+        frontmatter, ownership = _rebind_frontmatter_plan(
+            previous["responsible"],
+            previous["relative_to_index"],
+            previous_safe_state=previous["link"]["safe_state"],
+            safe_state=safe_state,
+            ownership=previous["ownership"],
+        )
+        expected_mapping = {
+            "target_path": target_relative.as_posix(),
+            "install_id": install["install_id"],
+            "repository_relative_path": repository_relative,
+            "safe_state": safe_state,
+            "responsible_index": str(previous["responsible"].relative_to(self.root).as_posix()),
+            "frontmatter_ownership": ownership,
+        }
+        unchanged = _same_link_mapping(previous["link"], expected_mapping)
+        planned = [previous["responsible"], target, self.storage.manifest_path, self.storage.runtime_path]
+
+        if unchanged or not apply:
+            return self._rebind_result(
+                previous,
+                source_directory=source_directory,
+                install=install,
+                repository_relative=repository_relative,
+                safe_state=safe_state,
+                frontmatter=frontmatter,
+                state="unchanged" if unchanged else "planned",
+                applied=apply,
+                changed=[],
+                planned=planned,
+            )
+
+        temporary: Path | None = None
+        with self.storage.mutation():
+            current = self._presentation_preflight(target_value, operation="external_rebind")
+            source_directory, _runtime, mapping, install = self._link_source_preflight(
+                source_directory, operation="external_rebind"
+            )
+            repository_relative = _join_repository_path(
+                mapping["repository_relative_path"], source_directory, mapping["base"]
+            )
+            safe_state = _safe_state(source_directory)
+            if current["link"] != previous["link"]:
+                raise _mapping_error("external_rebind", target)
+            frontmatter, ownership = _rebind_frontmatter_plan(
+                current["responsible"],
+                current["relative_to_index"],
+                previous_safe_state=current["link"]["safe_state"],
+                safe_state=safe_state,
+                ownership=current["ownership"],
+            )
+            expected_mapping = {
+                "target_path": target_relative.as_posix(),
+                "install_id": install["install_id"],
+                "repository_relative_path": repository_relative,
+                "safe_state": safe_state,
+                "responsible_index": str(current["responsible"].relative_to(self.root).as_posix()),
+                "frontmatter_ownership": ownership,
+            }
+            if _same_link_mapping(current["link"], expected_mapping):
+                return self._rebind_result(
+                    current,
+                    source_directory=source_directory,
+                    install=install,
+                    repository_relative=repository_relative,
+                    safe_state=safe_state,
+                    frontmatter=frontmatter,
+                    state="unchanged",
+                    applied=True,
+                    changed=[],
+                    planned=planned,
+                )
+            relative_source = os.path.relpath(source_directory, target.parent)
+            temporary = _prepare_replacement_symlink(target, relative_source, operation="external_rebind")
+            changed: list[Path] = []
+            try:
+                if _apply_link_frontmatter(current["responsible"], current["relative_to_index"], safe_state):
+                    changed.append(current["responsible"])
+                manifest = self.storage.read_manifest(required=True)
+                if manifest["links"].get(target_relative.as_posix()) != current["link"]:
+                    raise _mapping_error("external_rebind", target)
+                manifest["links"][target_relative.as_posix()] = expected_mapping
+                self.storage.write_manifest(manifest)
+                changed.append(self.storage.manifest_path)
+
+                def replace_runtime(value: dict[str, Any]) -> None:
+                    if value["links"].get(target_relative.as_posix()) != current["link"]:
+                        raise _mapping_error("external_rebind", target)
+                    value["links"][target_relative.as_posix()] = expected_mapping
+
+                self.storage.update_runtime(replace_runtime)
+                changed.append(self.storage.runtime_path)
+                os.replace(temporary, target)
+                temporary = None
+                changed.append(target)
+            finally:
+                if temporary is not None:
+                    temporary.unlink(missing_ok=True)
+
+        return self._rebind_result(
+            previous,
+            source_directory=source_directory,
+            install=install,
+            repository_relative=repository_relative,
+            safe_state=safe_state,
+            frontmatter=frontmatter,
+            state="rebound",
+            applied=True,
+            changed=changed,
+            planned=planned,
+        )
+
+    def _rebind_result(
+        self,
+        previous: dict[str, Any],
+        *,
+        source_directory: Path,
+        install: dict[str, Any],
+        repository_relative: str,
+        safe_state: str,
+        frontmatter: dict[str, str],
+        state: str,
+        applied: bool,
+        changed: list[Path],
+        planned: list[Path],
+    ) -> dict[str, Any]:
+        link = previous["link"]
+        return envelope(
+            "external_rebind",
+            result=(
+                "The external presentation mapping was replaced."
+                if state == "rebound"
+                else (
+                    "The external presentation already has this mapping."
+                    if state == "unchanged"
+                    else "External presentation rebinding plan is ready."
+                )
+            ),
+            root=str(self.root),
+            changed=[str(path) for path in _unique_paths(changed)],
+            applied=applied,
+            state=state,
+            target_path=previous["target_relative"].as_posix(),
+            presentation_path=str(previous["target"]),
+            previous_install_id=link["install_id"],
+            previous_install_path=previous["install"]["install_path"],
+            previous_repository_relative_path=link["repository_relative_path"],
+            install_id=install["install_id"],
+            install_path=install["install_path"],
+            source_path=str(source_directory),
+            working_path=str(source_directory),
+            repository_relative_path=repository_relative,
+            source_url=install["source_url"],
+            source_relation=install["source_relation"],
+            revision_selector=install["revision_selector"],
+            default_branch=install.get("default_branch"),
+            resolved_commit=install["resolved_commit"],
+            safe_state=safe_state,
+            symlink_tracking="trackable",
+            responsible_index=str(previous["responsible"]),
+            frontmatter_changes=frontmatter,
+            recovery_manifest=str(self.storage.manifest_path),
+            recovery_manifest_state=(
+                git_file_state(self.host_repository, self.storage.manifest_path)
+                if applied
+                else _file_state_or_planned(self.host_repository, self.storage.manifest_path)
+            ),
+            planned_changes=[str(path) for path in _unique_paths(planned)],
+        )
+
+    def unlink(self, target_value: str, *, apply: bool) -> dict[str, Any]:
+        preflight = self._presentation_preflight(target_value, operation="external_unlink")
+        references = self._unlink_references(preflight)
+        if references:
+            return self._unlink_result(preflight, references=references, apply=apply, state="blocked", changed=[])
+        if not apply:
+            return self._unlink_result(preflight, references=[], apply=False, state="planned", changed=[])
+
+        with self.storage.mutation():
+            preflight = self._presentation_preflight(target_value, operation="external_unlink")
+            references = self._unlink_references(preflight)
+            if references:
+                return self._unlink_result(preflight, references=references, apply=True, state="blocked", changed=[])
+            changed: list[Path] = []
+            if _apply_unlink_frontmatter(
+                preflight["responsible"], preflight["relative_to_index"], preflight["ownership"]
+            ):
+                changed.append(preflight["responsible"])
+            manifest = self.storage.read_manifest(required=True)
+            target = preflight["target_relative"].as_posix()
+            if manifest["links"].get(target) != preflight["link"]:
+                raise _mapping_error("external_unlink", preflight["target"])
+            del manifest["links"][target]
+            self.storage.write_manifest(manifest)
+            changed.append(self.storage.manifest_path)
+
+            def remove_runtime(value: dict[str, Any]) -> None:
+                if value["links"].get(target) != preflight["link"]:
+                    raise _mapping_error("external_unlink", preflight["target"])
+                del value["links"][target]
+
+            self.storage.update_runtime(remove_runtime)
+            changed.append(self.storage.runtime_path)
+            preflight["target"].unlink()
+            changed.append(preflight["target"])
+
+        return self._unlink_result(preflight, references=[], apply=True, state="unlinked", changed=changed)
+
+    def _unlink_references(self, preflight: dict[str, Any]) -> list[tuple[str, str]]:
+        observations = tree_observations(
+            self.context,
+            excluded_roots=[self.storage.install_directory],
+            excluded_configuration_fields=("boundary-set", "unsafe"),
+        )
+        target = preflight["target"]
+        references: list[tuple[str, str]] = []
+        for link in observations.links:
+            if (
+                link.is_file_link
+                and link.target is not None
+                and not observations.is_unsafe(link.document)
+                and not observations.is_within_boundary(link.document)
+                and is_within(link.target, target)
+            ):
+                references.append(("Markdown navigation link", str(link.document)))
+        for path in observations.paths:
+            if (
+                path == target
+                or not path.is_symlink()
+                or observations.is_unsafe(path)
+                or observations.is_within_boundary(path)
+            ):
+                continue
+            try:
+                raw_target = os.readlink(path)
+            except OSError:
+                continue
+            lexical_target = Path(raw_target) if os.path.isabs(raw_target) else path.parent / raw_target
+            if is_within(lexical_target, target):
+                references.append(("filesystem symlink", str(path)))
+        target_key = preflight["target_relative"].as_posix()
+        for mapping_target in preflight["runtime"]["links"]:
+            if mapping_target == target_key:
+                continue
+            candidate = self.root.joinpath(*mapping_target.split("/"))
+            if is_within(candidate, target):
+                references.append(("runtime durable mapping", f"{self.storage.runtime_path}#links/{mapping_target}"))
+        for mapping_target in preflight["manifest"]["links"]:
+            if mapping_target == target_key:
+                continue
+            candidate = self.root.joinpath(*mapping_target.split("/"))
+            if is_within(candidate, target):
+                references.append(("portable durable mapping", f"{self.storage.manifest_path}#links/{mapping_target}"))
+        return list(dict.fromkeys(references))
+
+    def _unlink_result(
+        self,
+        preflight: dict[str, Any],
+        *,
+        references: list[tuple[str, str]],
+        apply: bool,
+        state: str,
+        changed: list[Path],
+    ) -> dict[str, Any]:
+        link = preflight["link"]
+        frontmatter = _unlink_frontmatter_plan(preflight["ownership"])
+        planned = [preflight["target"], self.storage.runtime_path, self.storage.manifest_path]
+        if "remove" in frontmatter.values() or "restore" in frontmatter.values():
+            planned.append(preflight["responsible"])
+        blocked = state == "blocked"
+        return envelope(
+            "external_unlink",
+            status="blocked" if blocked else "ok",
+            result=(
+                "The external presentation is still referenced."
+                if blocked
+                else (
+                    "External presentation removed."
+                    if state == "unlinked"
+                    else "External presentation removal plan is ready."
+                )
+            ),
+            root=str(self.root),
+            changed=[str(path) for path in _unique_paths(changed)],
+            findings=[
+                finding(
+                    "external",
+                    "error",
+                    "presentation_referenced",
+                    f"The presentation is still referenced by {kind}.",
+                    path=evidence,
+                    actions=["Remove or redirect this reference with explicit authority, then retry unlink."],
+                )
+                for kind, evidence in references
+            ],
+            affected=[evidence for _, evidence in references],
+            applied=apply,
+            state=state,
+            target_path=preflight["target_relative"].as_posix(),
+            presentation_path=str(preflight["target"]),
+            install_id=link["install_id"],
+            install_path=preflight["install"]["install_path"],
+            repository_relative_path=link["repository_relative_path"],
+            safe_state=link["safe_state"],
+            responsible_index=str(preflight["responsible"]),
+            frontmatter_changes=frontmatter,
+            recovery_manifest=str(self.storage.manifest_path),
+            recovery_manifest_state=(
+                git_file_state(self.host_repository, self.storage.manifest_path)
+                if apply and not blocked
+                else _file_state_or_planned(self.host_repository, self.storage.manifest_path)
+            ),
+            planned_changes=[str(path) for path in _unique_paths(planned)],
         )
 
     def restore(
@@ -1178,6 +1637,95 @@ def _link_frontmatter_plan(index_path: Path, relative: str, safe_state: str) -> 
     }
 
 
+def _link_frontmatter_ownership(index_path: Path, relative: str, safe_state: str) -> dict[str, str]:
+    document = DoctidexDocument.load(index_path)
+    mapping = document.doctidex or {}
+    boundary = _contains_entry(mapping.get("boundary-set"), relative)
+    unsafe = _contains_entry(mapping.get("unsafe"), relative)
+    return {
+        "boundary_set": "preserved" if boundary else "managed",
+        "unsafe": (
+            "removed"
+            if safe_state == "safe" and unsafe
+            else ("absent" if safe_state == "safe" else ("preserved" if unsafe else "managed"))
+        ),
+    }
+
+
+def _frontmatter_ownership_from_record(record: dict[str, Any]) -> dict[str, str] | None:
+    ownership = record.get("frontmatter_ownership")
+    if ownership is None:
+        return None
+    if not isinstance(ownership, dict):
+        raise ValueError("frontmatter ownership must be an object")
+    boundary = ownership.get("boundary_set")
+    unsafe = ownership.get("unsafe")
+    if boundary not in {"managed", "preserved"} or unsafe not in {
+        "managed",
+        "preserved",
+        "removed",
+        "absent",
+    }:
+        raise ValueError("frontmatter ownership values are invalid")
+    return {"boundary_set": str(boundary), "unsafe": str(unsafe)}
+
+
+def _assert_link_frontmatter(index_path: Path, relative: str, safe_state: str) -> None:
+    if safe_state not in {"safe", "unsafe"}:
+        raise ValueError("safe state is invalid")
+    document = DoctidexDocument.load(index_path)
+    mapping = document.doctidex or {}
+    if not _contains_entry(mapping.get("boundary-set"), relative):
+        raise ValueError("boundary declaration is missing")
+    unsafe = _contains_entry(mapping.get("unsafe"), relative)
+    if (safe_state == "unsafe" and not unsafe) or (safe_state == "safe" and unsafe):
+        raise ValueError("unsafe declaration does not match mapping")
+
+
+def _rebind_frontmatter_plan(
+    index_path: Path,
+    relative: str,
+    *,
+    previous_safe_state: str,
+    safe_state: str,
+    ownership: dict[str, str] | None,
+) -> tuple[dict[str, str], dict[str, str]]:
+    _assert_link_frontmatter(index_path, relative, previous_safe_state)
+    document = DoctidexDocument.load(index_path)
+    mapping = document.doctidex or {}
+    unsafe_present = _contains_entry(mapping.get("unsafe"), relative)
+    previous = ownership or {"boundary_set": "preserved", "unsafe": "preserved"}
+    updated = {"boundary_set": previous["boundary_set"], "unsafe": previous["unsafe"]}
+    if safe_state == "unsafe":
+        if unsafe_present:
+            if previous_safe_state == "safe":
+                updated["unsafe"] = "preserved"
+            return {"boundary_set": "existing", "unsafe": "existing"}, updated
+        updated["unsafe"] = "managed"
+        return {"boundary_set": "existing", "unsafe": "add"}, updated
+    if unsafe_present:
+        updated["unsafe"] = "absent" if previous["unsafe"] == "managed" else "removed"
+        return {"boundary_set": "existing", "unsafe": "remove"}, updated
+    if previous_safe_state == "safe" and previous["unsafe"] == "removed":
+        updated["unsafe"] = "removed"
+    else:
+        updated["unsafe"] = "absent"
+    return {"boundary_set": "existing", "unsafe": "not_required"}, updated
+
+
+def _unlink_frontmatter_plan(ownership: dict[str, str] | None) -> dict[str, str]:
+    if ownership is None:
+        return {"boundary_set": "preserved", "unsafe": "preserved"}
+    return {
+        "boundary_set": "remove" if ownership["boundary_set"] == "managed" else "preserved",
+        "unsafe": (
+            "remove"
+            if ownership["unsafe"] == "managed"
+            else ("restore" if ownership["unsafe"] == "removed" else "preserved")
+        ),
+    }
+
+
 def _apply_link_frontmatter(index_path: Path, relative: str, safe_state: str) -> bool:
     document = DoctidexDocument.load(index_path)
     mapping = document.doctidex
@@ -1189,6 +1737,25 @@ def _apply_link_frontmatter(index_path: Path, relative: str, safe_state: str) ->
         changed = _ensure_entry(mapping, "unsafe", relative) or changed
     else:
         changed = _remove_entry(mapping, "unsafe", relative) or changed
+    if changed:
+        document.write()
+    return changed
+
+
+def _apply_unlink_frontmatter(index_path: Path, relative: str, ownership: dict[str, str] | None) -> bool:
+    if ownership is None:
+        return False
+    document = DoctidexDocument.load(index_path)
+    mapping = document.doctidex
+    if mapping is None:
+        raise ValueError("link configuration is missing")
+    changed = False
+    if ownership["boundary_set"] == "managed":
+        changed = _remove_entry(mapping, "boundary-set", relative)
+    if ownership["unsafe"] == "managed":
+        changed = _remove_entry(mapping, "unsafe", relative) or changed
+    elif ownership["unsafe"] == "removed":
+        changed = _ensure_entry(mapping, "unsafe", relative) or changed
     if changed:
         document.write()
     return changed
@@ -1218,12 +1785,12 @@ def _contains_entry(values: object, relative: str) -> bool:
     return isinstance(values, list) and any(isinstance(item, dict) and item.get("path") == relative for item in values)
 
 
-def _validate_target_path(value: str) -> PurePosixPath:
+def _validate_target_path(value: str, *, operation: str = "external_link") -> PurePosixPath:
     path = PurePosixPath(value)
     if value.startswith("/") or not value or any(part in {"", ".", ".."} for part in path.parts):
         raise DoctidexError(
             "The external link target must be a non-empty normalized root-relative POSIX path.",
-            operation="external_link",
+            operation=operation,
             affected=[value],
             actions=["Pass a path such as external/design."],
             requires_user="target_path",
@@ -1243,9 +1810,9 @@ def _posix_join(base: str, suffix: str) -> str:
     return "/".join(values) if values else "."
 
 
-def _git_ignored(repository: Path, path: Path) -> bool:
+def _git_ignored(repository: Path, path: Path, *, operation: str = "external_link") -> bool:
     result = git(
-        ["-C", str(repository), "check-ignore", "--quiet", "--", str(path)], operation="external_link", check=False
+        ["-C", str(repository), "check-ignore", "--quiet", "--", str(path)], operation=operation, check=False
     )
     return result.returncode == 0
 
@@ -1272,12 +1839,12 @@ def _probe_symlink(target: Path) -> None:
         shutil.rmtree(temporary, ignore_errors=True)
 
 
-def _assert_manifest_trackable(repository: Path, manifest: Path) -> None:
-    if not _git_ignored(repository, manifest):
+def _assert_manifest_trackable(repository: Path, manifest: Path, *, operation: str = "external_install") -> None:
+    if not _git_ignored(repository, manifest, operation=operation):
         return
     raise DoctidexError(
         "The host Git ignore rules would hide the external recovery manifest.",
-        operation="external_install",
+        operation=operation,
         affected=[str(manifest)],
         actions=["Adjust the host ignore rules so the manifest remains trackable, then rerun the dry-run."],
         requires_user="git_tracking",
@@ -1298,6 +1865,41 @@ def _file_state_or_planned(repository: Path, path: Path) -> str:
 
 def _paths_overlap(first: PurePosixPath, second: PurePosixPath) -> bool:
     return first == second or first in second.parents or second in first.parents
+
+
+def _same_link_mapping(first: object, second: object) -> bool:
+    if not isinstance(first, dict) or not isinstance(second, dict):
+        return False
+    keys = (
+        "target_path",
+        "install_id",
+        "repository_relative_path",
+        "safe_state",
+        "responsible_index",
+    )
+    return all(first.get(key) == second.get(key) for key in keys)
+
+
+def _prepare_replacement_symlink(target: Path, relative_source: str, *, operation: str) -> Path:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, name = tempfile.mkstemp(prefix=f".{target.name}.rebind-", dir=target.parent)
+    temporary = Path(name)
+    try:
+        os.close(descriptor)
+        temporary.unlink()
+        temporary.symlink_to(relative_source, target_is_directory=True)
+        return temporary
+    except OSError as exc:
+        temporary.unlink(missing_ok=True)
+        raise DoctidexError(
+            "The platform or filesystem could not prepare the required relative symlink.",
+            operation=operation,
+            affected=[str(target)],
+            actions=["Run on a filesystem and account that permit symbolic links."],
+            code="symlink_unsupported",
+            domain="external",
+            path=str(target),
+        ) from exc
 
 
 def _restore_item_payload(record: dict[str, Any], state: str, findings: list[dict[str, Any]]) -> dict[str, Any]:

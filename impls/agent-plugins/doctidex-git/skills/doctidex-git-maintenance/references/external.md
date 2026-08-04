@@ -27,7 +27,11 @@ Without `--dependency-of`, create or promote a direct install and include it in 
 With it, the ID must be a complete install in the same owner root; create/reuse a flat dependency
 install and a parent edge without adding independent recovery. Direct never downgrades. Repeating
 the same source/selector without the parent promotes dependency to direct. A cycle or self-reference
-hits the existing key and remains bounded; self-reference still uses an independent snapshot.
+hits the existing key and remains bounded; self-reference still uses an independent snapshot. A
+dependency-only install's readable `install_path` is not a substitute for a direct source. To
+establish document links to an external repository through a durable presentation, first repeat the
+same source and selector without `--dependency-of` to promote it to direct. Keep the returned fixed
+selector and commit rather than resolving a moving ref again.
 
 ## Handle Cycles and Self-Reference
 
@@ -38,10 +42,7 @@ that install and records the parent relation, so the cycle is bounded. This also
 that is the owner or host repository itself: it remains an independent logical read-only snapshot,
 not the current writable working tree.
 
-The CLI does not discover or recursively install dependencies. A dependency-only install cannot
-back a durable link; repeat its source and selector without `--dependency-of` to promote it to a
-direct install before linking. Keep the returned fixed selector and commit rather than resolving a
-moving ref again.
+The CLI does not discover or recursively install dependencies.
 
 Read `applied`, `install_id`, `install_role`, bounded `dependency_of`, `manifest_included`,
 `install_path`, `working_path`, sanitized `source_url`, `source_relation`, `revision_selector`,
@@ -64,7 +65,9 @@ DOCTIDEX_GIT external link SOURCE_DIRECTORY TARGET_PATH [--root ROOT]
 `SOURCE_DIRECTORY` is a cwd-relative or absolute readable directory inside a complete direct
 install or its existing link. `TARGET_PATH` is a nonempty normalized POSIX path relative to ROOT;
 it cannot start with `/`, contain empty/`.`/`..` segments, overlap another presentation, or be
-occupied/ignored. ROOT defaults from cwd but must own the source mapping.
+occupied/ignored. ROOT defaults from cwd but must own the source mapping. Prefer a presentation
+near the content that actually uses it, and write document links to this root-relative path rather
+than to `/.doctidex/git/installs/...`.
 
 Apply creates a relative symlink to the stable install or its repository subdirectory, updates the
 responsible index boundary/unsafe entries, and records portable mapping. It does not copy content,
@@ -77,6 +80,52 @@ Read `applied`, install ID/path, source/target/presentation/working paths,
 `planned_changes`. On occupancy/overlap, ignored target, unsupported symlink, unmanaged source, or
 nonrecoverable dependency, keep the existing content and follow the finding; there is no replace or
 copy fallback.
+
+## Rebind a Nearby Presentation
+
+```text
+DOCTIDEX_GIT external rebind SOURCE_DIRECTORY TARGET_PATH [--root ROOT]
+  [--dry-run | --apply] --json
+```
+
+Use this after installing and reading a new fixed selector/commit when an existing nearby
+presentation should retain the same path. `SOURCE_DIRECTORY` follows the durable-link rule above;
+`TARGET_PATH` must already be one complete direct managed presentation in ROOT. The command does
+not fetch, choose a revision, edit an install, or decide whether the old and new repository layout
+is semantically compatible. Review the new content and selector first.
+
+Run dry-run and read `previous_install_id`, `previous_install_path`,
+`previous_repository_relative_path`, the new install/source/commit facts, `safe_state`,
+`frontmatter_changes`, and `planned_changes`. With `--apply`, `state: rebound` replaces the mapping
+at the same target path; existing Markdown links can remain unchanged only when the referenced
+repository-relative structure is compatible. `state: unchanged` is a completed no-op. The command
+does not write Markdown prose, link annotations, or Git delivery state. Make any necessary semantic
+edits natively, then validate and inspect the diff.
+
+Stop on blocked mapping, payload, tracking, or configuration evidence. Do not remove the old
+symlink manually to force a rebind: it preserves the live presentation until it can publish the
+replacement. The old install remains managed independently; only remove it later under the separate
+install-removal authority after its references are gone.
+
+## Unlink One Presentation
+
+```text
+DOCTIDEX_GIT external unlink TARGET_PATH [--root ROOT]
+  [--dry-run | --apply] --json
+```
+
+Use this only with explicit authority to remove that presentation. It accepts the exact managed
+target path, not an install ID, and does not remove any payload, cache, other presentation, Markdown
+text, or Git state. Dry-run reports the mapped install/path, `frontmatter_changes`, and planned
+paths. Apply returns `state: unlinked` after removing only the relative symlink and its portable and
+runtime mapping records.
+
+Before either mode completes, the command examines safe Markdown navigation and safe filesystem
+symlinks that still point at the presentation. A `presentation_referenced` blocked result lists
+locatable `affected` evidence. Do not delete or rewrite those blockers automatically: report them
+and wait for the appropriate content-edit authority, then rerun dry-run. Legacy mappings can retain
+an index declaration whose ownership cannot be proven; this is expected preservation, not a reason
+to edit frontmatter by hand.
 
 ## Restore Direct Installs
 

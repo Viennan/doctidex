@@ -10,7 +10,7 @@
 | 树、根、配置与验证 | `validate`；`protocol.document/root/validation`。 | [protocol/root 观察](components/protocol-and-root-observation.md)、[`test_protocol.py`](../../../../impls/libs/python/tests/test_protocol.py)。 |
 | 结果、finding、JSON 与分页 | CLI 分发器、`errors`、`results` 与渲染器。 | [CLI/结果](components/cli-results-and-rendering.md)、protocol/plugin 的结果测试。 |
 | 固定 external snapshot 与 manifest/runtime | `external install/restore`；`ExternalService`、source/storage。 | [external 实现](components/external-presentation-and-mapping.md)、[工作现场清单](worksite-inventory-and-construction.md)、插件 install/restore 测试。 |
-| 持久呈现与 link parse | `external link/link-parse`；external mapping 辅助逻辑。 | [工作现场清单](worksite-inventory-and-construction.md)中的 link/mapping 行、插件 safe/retry/portable-link 测试。 |
+| 持久呈现与 link lifecycle | `external link/rebind/unlink/link-parse`；external mapping 辅助逻辑。 | [工作现场清单](worksite-inventory-and-construction.md)中的 link/mapping 行、插件 safe/retry/portable-link/rebind/unlink 测试。 |
 | 受引用保护的 remove | `external remove`；树观察加 source/root storage。 | external component、插件 remove/reference 测试。 |
 | checkout 注册、协调与隐藏 | `hook --install/run`；`HookService`。 | [hook component](components/checkout-hook-reconciliation.md)、插件 foreign/alignment/hidden 测试。 |
 | 可写 worktree | `worktree open/list/close`；`WorktreeService`。 | [worktree component](components/worktrees-and-cache-cleanup.md)、插件 clean/changed/unavailable/orphan 测试。 |

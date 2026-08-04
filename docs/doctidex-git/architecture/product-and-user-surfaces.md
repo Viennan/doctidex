@@ -45,6 +45,7 @@ native Git、手工 worktree、submodule 或第三方 symlink 不因其存在而
 | 安装 external snapshot | `external install SOURCE [REVISION]` | 默认 dry-run；省略 revision 记录 default provenance，实际读取固定 commit。 | install ID/path、manifest/runtime/ignore 的计划或变更；审阅后才 `--apply`。 |
 | 展开 dependency | `external install SOURCE REVISION --dependency-of ID` | parent 必须是当前 complete install。 | 扁平 dependency edge；需要 durable restore/link 时再提升为 direct。 |
 | 建立 presentation | `external link SOURCE_DIR TARGET` | TARGET 是 user 选择且须可 track。 | relative symlink、safe/index declaration、durable mapping；Git 审阅随后由原生工具完成。 |
+| 替换或解除 presentation | `external rebind SOURCE_DIR TARGET` / `external unlink TARGET` | rebind 选择已审阅的新 direct snapshot；unlink 只接受 exact managed target。 | 同 path 切换到新 snapshot，或在 reference-free 时移除一个 presentation；不改变 install lifecycle。 |
 | 恢复 direct install | `external restore [ID...]` | 默认 dry-run；只依 manifest exact commit/path。 | `planned`、`restored`、`unchanged` 或 `blocked`；不刷新 moving ref 或改写 link。 |
 | 解析 path 或 broken link | `external link-parse PATH` | PATH 可以在 owner 或 installed content 中。 | current/portable mapping 与 target state；据此继续读取、restore、安装 dependency 或诊断。 |
 | 协调 checkout snapshot | `hook --install` 后 Git `post-checkout` | 用户明确安装一次；run 是离线。 | existing payload 对齐、hidden/preserved/blocked item；不 materialize missing direct install。 |

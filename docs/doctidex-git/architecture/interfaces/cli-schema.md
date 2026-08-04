@@ -211,12 +211,51 @@ FrontmatterChanges：
 
 ```json
 {
-  "boundary_set": "add|existing",
-  "unsafe": "add|existing|remove|not_required"
+  "boundary_set": "add|existing|remove|preserved",
+  "unsafe": "add|existing|remove|restore|not_required|preserved"
 }
 ```
 
-### 6.3 `external_restore`
+### 6.3 `external_rebind`
+
+非 blocked result 的 fields：
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| `operation` | `external_rebind` | 操作判别字段。 |
+| `applied` | boolean | 是否实际 apply；dry-run 为 false。 |
+| `state` | `planned`/`rebound`/`unchanged` | 可替换的 dry-run、apply 已切换，或 old/new mapping 相同的 completed no-op。 |
+| `target_path` / `presentation_path` | 与 `external_link` 相同 | 保持不变的 root-relative identity 与 live filesystem entry。 |
+| `previous_install_id` / `previous_install_path` / `previous_repository_relative_path` | opaque string / root-absolute POSIX path / POSIX path | rebind 前 mapping 的固定 source facts。 |
+| `install_id`、`install_path`、`source_path`、`working_path`、`repository_relative_path`、`source_url`、`source_relation`、`revision_selector`、`default_branch`、`resolved_commit` | 与 `external_link` 相同 | rebind 后 mapping 的 source 和 fixed snapshot facts。 |
+| `safe_state`、`symlink_tracking`、`responsible_index`、`frontmatter_changes`、`recovery_manifest`、`recovery_manifest_state`、`planned_changes` | 与 `external_link` 相同 | 新 mapping 的 presentation declaration、tracking/recovery 状态和外显计划。 |
+
+`changed` 只列出已可靠 publication 的 index、live symlink、runtime 和 manifest path，不公开 temporary
+siblings。旧/新 mapping、target symlink、payload 或 index declaration 不能完整证明时整体 blocked；调用方保留
+target 并修复精确 evidence，不将 blocked 当作“可以先手工删除 link”。
+
+### 6.4 `external_unlink`
+
+非 blocked result 的 fields：
+
+| 字段 | 类型 | 含义 |
+|---|---|---|
+| `operation` | `external_unlink` | 操作判别字段。 |
+| `applied` | boolean | 是否实际 apply；dry-run 为 false。 |
+| `state` | `planned`/`unlinked` | reference-free deletion plan，或 exact presentation 已移除。 |
+| `target_path` / `presentation_path` | POSIX relative path / absolute path | 调用输入与被移除或计划移除的 filesystem entry。 |
+| `install_id` / `install_path` / `repository_relative_path` | opaque string / root-absolute POSIX path / POSIX path | 被解除 mapping 的 snapshot relation；不表示 payload 被删除。 |
+| `safe_state` / `responsible_index` | `safe`/`unsafe` / absolute path | unlink 前的 presentation classification 与负责 declaration。 |
+| `frontmatter_changes` | FrontmatterChanges | 仅由 ownership 证明可撤回或恢复的 declaration effect。 |
+| `recovery_manifest` / `recovery_manifest_state` | absolute path / `tracked`/`modified`/`untracked` | portable record 所在文件及 apply 后 Git state。 |
+| `planned_changes` | array[absolute path] | live symlink、runtime、manifest 及确有受管配置效果时的 index。 |
+
+`presentation_referenced`、unknown/foreign/damaged target 或 apply 复查 conflict 整体 blocked，`changed` 为空。
+每个 safe Markdown navigation、filesystem symlink 或 managed-record blocker 都有 locatable finding/path 和
+`affected` evidence。旧 link record 缺少 frontmatter ownership 时不是 damage；result 报告 `preserved` configuration
+effect，apply 保留无法归属的 index state。
+
+### 6.5 `external_restore`
 
 RestoreItem：
 
@@ -249,7 +288,7 @@ dependency edges 不在无 filter 集合中。任一 item blocked 令顶层 stat
 不可识别或无法选择宿主 repository 时，operation blocked。`collection.lists.items` 对 filter
 后的记录计数；恢复载荷不改变 manifest identity，也不使后续 cursor 失效。
 
-### 6.4 `external_remove`
+### 6.6 `external_remove`
 
 非 blocked result 的 fields：
 
@@ -271,7 +310,7 @@ result 的 `findings` 为空；target reference、unknown/damaged install 或 re
 `affected`，并以 `install_referenced` external finding 说明 remove 未执行。command 不公开或推断 shared
 cache object identity。
 
-### 6.5 `hook_install` 与 `hook_run`
+### 6.7 `hook_install` 与 `hook_run`
 
 HookInstall 的非 blocked result fields：
 
@@ -496,7 +535,9 @@ path 不公开，因此包括 `removed` 在内的 `changed` 都为空。URL mode
 | `argument_invalid` | 按 CLI contract 修正参数。 |
 | `root_not_found` / `root_ambiguous` / `root_mismatch` | 传 exact ROOT。 |
 | `path_invalid` / `path_not_directory` / `path_type_unsupported` | 传符合命令类型与根边界的路径；link-parse 只接受目录或 symlink。 |
-| `target_occupied` / `presentation_overlap` | 选择新 target 或由用户处理现有内容。 |
+| `target_occupied` / `presentation_overlap` | 选择新 target 或由用户处理现有内容；rebind 不以此替代 exact managed target。 |
+| `presentation_not_found` | 使用已存在的 exact managed presentation，或以 `external link` 新建它。 |
+| `presentation_referenced` | 保留 target 和列出的 document/symlink/managed record；先取得编辑授权并移除或改写引用。 |
 | `host_git_not_found` / `host_git_ambiguous` | 让 selected root 位于唯一宿主 Git repository 后重试。 |
 | `install_payload_tracked` | 用户用原生 Git 明确移除 payload 的 tracked entries；CLI 不运行 `git rm --cached`。 |
 | `git_exclusion_conflict` | 审阅并修正冲突 ignore 规则，保持 payload ignored、manifest/link trackable。 |
