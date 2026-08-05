@@ -5,6 +5,12 @@ then add `--apply` only with appropriate authority. Installs and restores may ac
 link is offline. Payloads are ignored by host Git, while the recovery manifest and relative durable
 links remain trackable. The CLI never stages or commits them.
 
+A dry-run is an observation, not a reservation. Before apply publishes root-owned state, the CLI
+rechecks the current target, runtime, manifest, tracking, and command-specific safety facts. A later
+apply can therefore return `index_update_conflict`, another blocked result, or `preserved_hidden`
+after a successful dry-run. Preserve the reported current state, rerun dry-run, and review it; do
+not force a stale mapping, parent edge, manifest record, or deletion through native edits.
+
 ## Install a Fixed Snapshot
 
 ```text
@@ -20,8 +26,16 @@ process inspection are outside the CLI's sanitization boundary. If a supplied UR
 credentials, treat them as invocation-only and never repeat them in logs or prose. `ROOT` is the
 exact owner root or defaults from cwd. Selector options are mutually exclusive: commit must be the
 full repository object ID; tag/branch must be one valid ref name. Omission discovers the remote
-default branch once, records its name as provenance, and fixes a commit selector. Repeating an
-existing root/source/selector key reuses its recorded commit and path; it never follows a moved ref.
+default branch once, records its name as provenance, and fixes a commit selector. Repeating a key
+that already has a matching local runtime install reuses its recorded commit and path; it never
+follows a moved ref.
+
+Install is an explicit request to establish or update a snapshot from this invocation's source and
+selector. If no matching local runtime install exists, it may resolve the supplied branch, tag, or
+default branch even when the versioned manifest already has the same stable install ID, then publish
+that new fixed snapshot to the direct manifest entry. Treat that versioned manifest change as normal
+output for native review and delivery, not as recovery drift. Do not use install when the task is to
+reconstruct the selected host revision: use restore, which is governed by the manifest's exact commit.
 
 Without `--dependency-of`, create or promote a direct install and include it in portable recovery.
 With it, the ID must be a complete install in the same owner root; create/reuse a flat dependency
@@ -137,9 +151,17 @@ DOCTIDEX_GIT external restore [--root ROOT] [--install INSTALL_ID]...
 
 ROOT defaults from cwd. Omit `--install` to process all direct manifest entries; repeated filters are
 sorted and deduplicated. Unknown IDs produce item-level blocked records rather than an empty match.
-Dry-run verifies that each missing exact commit can be reconstructed without persistent writes;
-apply restores the same stable path and fixed commit. Neither mode discovers a default branch or
-re-resolves branch/tag provenance. Existing durable symlinks and the manifest are not rewritten.
+Dry-run verifies that each exact commit can be restored without persistent writes. Apply restores the
+same stable path and fixed commit: it rebuilds a missing payload or, for a verified clean direct
+payload at another HEAD, obtains the exact object and checks it out. Both outcomes report `restored`;
+there is no object-only intermediate result. Neither mode discovers a default branch or re-resolves
+branch/tag provenance. Existing durable symlinks and the manifest are not rewritten.
+For example, when the manifest records `main` at C1 and the source's current `main` is C2, a clone,
+clean, or checkout recovery must use restore and recover C1. Use `external install --branch main`
+only when the user has authorized creating or updating the snapshot to the selector's current C2.
+When this restore follows a `hook --run` item with `revision_not_found`, always run
+`DOCTIDEX_GIT hook --run --root ROOT --json` after a `restored` result. It is the required final
+confirmation of runtime provenance and dependency reconciliation, not a second checkout request.
 
 Read `applied`, `recovery_manifest`, `recovery_manifest_identity`, normalized `install_filter`, and
 the bounded `items` collection. Each item includes install ID/path, source URL, selector,

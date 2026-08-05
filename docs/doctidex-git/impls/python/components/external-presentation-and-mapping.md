@@ -14,7 +14,7 @@ rebind、unlink、restore、remove 和 link-parse 的编排。它消费 `RootCon
 | `ExternalService.link` | 证明 complete direct source，校验 target/tracking/safe state，写入 relative symlink 和 responsible-index declaration，并发布 runtime/manifest mapping。 | durable presentation、`safe_state`、trackability、mapping。 |
 | `ExternalService.rebind` | 验证既有 direct presentation 的 runtime/manifest/symlink/index/payload，再按 link source resolution 解析新 direct mapping，准备 sibling symlink 并在 root mutation 内发布新 mapping。 | 同 target 的 fixed-snapshot 切换、old/new result、没有 temporary broken symlink。 |
 | `ExternalService.unlink` | 验证 exact durable target，使用 tree observation 查找 safe reference，reference-free 时删除 symlink/两种 link record，并只按 record ownership 更新 index。 | presentation-specific reference protection、frontmatter 保守清理、install 保留。 |
-| `ExternalService.restore` | 枚举 portable direct entries，重建 local runtime projection 和缺失的 exact payload。 | 不刷新 ref、不重写 link 的 exact recovery。 |
+| `ExternalService.restore` | 枚举 portable direct entries；重建缺失 payload/runtime，或在已验证 clean existing direct payload 上 checkout manifest exact commit。 | 不刷新 ref、不重写 manifest/link 的 exact recovery。 |
 | `ExternalService.remove` | 对 payload/runtime/manifest 和 references 做 preflight，只移除 reference-free 的 exact install state。 | reference-protected removal 和 hidden preservation。 |
 | `ExternalService.link_parse` | 将 current runtime mapping 与 portable installed-content mapping 合并为一个 public result。 | available/missing/dependency/damaged/unmanaged distinction。 |
 
@@ -34,13 +34,17 @@ CLI external command
   -> envelope, finding, affected/changed evidence
 ```
 
-Install、link、rebind 和 unlink 在各自 managed publication 前重验相关的 user-visible preconditions。rebind
-先创建 temporary sibling relative symlink，再以 `os.replace` publication live target；temporary path 只属于
-mutation mechanics，不进入 public result。Runtime/manifest/index 是分别 atomic 的文件，故中断只保留实际 state，
-后续 invocation 通过 mapping validation 诊断而不猜测补齐。unlink 的 preflight 不把它将删除的 own link record
-当作 blocker，但保留其它 safe reference。Restore 的范围仅限 versioned manifest entries；link-parse 是 read-only，并将 portable broken dependency links 视为正常的
-`dependency_not_installed` state。Remove 扫描 Architecture 定义的 reference classes，明确不会为求成功而
-删除 references。
+所有带 apply 的 external mutation 都在 source mutation 后进入 root mutation boundary，并在 publication 前使用当前
+runtime、manifest、stable path、tracking 和命令专属事实重验。install 在该边界内重算 direct promotion 与 parent 并集，
+并在写 manifest 前再次确认它可追踪；link 用同一 preflight 重读 source/target/mapping，防止旧 target plan 覆盖新
+presentation；restore 比较当前 manifest record 与本页 selected record，existing-payload checkout 也不例外；remove 在
+最终 preflight 中保留刚被 hook 隐藏的 dependency。不能证明时返回 conflict/blocked 或 `preserved_hidden`，不以锁外
+plan 写入 root state。rebind 先创建 temporary sibling relative symlink，再以 `os.replace` publication live target；
+temporary path 只属于 mutation mechanics，不进入 public result。Runtime/manifest/index 是分别 atomic 的文件，故中断只
+保留实际 state，后续 invocation 通过 mapping validation 诊断而不猜测补齐。unlink 的 preflight 不把它将删除的 own
+link record 当作 blocker，但保留其它 safe reference。Restore 的范围仅限 versioned manifest entries；link-parse 是
+read-only，并将 portable broken dependency links 视为正常的 `dependency_not_installed` state。Remove 扫描 Architecture
+定义的 reference classes，明确不会为求成功而删除 references。
 
 `list_installs` 不 materialize worksite，也不读取 manifest、payload、source cache 或 remote。它仅从 runtime 的
 `installs` 和 `links` 建立 `InstallReference`：SCP-like 或 URL source 公开其 host 与去除 `.git` 后的 repository
@@ -71,5 +75,6 @@ evidence 的一部分；caller 不假定 rollback。Locks、publication order �
 
 [`test_git_plugin.py`](../../../../../impls/libs/python/tests/test_git_plugin.py) 中的 representative tests 覆盖
 fixed default revision、managed-install list 的 direct/dependency/hidden/presentation/filter/pagination/cursor 与同路径跨
-host 候选、dependency cycle/promotion、link safe classification/retry、link-parse portable mapping、restore runtime
-projection、remove reference protection 和 retained cache boundary。
+host 候选、dependency cycle/promotion、link safe classification/retry 与 stale-target revalidation、link-parse portable
+mapping、missing/existing-payload/stale-manifest restore、remove hidden preservation、runtime projection 和 retained cache
+boundary。

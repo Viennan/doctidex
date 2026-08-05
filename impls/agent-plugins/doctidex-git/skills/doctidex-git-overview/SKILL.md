@@ -68,8 +68,10 @@ the hook again.
   contract states.
 - A **revision selector** is exactly one full commit object ID, tag name, or branch name. A resolved
   or base commit is the immutable full commit used by an install or worktree. A returned default
-  branch or explicit branch/tag is provenance, not a moving selector to re-resolve for existing
-  content.
+  branch or explicit branch/tag is provenance, not a moving selector to re-resolve for an existing
+  local install or for restore. A newly authorized `external install` uses its supplied selector to
+  establish or update a snapshot; `external restore` instead recovers the current manifest's exact
+  commit.
 - A **direct install** has portable recovery information. A **dependency install** is attached to a
   parent install for the current owner root and is not independently recoverable until promoted by
   repeating the same install without `--dependency-of`.

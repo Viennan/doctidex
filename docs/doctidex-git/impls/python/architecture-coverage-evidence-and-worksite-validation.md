@@ -52,7 +52,6 @@ Python 基线测试套件位于 [`impls/libs/python/tests`](../../../../impls/li
 | 类别 | 证据 | 当前文档处置 |
 |---|---|---|
 | 本次已解决的 Architecture/文档不一致 | 旧 Architecture 称不可用 worktree 的 close 会清理陈旧记录；源码、JSON contract 和既有 Python Impls 都保留该记录。 | Architecture 现要求保留 `worktree_unavailable`；无需改动代码。 |
-| public contract 的实现缺口 | JSON hook contract 允许在非空 `metadata_mismatches` 时使用 `revision_alignment: metadata_warning`，但 `HookService` 目前从不产生该状态，测试也未覆盖它。 | Architecture JSON contract 仍是权威；Python 变体将其记录为 material limitation。产品/代码/测试修复需要单独授权。 |
-| public contract 的实现缺口 | 损坏的 `runtime.json` 由 `worktree list` 调用 `RootStorage.read_runtime()` 时会得到 `operation: "external"`；JSON contract 为该命令定义的 discriminator 是 `worktree_list`。现有 damage 测试只断言 finding code，不断言该 discriminator。 | 被阻止的调用方可以安全使用共同 envelope/finding 并保留工作现场，但 Python 当前不符合按命令区分的 discriminator contract。产品/代码/测试修复需要单独授权。 |
+| 本次已解决的 public contract 缺口 | Hook contract 曾声明未定义的 revision warning fields；损坏 runtime 的 `worktree list` 也曾错误回显 `operation: external`。 | Architecture 只保留可证明的 `complete`/`not_applicable`，Python 的 runtime read 接收调用 operation，`worktree_list` 回归测试验证 `mapping_damaged` 保留该 discriminator。 |
 | 实现证据边界 | 旧 Python 文档声称全部 External/Worktree/Cache/Hook 服务都会在 lock 内重读状态；`WorktreeService.close` 在 source/root mutation boundary 之前观察 record/status，且没有 race 证据。 | 本次重构移除了这项无证据的主张；不作更强的并发保证。 |
 | 变体私有机制 | JSON encoding/hash、source/cache ID、Git argv、lock/temp 名称、symlink 计算和 module/helper graph。 | 在 Impls/source 中按需要记录；除非未来互操作 contract 使其中某项可观察，否则不纳入 Architecture 完整性。 |

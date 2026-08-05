@@ -6,6 +6,7 @@ doctidex:
   atomic-indexing:
     - path: .agents
     - path: .codex
+    - path: .github
     - path: spec
   unsafe:
     - path: .git
@@ -24,7 +25,7 @@ agent surfaces when building or maintaining a concrete variant.
 
 ## Primary Entrypoints
 
-- [Protocol specification](spec/overview.md): the normative Draft v1.0.0 and
+- [Protocol specification](spec/overview.md): the normative Draft v1.1.0 and
   the authority for current doctidex conformance. The `spec/` directory uses
   atomic indexing; this document is its primary entrypoint.
 - [Archived v0.1.0 protocol](spec/archive/v0.1.0.md): the unchanged historical
@@ -41,6 +42,7 @@ agent surfaces when building or maintaining a concrete variant.
 
 - [`.agents/`](.agents/) contains repository-local maintenance Skills.
 - [`.codex/`](.codex/) contains local Codex configuration.
+- [`.github/`](.github/) contains GitHub CI and automation configuration.
 
 These support directories and the `spec/` protocol directory are indexed only
 by purpose. Their contents remain available to native file and search tools

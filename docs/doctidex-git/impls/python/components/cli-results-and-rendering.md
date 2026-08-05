@@ -27,6 +27,5 @@ runtime/cache state 来绕过这些 owner。console/package assembly 见
 
 [`test_protocol.py`](../../../../../impls/libs/python/tests/test_protocol.py) 和
 [`test_git_plugin.py`](../../../../../impls/libs/python/tests/test_git_plugin.py) 通过已安装的 console script 覆盖
-JSON parser failure、envelope/finding/pagination behavior 和 operation results。当前 hook-specific `metadata_warning` limitation
-不会由 generic rendering 修复；其记录仍在
-[coverage](../architecture-coverage-evidence-and-worksite-validation.md#5-known-gaps-and-limits)。
+JSON parser failure、envelope/finding/pagination behavior、hook revision outcome 与 operation discriminator。generic rendering
+只承载 domain service 已证明的 result fields，不为 hook 或 worktree 补造状态。

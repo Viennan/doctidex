@@ -31,4 +31,11 @@ Review 必须核对当前 `confirmed` 和 `ignored` Issues：匹配 `confirmed` 
 关联其 ID，避免重复报告；匹配 `ignored` Issue 时不报告，除非用户明确要求包含已忽略问题。
 这项关联发生在 review 输出中，不授权 review 自动创建、修改或转换 Issue 文档。
 
-当前没有已记录的 Issue。
+| ID | 状态 | 严重程度 | 问题 |
+|---|---|---|---|
+| [DX-ISSUE-0001](0001-external-apply-stale-preconditions.md) | `resolved` | high | `external link --apply` 在锁内使用过期前置条件，可能损坏 durable mapping。 |
+| [DX-ISSUE-0002](0002-validator-accepts-query-links.md) | `resolved` | high | 协议 validator 将仅含 query 的 link 误当作当前文档 file-path link。 |
+| [DX-ISSUE-0003](0003-root-index-omits-github.md) | `resolved` | high | 根索引未使 `.github` 工作流目录可达，仓库当前不符合协议。 |
+| [DX-ISSUE-0004](0004-hook-metadata-warning-unreachable.md) | `resolved` | medium | `hook --run` 无法产生公开 JSON contract 定义的 metadata warning。 |
+| [DX-ISSUE-0005](0005-worktree-list-error-discriminator.md) | `resolved` | medium | `worktree list` 在 runtime 损坏时返回错误的 operation discriminator。 |
+| [DX-ISSUE-0006](0006-root-index-stale-protocol-version.md) | `resolved` | medium | 仓库根入口将当前协议版本错误标为 `v1.0.0`。 |

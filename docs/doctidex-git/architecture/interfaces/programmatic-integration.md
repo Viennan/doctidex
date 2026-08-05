@@ -91,12 +91,14 @@ dry-run/apply mode；manifest 内容改变会令 cursor invalid，而已恢复�
 
 - validate、link-parse、list 是 read-only，可在 state 不变时安全重复；dependency install 后
   重跑同一 link-parse 可以从 `dependency_not_installed` 变为 available，并返回外层路径。
-- install apply 的同 root/source/normalized fixed selector 重试复用稳定 install ID/path；default
-  provenance 的 physical key 处理见对应 Impls。link apply 的同 target/同 mapping 重试复用
-  已完成状态。
-- install 同 key 永不重新解析已记录 branch/default branch；dependency-only 可由普通 install
-  原地提升为 direct，direct 不降级。
-- restore 只补齐 manifest 中缺失的 exact install；匹配项 unchanged，既有 link 不被重写。
+- install apply 的同 root/source/normalized fixed selector 使用稳定 install ID/path；当前 local runtime
+  已有 matching record 的 retry 复用已完成状态。没有该 local record 的显式 install 仍可解析本次 branch/tag/default
+  selector，并更新 direct manifest snapshot；default provenance 的 physical key 处理见对应 Impls。
+- 因此 install 只在已有 matching runtime install 时不重新解析已记录 branch/default branch；dependency-only
+  仍可由普通 install 原地提升为 direct，direct 不降级。link apply 的同 target/同 mapping 重试复用已完成状态。
+- restore 是 manifest exact-snapshot recovery：重建缺失 install，或将已验证、clean 的 existing direct payload checkout
+  到 manifest exact commit；匹配项 unchanged。它不重写既有 link、不重新解析 selector，也不将 manifest 更新为 source 的
+  当前 ref。处理 `revision_not_found` finding 后，调用方必须再运行 hook 以最终确认 runtime/dependency reconciliation。
 - remove 对同一 ID 的 dry-run 在 owner/tree/managed state 不变时可重复；apply 成功后再次调用
   返回 `install_not_found`，不能把缺失 ID 静默当作第二次成功。
 - worktree open 每次成功都在 selected root 的 `/.doctidex` 下创建新隔离现场，不是幂等命令；调用方先 list 或检查

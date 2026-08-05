@@ -59,7 +59,7 @@ class WorktreeService:
             identifier = "w-" + uuid.uuid4().hex[:20]
             internal = f"/.doctidex/git/worktrees/{identifier}"
             path = self.storage.worktree_directory / identifier
-            runtime = self.storage.read_runtime()
+            runtime = self.storage.read_runtime(operation="worktree_open")
             candidate_count = sum(
                 1
                 for item in runtime["worktrees"].values()
@@ -80,7 +80,10 @@ class WorktreeService:
             with self.storage.mutation():
                 changed, _ = self.storage.ensure_host_layout()
                 add_detached_worktree(source.gitdir, path, base_commit, operation="worktree_open")
-                self.storage.update_runtime(lambda data: data["worktrees"].__setitem__(identifier, record))
+                self.storage.update_runtime(
+                    lambda data: data["worktrees"].__setitem__(identifier, record),
+                    operation="worktree_open",
+                )
                 changed.extend([path, self.storage.runtime_path])
 
         item = _worktree_item(record)
@@ -117,7 +120,7 @@ class WorktreeService:
         limit: int,
         cursor: str | None,
     ) -> dict[str, Any]:
-        runtime = self.storage.read_runtime()
+        runtime = self.storage.read_runtime(operation="worktree_list")
         records = list(runtime["worktrees"].values())
         filter_identity = None
         if source_filter is not None:
@@ -161,7 +164,7 @@ class WorktreeService:
 
     def close(self, path: Path) -> dict[str, Any]:
         exact = path.absolute()
-        runtime = self.storage.read_runtime()
+        runtime = self.storage.read_runtime(operation="worktree_close")
         pair = next(
             (
                 (identifier, item)
@@ -211,7 +214,10 @@ class WorktreeService:
                     ["--git-dir", record["gitdir"], "worktree", "remove", str(exact)],
                     operation="worktree_close",
                 )
-                self.storage.update_runtime(lambda data: data["worktrees"].pop(identifier, None))
+                self.storage.update_runtime(
+                    lambda data: data["worktrees"].pop(identifier, None),
+                    operation="worktree_close",
+                )
         return envelope(
             "worktree_close",
             result="The clean managed worktree was closed.",

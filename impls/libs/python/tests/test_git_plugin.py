@@ -6,12 +6,16 @@ import shutil
 import stat
 import subprocess
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
 
 from whero.doctidex.errors import DoctidexError
+from whero.doctidex.git import external as external_module
+from whero.doctidex.git import hooks as hooks_module
 from whero.doctidex.git.external import ExternalService
+from whero.doctidex.git.hooks import HookService
 from whero.doctidex.git.source import RevisionSelector, canonical_source
 from whero.doctidex.git.storage import RootStorage, directory_lock, source_id
 from whero.doctidex.git.worktrees import CacheService, WorktreeService
@@ -422,6 +426,200 @@ def test_explicit_branch_retry_stays_fixed_and_root_is_part_of_identity(
     assert not Path(first["working_path"]).stat().st_mode & stat.S_IWUSR
 
 
+def test_install_reobserves_direct_promotion_and_merges_parent_after_stale_plan(
+    cli_env: dict[str, str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("DOCTIDEX_GIT_CACHE", cli_env["DOCTIDEX_GIT_CACHE"])
+    root = create_repository(tmp_path / "host")
+    parent_source = create_repository(tmp_path / "parent-source")
+    child_source = create_repository(tmp_path / "child-source")
+    parent_commit = add_source_content(parent_source)
+    child_commit = add_source_content(child_source)
+    parent = run(
+        ["external", "install", "--url", str(parent_source), "--commit", parent_commit, "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    context = root_at(root)
+    assert context is not None
+    dependency_service = ExternalService(context)
+    direct_service = ExternalService(context)
+    original_mutation = dependency_service.storage.mutation
+    injected = False
+
+    @contextmanager
+    def unlocked_source_mutation(*args: object, **kwargs: object):
+        yield
+
+    @contextmanager
+    def publish_direct_before_dependency_revalidation():
+        nonlocal injected
+        if not injected:
+            injected = True
+            direct_service.install(
+                str(child_source),
+                RevisionSelector("commit", child_commit),
+                dependency_of=None,
+                apply=True,
+                cwd=root,
+            )
+        with original_mutation():
+            yield
+
+    monkeypatch.setattr(external_module, "source_mutation", unlocked_source_mutation)
+    monkeypatch.setattr(dependency_service.storage, "mutation", publish_direct_before_dependency_revalidation)
+    result = dependency_service.install(
+        str(child_source),
+        RevisionSelector("commit", child_commit),
+        dependency_of=parent["install_id"],
+        apply=True,
+        cwd=root,
+    )
+
+    runtime = RootStorage(root).read_runtime()
+    record = runtime["installs"][result["install_id"]]
+    assert result["install_role"] == record["role"] == "direct"
+    assert record["parents"] == [parent["install_id"]]
+    assert RootStorage(root).read_manifest()["installs"][result["install_id"]] == {
+        key: record[key]
+        for key in (
+            "install_id",
+            "install_path",
+            "source_url",
+            "source_relation",
+            "revision_selector",
+            "default_branch",
+            "resolved_commit",
+        )
+    }
+
+
+def test_install_rejects_parent_removed_before_root_revalidation(
+    cli_env: dict[str, str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("DOCTIDEX_GIT_CACHE", cli_env["DOCTIDEX_GIT_CACHE"])
+    root = create_repository(tmp_path / "host")
+    parent_source = create_repository(tmp_path / "parent-source")
+    child_source = create_repository(tmp_path / "child-source")
+    parent_commit = add_source_content(parent_source)
+    child_commit = add_source_content(child_source)
+    parent = run(
+        ["external", "install", "--url", str(parent_source), "--commit", parent_commit, "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    context = root_at(root)
+    assert context is not None
+    child_service = ExternalService(context)
+    original_mutation = child_service.storage.mutation
+
+    @contextmanager
+    def remove_parent_before_child_revalidation():
+        ExternalService(context).remove(parent["install_id"], apply=True)
+        with original_mutation():
+            yield
+
+    monkeypatch.setattr(child_service.storage, "mutation", remove_parent_before_child_revalidation)
+    with pytest.raises(DoctidexError) as caught:
+        child_service.install(
+            str(child_source),
+            RevisionSelector("commit", child_commit),
+            dependency_of=parent["install_id"],
+            apply=True,
+            cwd=root,
+        )
+
+    assert caught.value.code == "dependency_parent_invalid"
+    assert parent["install_id"] not in RootStorage(root).read_runtime()["installs"]
+    child_records = RootStorage(root).read_runtime()["installs"].values()
+    assert not any(record["canonical_source"] == str(child_source) for record in child_records)
+
+
+def test_install_rechecks_manifest_tracking_before_root_publication(
+    cli_env: dict[str, str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("DOCTIDEX_GIT_CACHE", cli_env["DOCTIDEX_GIT_CACHE"])
+    root = create_repository(tmp_path / "host")
+    source = create_repository(tmp_path / "source")
+    commit = add_source_content(source)
+    context = root_at(root)
+    assert context is not None
+    service = ExternalService(context)
+    original_mutation = service.storage.mutation
+    index_before = (root / "index.md").read_bytes()
+
+    @contextmanager
+    def ignore_manifest_before_publication():
+        (root / ".gitignore").write_text("/.doctidex/git/manifest.json\n", encoding="utf-8")
+        with original_mutation():
+            yield
+
+    monkeypatch.setattr(service.storage, "mutation", ignore_manifest_before_publication)
+    with pytest.raises(DoctidexError) as caught:
+        service.install(str(source), RevisionSelector("commit", commit), dependency_of=None, apply=True, cwd=root)
+
+    assert caught.value.code == "git_exclusion_conflict"
+    assert (root / "index.md").read_bytes() == index_before
+    assert not service.storage.manifest_path.exists()
+
+
+def test_remove_preserves_dependency_hidden_after_its_initial_preflight(
+    cli_env: dict[str, str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("DOCTIDEX_GIT_CACHE", cli_env["DOCTIDEX_GIT_CACHE"])
+    root = create_repository(tmp_path / "host")
+    parent_source = create_repository(tmp_path / "parent-source")
+    child_source = create_repository(tmp_path / "child-source")
+    parent_commit = add_source_content(parent_source)
+    child_commit = add_source_content(child_source)
+    parent = run(
+        ["external", "install", "--url", str(parent_source), "--commit", parent_commit, "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    child = run(
+        [
+            "external",
+            "install",
+            "--url",
+            str(child_source),
+            "--commit",
+            child_commit,
+            "--dependency-of",
+            parent["install_id"],
+            "--root",
+            str(root),
+            "--apply",
+        ],
+        tmp_path,
+        cli_env,
+    )
+    context = root_at(root)
+    assert context is not None
+    remove_service = ExternalService(context)
+    original_mutation = remove_service.storage.mutation
+
+    @contextmanager
+    def unlocked_hook_source_mutation(*args: object, **kwargs: object):
+        yield
+
+    @contextmanager
+    def hide_before_remove_revalidation():
+        HookService(context)._hide(child["install_id"])
+        with original_mutation():
+            yield
+
+    monkeypatch.setattr(hooks_module, "source_mutation", unlocked_hook_source_mutation)
+    monkeypatch.setattr(remove_service.storage, "mutation", hide_before_remove_revalidation)
+    result = remove_service.remove(child["install_id"], apply=True)
+
+    hidden = root / ".doctidex" / "git" / "installs" / ".hidden" / child["install_id"]
+    assert result["state"] == "preserved_hidden"
+    assert result["changed"] == []
+    assert hidden.is_dir()
+    assert RootStorage(root).read_runtime()["installs"][child["install_id"]]["managed_state"] == "hidden"
+
+
 def test_different_selectors_keep_distinct_install_paths(cli_env: dict[str, str], tmp_path: Path) -> None:
     root = create_repository(tmp_path / "host")
     source = create_repository(tmp_path / "source")
@@ -679,6 +877,45 @@ def test_link_restore_and_current_owner_parse(cli_env: dict[str, str], tmp_path:
     restored_parse = run(["external", "link-parse", str(presentation), "--root", str(root)], tmp_path, cli_env)
     assert restored_parse["mapping_origin"] == "owner_root"
     assert restored_parse["target_state"] == "available"
+
+
+def test_link_apply_reobserves_a_target_published_after_its_preflight(
+    cli_env: dict[str, str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path, symlink_capable: None
+) -> None:
+    root = create_repository(tmp_path / "host")
+    first_source = create_repository(tmp_path / "first-source")
+    second_source = create_repository(tmp_path / "second-source")
+    add_source_content(first_source)
+    add_source_content(second_source)
+    first = run(
+        ["external", "install", "--url", str(first_source), "--root", str(root), "--apply"], tmp_path, cli_env
+    )
+    second = run(
+        ["external", "install", "--url", str(second_source), "--root", str(root), "--apply"], tmp_path, cli_env
+    )
+    context = root_at(root)
+    assert context is not None
+    first_service = ExternalService(context)
+    second_service = ExternalService(context)
+    original_mutation = first_service.storage.mutation
+
+    @contextmanager
+    def publish_second_before_first_revalidation():
+        second_service.link(Path(second["working_path"]), "external/api", apply=True)
+        with original_mutation():
+            yield
+
+    monkeypatch.setattr(first_service.storage, "mutation", publish_second_before_first_revalidation)
+    with pytest.raises(DoctidexError) as caught:
+        first_service.link(Path(first["working_path"]), "external/api", apply=True)
+
+    assert caught.value.code == "target_occupied"
+    target = root / "external" / "api"
+    runtime = RootStorage(root).read_runtime()
+    manifest = RootStorage(root).read_manifest()
+    assert target.is_symlink()
+    assert runtime["links"]["external/api"]["install_id"] == second["install_id"]
+    assert manifest["links"]["external/api"]["install_id"] == second["install_id"]
 
 
 def test_external_rebind_preserves_presentation_path_and_article_link(
@@ -1124,7 +1361,7 @@ def test_external_remove_retry_completes_after_payload_deletion(
     assert context is not None
     service = ExternalService(context)
 
-    def interrupted(callback: object) -> dict:
+    def interrupted(callback: object, **kwargs: object) -> dict:
         raise KeyboardInterrupt
 
     monkeypatch.setattr(service.storage, "update_runtime", interrupted)
@@ -1193,6 +1430,99 @@ def test_restore_rebuilds_requested_default_provenance(
     retried = run(install_command, tmp_path, cli_env)
     assert retried["install_id"] == install["install_id"]
     assert retried["resolved_commit"] == original_commit
+
+
+def test_restore_existing_direct_payload_checks_out_manifest_exact_commit(
+    cli_env: dict[str, str], tmp_path: Path
+) -> None:
+    root = create_repository(tmp_path / "host")
+    source = create_repository(tmp_path / "source")
+    first_commit = add_source_content(source, "first.md")
+    install = run(
+        ["external", "install", "--url", str(source), "--branch", "main", "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    second_commit = add_source_content(source, "second.md")
+    storage = RootStorage(root)
+    manifest = storage.read_manifest()
+    manifest["installs"][install["install_id"]]["resolved_commit"] = second_commit
+    storage.write_manifest(manifest)
+    manifest_before = storage.manifest_path.read_bytes()
+    runtime_before = storage.runtime_path.read_bytes()
+
+    planned = run(
+        ["external", "restore", "--install", install["install_id"], "--root", str(root)], tmp_path, cli_env
+    )
+    assert planned["items"] == [
+        {
+            "install_id": install["install_id"],
+            "install_path": install["install_path"],
+            "source_url": install["source_url"],
+            "revision_selector": install["revision_selector"],
+            "default_branch": install["default_branch"],
+            "resolved_commit": second_commit,
+            "state": "planned",
+            "findings": [],
+        }
+    ]
+    restored = run(
+        ["external", "restore", "--install", install["install_id"], "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    assert restored["items"][0]["state"] == "restored"
+    assert git(Path(install["working_path"]), "rev-parse", "HEAD") == second_commit
+    assert storage.manifest_path.read_bytes() == manifest_before
+    assert storage.runtime_path.read_bytes() == runtime_before
+
+    reconciled = run(["hook", "--run", "--root", str(root)], tmp_path, cli_env)
+    item = next(item for item in reconciled["items"] if item["install_id"] == install["install_id"])
+    assert item["revision_alignment"] == "complete"
+    assert "metadata_mismatches" not in item
+    assert RootStorage(root).read_runtime()["installs"][install["install_id"]]["resolved_commit"] == second_commit
+    assert first_commit != second_commit
+
+
+def test_restore_preserves_current_manifest_when_the_selected_record_changes(
+    cli_env: dict[str, str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("DOCTIDEX_GIT_CACHE", cli_env["DOCTIDEX_GIT_CACHE"])
+    root = create_repository(tmp_path / "host")
+    source = create_repository(tmp_path / "source")
+    first_commit = add_source_content(source, "first.md")
+    install = run(
+        ["external", "install", "--url", str(source), "--branch", "main", "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+    second_commit = add_source_content(source, "second.md")
+    install_path = Path(install["working_path"])
+    common = Path(git(install_path, "rev-parse", "--path-format=absolute", "--git-common-dir"))
+    make_writable(install_path)
+    git(common, "worktree", "remove", "--force", str(install_path))
+    context = root_at(root)
+    assert context is not None
+    service = ExternalService(context)
+    storage = service.storage
+    current = storage.read_manifest()
+    current["installs"][install["install_id"]]["resolved_commit"] = second_commit
+    original_mutation = storage.mutation
+
+    @contextmanager
+    def checkout_before_restore_publish():
+        storage.write_manifest(current)
+        with original_mutation():
+            yield
+
+    monkeypatch.setattr(storage, "mutation", checkout_before_restore_publish)
+    result = service.restore([], apply=True, limit=100, cursor=None)
+
+    assert result["items"][0]["state"] == "blocked"
+    assert result["items"][0]["findings"][0]["code"] == "index_update_conflict"
+    assert not install_path.exists()
+    assert storage.read_manifest()["installs"][install["install_id"]]["resolved_commit"] == second_commit
+    assert first_commit != second_commit
 
 
 def test_portable_broken_link_dependency_can_be_flattened(
@@ -1841,6 +2171,21 @@ def test_root_lock_conflict_is_bounded_and_preserves_owner(tmp_path: Path) -> No
     assert not lock.exists()
 
 
+def test_worktree_list_reports_its_operation_for_damaged_runtime(
+    cli_env: dict[str, str], tmp_path: Path
+) -> None:
+    root = create_repository(tmp_path / "host")
+    storage = RootStorage(root)
+    storage.directory.mkdir(parents=True)
+    storage.runtime_path.write_text("{ damaged", encoding="utf-8")
+
+    result = run(["worktree", "list", "--root", str(root)], tmp_path, cli_env, expected=2)
+
+    assert result["operation"] == "worktree_list"
+    assert result["findings"][0]["code"] == "mapping_damaged"
+    assert result["root"] == str(root)
+
+
 def test_interrupted_worktree_publication_leaves_orphan_evidence(
     cli_env: dict[str, str], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1852,7 +2197,7 @@ def test_interrupted_worktree_publication_leaves_orphan_evidence(
     assert context is not None
     service = WorktreeService(context)
 
-    def interrupted(callback: object) -> dict:
+    def interrupted(callback: object, **kwargs: object) -> dict:
         raise KeyboardInterrupt
 
     monkeypatch.setattr(service.storage, "update_runtime", interrupted)

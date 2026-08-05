@@ -35,6 +35,23 @@ next decision. For `resolved` or `ignored`, additionally record the user's autho
 residual risk, and relevant verification or follow-up links. Do not turn a vague concern into a
 factual conclusion.
 
+For a behavior, contract, or conformance Issue, make the evidence independently reconstructible:
+
+- State one concrete scenario with the relevant files, inputs, actors, state transition, or invocation
+  order. A reader must not need to infer the failing case from an abstract summary.
+- Show the observable erroneous state: a minimal JSON/result fragment, path or record mismatch,
+  validator finding, or before/after document value. Distinguish exact observed output from a
+  source-derived reachable state.
+- State the expected observable behavior under the cited authority, rather than only naming a
+  prospective fix.
+- When concurrency, interruption, unavailable infrastructure, or an unimplemented contract state
+  prevents a one-command reproduction, describe the smallest verified interleaving or setup and
+  name that limitation. Do not invent a command transcript, field value, or production incident.
+
+Use short headings such as `具体场景`、`当前错误状态` and `正确行为` when writing Chinese Issue
+records. Keep exact identifiers, commands, paths, JSON, and code symbols in their authoritative
+form.
+
 ## Maintain Status and Associations
 
 Only a clear user instruction naming the Issue and destination state may move it to `confirmed`,
@@ -53,5 +70,5 @@ scope.
 Check that the requested authorization is present, the ID is unique, exactly one allowed lowercase
 status is visible, the index link and table agree, all cited paths resolve, and Chinese carries the
 explanatory logic. Confirm that status changes have the required explicit user authorization, that
-the document preserves detailed evidence and disposition, and that no unrelated implementation work
-was inferred from the Issue.
+the document preserves a concrete scenario, observable erroneous state, expected behavior, detailed
+evidence and disposition, and that no unrelated implementation work was inferred from the Issue.

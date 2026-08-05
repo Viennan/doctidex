@@ -66,12 +66,22 @@ class RootStorage:
         self.manifest_path = self.directory / "manifest.json"
         self.lock_path = self.directory / ".mutation.lock"
 
-    def read_runtime(self) -> dict[str, Any]:
-        value = _read_json(self.runtime_path, missing=_empty_runtime())
+    def read_runtime(self, *, operation: str = "external") -> dict[str, Any]:
+        try:
+            value = _read_json(self.runtime_path, missing=_empty_runtime())
+        except DoctidexError as exc:
+            raise DoctidexError(
+                "The doctidex-git runtime records are damaged.",
+                operation=operation,
+                affected=[str(self.root)],
+                actions=["Restore the records from a known valid state or recreate the affected managed object."],
+                code="mapping_damaged",
+                domain="external",
+            ) from exc
         if not _valid_runtime(value):
             raise DoctidexError(
                 "The doctidex-git runtime records are damaged.",
-                operation="external",
+                operation=operation,
                 affected=[str(self.root)],
                 actions=["Restore the records from a known valid state or recreate the affected managed object."],
                 code="mapping_damaged",
@@ -79,8 +89,10 @@ class RootStorage:
             )
         return value
 
-    def update_runtime(self, callback: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
-        value = self.read_runtime()
+    def update_runtime(
+        self, callback: Callable[[dict[str, Any]], None], *, operation: str = "external"
+    ) -> dict[str, Any]:
+        value = self.read_runtime(operation=operation)
         callback(value)
         self.directory.mkdir(parents=True, exist_ok=True)
         _write_json(self.runtime_path, value)

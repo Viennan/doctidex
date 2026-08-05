@@ -26,6 +26,7 @@ from .source import (
     ensure_exact_commit_cache,
     ensure_source_cache,
     make_logically_read_only,
+    make_logically_writable,
     remove_detached_worktree,
     resolve_source,
     sanitize_url,
@@ -33,7 +34,7 @@ from .source import (
     validate_revision_selector,
     verify_exact_commit,
 )
-from .storage import RootStorage, git_file_state, source_mutation
+from .storage import RootStorage, git_file_state, source_cache, source_mutation
 
 
 class ExternalService:
@@ -209,25 +210,10 @@ class ExternalService:
         internal_path = f"/.doctidex/git/installs/{identifier}"
         filesystem_path = self.storage.install_directory / identifier
 
-        parent = None
-        if dependency_of is not None:
-            parent = runtime["installs"].get(dependency_of)
-            if not isinstance(parent, dict) or parent.get("managed_state", "complete") != "complete":
-                raise DoctidexError(
-                    "The dependency parent is not a complete install in the selected root.",
-                    operation="external_install",
-                    affected=[dependency_of],
-                    actions=["Pass an install ID returned for this owner root, or omit --dependency-of."],
-                    requires_user="install_parent",
-                    code="dependency_parent_invalid",
-                    domain="external",
-                )
-
-        existing = runtime["installs"].get(identifier)
-        previous_role = existing.get("role") if isinstance(existing, dict) else None
-        role = "direct" if dependency_of is None or previous_role == "direct" else "dependency"
-        parents = sorted(set((existing or {}).get("parents", [])) | ({dependency_of} if dependency_of else set()))
-        manifest_included = role == "direct"
+        observation = self._install_observation(runtime, identifier, dependency_of)
+        role = observation["role"]
+        parents = observation["parents"]
+        manifest_included = observation["manifest_included"]
         frontmatter = _frontmatter_plan(self.context.index)
         planned = _install_planned_paths(self.root, self.host_repository, filesystem_path, manifest_included)
 
@@ -253,8 +239,13 @@ class ExternalService:
             else:
                 cache, cache_network = ensure_source_cache(source)
             with self.storage.mutation():
+                runtime = self.storage.read_runtime()
+                observation = self._install_observation(runtime, identifier, dependency_of)
+                role = observation["role"]
+                parents = observation["parents"]
+                manifest_included = observation["manifest_included"]
+                planned = _install_planned_paths(self.root, self.host_repository, filesystem_path, manifest_included)
                 _assert_payload_untracked(self.host_repository, filesystem_path)
-                changed, frontmatter = self.storage.ensure_host_layout()
                 if filesystem_path.exists():
                     if _worktree_head(filesystem_path) != source.commit:
                         raise DoctidexError(
@@ -267,7 +258,11 @@ class ExternalService:
                             domain="external",
                             path=str(filesystem_path),
                         )
-                else:
+                if manifest_included:
+                    _assert_manifest_trackable(self.host_repository, self.storage.manifest_path)
+
+                changed, frontmatter = self.storage.ensure_host_layout()
+                if not filesystem_path.exists():
                     add_detached_worktree(cache, filesystem_path, source.commit, operation="external_install")
                     make_logically_read_only(filesystem_path)
                     changed.append(filesystem_path)
@@ -281,11 +276,16 @@ class ExternalService:
                     requested_default=selector is None,
                     relation=source_relation(self.root, source.canonical),
                 )
-                runtime = self.storage.read_runtime()
-                runtime["installs"][identifier] = record
-                self.storage.update_runtime(lambda value: value["installs"].__setitem__(identifier, record))
+                def update_install(value: dict[str, Any]) -> None:
+                    if value["installs"].get(identifier) != observation["existing"]:
+                        raise _stale_root_state("external_install", self.storage.runtime_path)
+                    value["installs"][identifier] = record
+
+                self.storage.update_runtime(update_install)
                 if manifest_included:
                     manifest = self.storage.read_manifest()
+                    if manifest["installs"].get(identifier) != observation["manifest_record"]:
+                        raise _stale_root_state("external_install", self.storage.manifest_path)
                     manifest["installs"][identifier] = _portable_install(record)
                     self.storage.write_manifest(manifest)
                     changed.append(self.storage.manifest_path)
@@ -305,6 +305,41 @@ class ExternalService:
             planned=planned,
             network=source.network or cache_network,
         )
+
+    def _install_observation(
+        self, runtime: dict[str, Any], identifier: str, dependency_of: str | None
+    ) -> dict[str, Any]:
+        existing = runtime["installs"].get(identifier)
+        if existing is not None and not isinstance(existing, dict):
+            raise _stale_root_state("external_install", self.storage.runtime_path)
+        if dependency_of is not None:
+            parent = runtime["installs"].get(dependency_of)
+            if not isinstance(parent, dict) or parent.get("managed_state") != "complete":
+                raise DoctidexError(
+                    "The dependency parent is not a complete install in the selected root.",
+                    operation="external_install",
+                    affected=[dependency_of],
+                    actions=["Pass an install ID returned for this owner root, or omit --dependency-of."],
+                    requires_user="install_parent",
+                    code="dependency_parent_invalid",
+                    domain="external",
+                )
+        previous_role = existing.get("role") if isinstance(existing, dict) else None
+        role = "direct" if dependency_of is None or previous_role == "direct" else "dependency"
+        parents = sorted(set((existing or {}).get("parents", [])) | ({dependency_of} if dependency_of else set()))
+        manifest_record: dict[str, Any] | None = None
+        if role == "direct":
+            manifest = self.storage.read_manifest()
+            manifest_record = manifest["installs"].get(identifier)
+            if isinstance(existing, dict) and manifest_record != _portable_install(existing):
+                raise _stale_root_state("external_install", self.storage.manifest_path)
+        return {
+            "existing": existing,
+            "role": role,
+            "parents": parents,
+            "manifest_included": role == "direct",
+            "manifest_record": manifest_record,
+        }
 
     def link(self, source_directory: Path, target_value: str, *, apply: bool) -> dict[str, Any]:
         source_directory = source_directory.absolute()
@@ -435,6 +470,24 @@ class ExternalService:
             changed: list[Path] = []
         else:
             with self.storage.mutation():
+                current = self.link(source_directory, target_value, apply=False)
+                for field in (
+                    "install_id",
+                    "target_path",
+                    "source_path",
+                    "repository_relative_path",
+                    "safe_state",
+                    "responsible_index",
+                ):
+                    if current[field] != {
+                        "install_id": install["install_id"],
+                        "target_path": target_relative.as_posix(),
+                        "source_path": str(source_directory),
+                        "repository_relative_path": repository_relative,
+                        "safe_state": safe_state,
+                        "responsible_index": str(responsible),
+                    }[field]:
+                        raise _stale_root_state("external_link", self.storage.runtime_path)
                 changed = []
                 _probe_symlink(target)
                 if _apply_link_frontmatter(responsible, relative_to_index, safe_state):
@@ -454,10 +507,15 @@ class ExternalService:
                             path=str(target),
                         ) from exc
                     changed.append(target)
-                self.storage.update_runtime(
-                    lambda value: value["links"].__setitem__(target_relative.as_posix(), expected_mapping)
-                )
+                def update_link(value: dict[str, Any]) -> None:
+                    if value["links"].get(target_relative.as_posix()) != existing_link:
+                        raise _stale_root_state("external_link", self.storage.runtime_path)
+                    value["links"][target_relative.as_posix()] = expected_mapping
+
+                self.storage.update_runtime(update_link)
                 manifest = self.storage.read_manifest(required=True)
+                if manifest["links"].get(target_relative.as_posix()) != existing_link:
+                    raise _stale_root_state("external_link", self.storage.manifest_path)
                 manifest["links"][target_relative.as_posix()] = expected_mapping
                 self.storage.write_manifest(manifest)
                 changed.extend([self.storage.runtime_path, self.storage.manifest_path])
@@ -960,13 +1018,37 @@ class ExternalService:
         if path.exists():
             if _worktree_head(path) == record["resolved_commit"]:
                 return _restore_item_payload(record, "unchanged", []), [], False
-            return (
-                _restore_blocked(
-                    identifier, "install_path_conflict", "The stable install path is occupied by different content."
-                ),
-                [],
-                False,
-            )
+            try:
+                self._restore_existing_payload_observation(record, path)
+            except DoctidexError as exc:
+                return _restore_blocked_record(record, exc.code, exc.message), [], False
+            if not apply:
+                network = verify_exact_commit(
+                    record["source_url"],
+                    canonical_source(record["source_url"], cwd=self.root),
+                    record["resolved_commit"],
+                    operation="external_restore",
+                )
+                return _restore_item_payload(record, "planned", []), [], network
+
+            canonical = canonical_source(record["source_url"], cwd=self.root)
+            with source_mutation(canonical):
+                cache, network = ensure_exact_commit_cache(record["source_url"], canonical, record["resolved_commit"])
+                with self.storage.mutation():
+                    if not self._restore_manifest_matches(record):
+                        return _restore_blocked_record(
+                            record,
+                            "index_update_conflict",
+                            "The current recovery manifest changed during restore.",
+                        ), [], network
+                    try:
+                        head = self._restore_existing_payload_observation(record, path, cache=cache)
+                    except DoctidexError as exc:
+                        return _restore_blocked_record(record, exc.code, exc.message), [], network
+                    if head == record["resolved_commit"]:
+                        return _restore_item_payload(record, "unchanged", []), [], network
+                    _checkout_restore_exact(path, record["resolved_commit"])
+                    return _restore_item_payload(record, "restored", []), [path], network
         if not apply:
             network = verify_exact_commit(
                 record["source_url"],
@@ -980,6 +1062,32 @@ class ExternalService:
         with source_mutation(canonical):
             cache, network = ensure_exact_commit_cache(record["source_url"], canonical, record["resolved_commit"])
             with self.storage.mutation():
+                if not self._restore_manifest_matches(record):
+                    return _restore_blocked_record(
+                        record,
+                        "index_update_conflict",
+                        "The current recovery manifest changed during restore.",
+                    ), [], network
+                if path.exists():
+                    return _restore_blocked_record(
+                        record,
+                        "index_update_conflict",
+                        "The stable install path changed during restore.",
+                    ), [], network
+                runtime = self.storage.read_runtime()
+                previous_runtime = runtime["installs"].get(identifier)
+                if previous_runtime is not None and (
+                    not isinstance(previous_runtime, dict)
+                    or previous_runtime.get("role") != "direct"
+                    or previous_runtime.get("managed_state") != "complete"
+                    or previous_runtime.get("install_path") != record["install_path"]
+                    or previous_runtime.get("canonical_source") != canonical
+                ):
+                    return _restore_blocked_record(
+                        record,
+                        "mapping_damaged",
+                        "The managed install record cannot be safely restored from the manifest.",
+                    ), [], network
                 changed, _ = self.storage.ensure_host_layout()
                 add_detached_worktree(cache, path, record["resolved_commit"], operation="external_restore")
                 make_logically_read_only(path)
@@ -992,11 +1100,60 @@ class ExternalService:
                     "managed_state": "complete",
                 }
                 manifest = self.storage.read_manifest(required=True)
-                self.storage.update_runtime(
-                    lambda value: _restore_runtime_mapping(value, identifier, runtime_record, manifest)
-                )
+
+                def restore_runtime(value: dict[str, Any]) -> None:
+                    if value["installs"].get(identifier) != previous_runtime:
+                        raise _stale_root_state("external_restore", self.storage.runtime_path)
+                    _restore_runtime_mapping(value, identifier, runtime_record, manifest)
+
+                self.storage.update_runtime(restore_runtime)
                 changed.extend([path, self.storage.runtime_path])
         return _restore_item_payload(record, "restored", []), changed, network
+
+    def _restore_manifest_matches(self, record: dict[str, Any]) -> bool:
+        manifest = self.storage.read_manifest(required=True)
+        return manifest["installs"].get(record["install_id"]) == record
+
+    def _restore_existing_payload_observation(
+        self, record: dict[str, Any], path: Path, *, cache: Path | None = None
+    ) -> str:
+        identifier = record["install_id"]
+        canonical = canonical_source(record["source_url"], cwd=self.root)
+        runtime = self.storage.read_runtime()
+        current = runtime["installs"].get(identifier)
+        if (
+            not isinstance(current, dict)
+            or current.get("role") != "direct"
+            or current.get("managed_state") != "complete"
+            or current.get("install_path") != record["install_path"]
+            or current.get("canonical_source") != canonical
+        ):
+            raise _restore_existing_error(
+                "install_path_conflict", "The stable install path is not the matching managed direct payload.", path
+            )
+        common = git(
+            ["-C", str(path), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            operation="external_restore",
+            check=False,
+        )
+        expected_cache = (cache or source_cache(canonical)).absolute()
+        if common.returncode != 0 or Path(common.stdout.strip()).absolute() != expected_cache:
+            raise _restore_existing_error(
+                "install_damaged", "The managed payload is not attached to its expected source object store.", path
+            )
+        head = _worktree_head(path)
+        if head is None:
+            raise _restore_existing_error(
+                "install_damaged", "The managed payload is not a readable Git worktree.", path
+            )
+        status = git(["-C", str(path), "status", "--porcelain"], operation="external_restore", check=False)
+        if status.returncode != 0:
+            raise _restore_existing_error("install_damaged", "The managed payload cannot report its Git status.", path)
+        if status.stdout.strip():
+            raise _restore_existing_error(
+                "worktree_changed", "The managed payload has local changes and was preserved.", path
+            )
+        return head
 
     def remove(self, identifier: str, *, apply: bool) -> dict[str, Any]:
         runtime = self.storage.read_runtime()
@@ -1014,27 +1171,7 @@ class ExternalService:
                 domain="external",
             )
         if record["role"] == "dependency" and record["managed_state"] == "hidden":
-            return envelope(
-                "external_remove",
-                result="The hidden dependency install was preserved without deletion.",
-                root=str(self.root),
-                findings=[
-                    finding(
-                        "external",
-                        "info",
-                        "hidden_install_preserved",
-                        "A hidden dependency is retained until checkout reconciliation can determine it again.",
-                        path=str(self.root.joinpath(*record["install_path"].lstrip("/").split("/"))),
-                    )
-                ],
-                applied=False,
-                install_id=record["install_id"],
-                install_role=record["role"],
-                install_path=record["install_path"],
-                manifest_included=False,
-                state="preserved_hidden",
-                planned_changes=[],
-            )
+            return self._preserved_hidden_remove_result(record)
         preflight = self._remove_preflight(identifier)
         if preflight["references"]:
             return self._remove_result(preflight, apply=apply, state="blocked", changed=[])
@@ -1044,6 +1181,9 @@ class ExternalService:
         with source_mutation(preflight["record"]["canonical_source"]):
             with self.storage.mutation():
                 preflight = self._remove_preflight(identifier)
+                current = preflight["record"]
+                if current["role"] == "dependency" and current["managed_state"] == "hidden":
+                    return self._preserved_hidden_remove_result(current)
                 if preflight["references"]:
                     return self._remove_result(preflight, apply=True, state="blocked", changed=[])
 
@@ -1063,6 +1203,29 @@ class ExternalService:
                 changed.append(self.storage.runtime_path)
 
         return self._remove_result(preflight, apply=True, state="removed", changed=changed)
+
+    def _preserved_hidden_remove_result(self, record: dict[str, Any]) -> dict[str, Any]:
+        return envelope(
+            "external_remove",
+            result="The hidden dependency install was preserved without deletion.",
+            root=str(self.root),
+            findings=[
+                finding(
+                    "external",
+                    "info",
+                    "hidden_install_preserved",
+                    "A hidden dependency is retained until checkout reconciliation can determine it again.",
+                    path=str(self.root.joinpath(*record["install_path"].lstrip("/").split("/"))),
+                )
+            ],
+            applied=False,
+            install_id=record["install_id"],
+            install_role=record["role"],
+            install_path=record["install_path"],
+            manifest_included=False,
+            state="preserved_hidden",
+            planned_changes=[],
+        )
 
     def _remove_preflight(self, identifier: str) -> dict[str, Any]:
         try:
@@ -2128,6 +2291,61 @@ def _restore_item_payload(record: dict[str, Any], state: str, findings: list[dic
         "state": state,
         "findings": findings,
     }
+
+
+def _restore_blocked_record(record: dict[str, Any], code: str, message: str) -> dict[str, Any]:
+    return _restore_item_payload(
+        record,
+        "blocked",
+        [finding("external", "error", code, message, actions=["Correct the item and retry restore."])],
+    )
+
+
+def _restore_existing_error(code: str, message: str, path: Path) -> DoctidexError:
+    return DoctidexError(
+        message,
+        operation="external_restore",
+        affected=[str(path)],
+        actions=["Preserve the path and repair the managed install before retrying restore."],
+        code=code,
+        domain="external",
+        path=str(path),
+    )
+
+
+def _checkout_restore_exact(path: Path, commit: str) -> None:
+    exists = git(
+        ["-C", str(path), "cat-file", "-e", f"{commit}^{{commit}}"], operation="external_restore", check=False
+    )
+    if exists.returncode != 0:
+        raise _restore_existing_error(
+            "revision_not_found", "The manifest commit is unavailable in the managed source objects.", path
+        )
+    make_logically_writable(path)
+    try:
+        checkout = git(
+            ["-C", str(path), "checkout", "--detach", "--quiet", commit],
+            operation="external_restore",
+            check=False,
+        )
+        if checkout.returncode != 0:
+            raise _restore_existing_error(
+                "source_access_failed", "Git could not switch the managed payload to the manifest commit.", path
+            )
+    finally:
+        make_logically_read_only(path)
+
+
+def _stale_root_state(operation: str, path: Path) -> DoctidexError:
+    return DoctidexError(
+        "The root-managed state changed before this apply could publish its plan.",
+        operation=operation,
+        affected=[str(path)],
+        actions=["Run the dry-run again and review the current root state before retrying apply."],
+        code="index_update_conflict",
+        domain="external",
+        path=str(path),
+    )
 
 
 def _restore_runtime_mapping(

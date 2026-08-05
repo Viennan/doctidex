@@ -67,11 +67,11 @@ Python 接受并产生 `schema_version: "1.0"`。`RootStorage` 在使用记录�
 | 场景类别 | 构造方式与可观察的物化结果 | Python 证据与 reader 必须覆盖的内容 |
 |---|---|---|
 | 空 root 与 dry-run | 创建有效 root，运行 validate/install/link dry-run；不产生持久变更。 | `test_valid_tree_and_scopes`；reader 应解释缺失状态，而不是编造 runtime state。 |
-| 直接 install 变体 | 具有省略 default、显式 commit/tag/branch 和 host/other source relation 的本地 source。 | install/default-selector 测试；各行共同覆盖 manifest/runtime/payload/cache/ignore/index 选项。 |
-| dependency 与 promotion | 先安装带 parent 的 dependency，再以相同 identity 正常安装。 | dependency/self-cycle/promotion 测试；覆盖 `role`、`parents` 和 manifest inclusion。 |
-| 安全/不安全的持久 link | 将完整直接 install 链接到安全 root 和不安全 scope。 | link/safe-state 测试；覆盖 symlink、两类 link record 与负责的 index 选项。 |
+| 直接 install 变体 | 具有省略 default、显式 commit/tag/branch 和 host/other source relation 的本地 source；包含 apply 前 manifest tracking 改变。 | install/default-selector 与 tracking revalidation 测试；各行共同覆盖 manifest/runtime/payload/cache/ignore/index 选项。 |
+| dependency 与 promotion | 先安装带 parent 的 dependency，再以相同 identity 正常安装；包含 stale plan 遇到已发布 direct 或已删除 parent。 | dependency/self-cycle/promotion 与 final-revalidation 测试；覆盖 `role`、去重 `parents`、manifest inclusion 与 blocked parent。 |
+| 安全/不安全的持久 link | 将完整直接 install 链接到安全 root 和不安全 scope；包含 target 在 preflight 后由另一调用发布。 | link/safe-state 与 stale-target revalidation 测试；覆盖 symlink、两类 link record 与负责的 index 选项。 |
 | presentation rebind/unlink | 对同一 target 切换不同 selector/source，随后在有/无 safe Markdown 或 symlink reference 的条件下解除 mapping。 | rebind/unlink 测试；覆盖 atomic live symlink replacement、runtime/manifest 同步、frontmatter ownership/legacy preservation、reference evidence 与 install 不变。 |
-| 缺失的直接 restore | 仅移除 payload，观察 `owner_install_missing`，再 dry-run/apply restore。 | restore 测试；覆盖 broken presentation、`planned/restored/unchanged/blocked`。 |
+| 缺失/已有直接 restore | 仅移除 payload，或保留 clean managed payload 并让 manifest 指向另一个 exact commit；还包含 manifest record 在 apply 中改变。 | restore 测试；覆盖 broken presentation、existing detached checkout、runtime/manifest preservation、stale-manifest block 与 `planned/restored/unchanged/blocked`。 |
 | portable 的损坏 dependency link | 检查 outer dependency 缺失的已安装 repository link，再物化它。 | portable mapping 测试；`dependency_not_installed` 属于正常结果。 |
 | hook 注册与直接对齐 | 安装 hook、重复安装、加入 foreign hook 情形，并 checkout 已有 payload 的变更 manifest。 | hook install/alignment 测试；覆盖 hook artifact、直接 runtime 和 transcript。 |
 | hidden dependency / unhide | checkout 无法证明 dependency metadata 的状态，再重新引入已对齐的 parent metadata。 | hidden/unhide 测试；覆盖 `.hidden`、`managed_state` 和 parent evidence。 |

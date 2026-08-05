@@ -179,10 +179,7 @@ class HookService:
 
         result_items = [items[identifier] for identifier in sorted(items)]
         counts = Counter(item["state"] for item in result_items)
-        warning = any(
-            item["state"] == "blocked" or item["revision_alignment"] == "metadata_warning"
-            for item in result_items
-        )
+        warning = any(item["state"] == "blocked" for item in result_items)
         return envelope(
             "hook_run",
             status="warning" if warning else "ok",
@@ -586,7 +583,6 @@ def _item(
         "state": state,
         "resolved_commit": commit,
         "revision_alignment": revision_alignment,
-        "metadata_mismatches": [],
         "findings": list(findings),
     }
 

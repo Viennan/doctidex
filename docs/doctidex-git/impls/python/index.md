@@ -43,4 +43,4 @@ console CLI / JSON renderer
 
 Python 选择 `pathlib`、argument-array Git subprocess、round-trip YAML、native relative symlink、same-directory temporary publication、directory locks 和 local user cache。它不提供 in-process API、copy/junction symlink fallback、sandbox-style read-only、moving-ref auto refresh 或 implicit cache clean。
 
-已记录的 material limitation/evidence boundary 见[覆盖页面](architecture-coverage-evidence-and-worksite-validation.md#5-known-gaps-and-limits)：JSON hook contract 中的 `metadata_warning` 目前没有 Python producer；`WorktreeService.close` 的 lock revalidation 不应被宣称为已验证。它们不由本次文档重构修复。
+已记录的 material limitation/evidence boundary 见[覆盖页面](architecture-coverage-evidence-and-worksite-validation.md#5-known-gaps-and-limits)：`WorktreeService.close` 的 lock revalidation 不应被宣称为已验证。Hook revision outcome 与 worktree runtime-error discriminator 已由当前 Architecture、Python 与回归测试共同覆盖。

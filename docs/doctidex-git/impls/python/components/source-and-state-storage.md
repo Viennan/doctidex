@@ -20,7 +20,9 @@ shared/preserve 语义是 common，cache layout 与 hash 仍是 private。
 
 ## `RootStorage` 的约定
 
-`RootStorage` 将缺失的 runtime 读作空的、有效的 owner-local record；已存在但无效的 runtime 会被阻止。缺失的
+`RootStorage` 将缺失的 runtime 读作空的、有效的 owner-local record；已存在但无效的 runtime 会被阻止，并由读取者
+传入的 public operation 转换为该命令自己的 `mapping_damaged` result，例如 `worktree_list` 不会被泛化为
+`external`。缺失的
 manifest 可以是空的 local pre-install state，而要求 recovery 的调用者会收到
 `recovery_manifest_missing`；已存在但无效的 manifest 会收到 `recovery_manifest_invalid`。它会在写入前验证 record
 identity/path/references。因此，所有会在 Python worksite 中 materialize 的 configuration fields 都列于
@@ -38,5 +40,5 @@ Architecture 的 preserve/reobserve boundary，但不构成 multi-resource trans
 
 代表性证据位于 [`test_git_plugin.py`](../../../../../impls/libs/python/tests/test_git_plugin.py)：固定的
 default/explicit revision behavior、不同的 selector identity、忽略 manifest 时的阻止、restore 的 runtime projection、
-source/cache cleanup 与 root lock preservation。该测试套件验证可观测结果；它不将 cache hash、JSON 键顺序或
+worktree runtime-damage operation、source/cache cleanup 与 root lock preservation。该测试套件验证可观测结果；它不将 cache hash、JSON 键顺序或
 `RootStorage` helper structure 变成 Architecture requirement。

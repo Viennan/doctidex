@@ -301,7 +301,7 @@ RestoreItem：
 | `revision_selector` | RevisionSelector/null | 原安装的 selector provenance；不用于重新解析 moving ref；未知 filter ID 为 null。 |
 | `default_branch` | string/null | 原安装省略 revision 时的来源信息。 |
 | `resolved_commit` | full commit ID/null | 唯一允许恢复的 exact commit；未知 filter ID 为 null。 |
-| `state` | `planned`/`restored`/`unchanged`/`blocked` | dry-run 可重建、apply 已重建、原内容已匹配，或该项未完成。 |
+| `state` | `planned`/`restored`/`unchanged`/`blocked` | dry-run 可恢复、apply 已将缺失或已验证 existing payload 置于 manifest exact commit、原内容已匹配，或该项未完成。 |
 | `findings` | array[Finding] | item-level 阻塞与恢复动作；正常为空。 |
 
 非整体 blocked result 的 fields：
@@ -366,8 +366,7 @@ HookItem：
 | `install_role` | `direct`/`dependency` | 当前 runtime role。 |
 | `state` | `aligned`/`unchanged`/`ignored`/`hidden`/`unhidden`/`blocked` | 本轮 reconciliation 对该 item 的确定结果。 |
 | `resolved_commit` | full commit ID/null | manifest/child metadata 能证明时的 exact target；ignored/hidden 无 target 时为 null。 |
-| `revision_alignment` | `complete`/`metadata_warning`/`not_applicable` | exact commit 与 revision provenance 的 aggregate outcome。 |
-| `metadata_mismatches` | array[string] | 尚未安全对齐的 stable revision metadata field names；其他 state 为空。 |
+| `revision_alignment` | `complete`/`not_applicable` | exact commit 与 runtime provenance 均可证明时为 `complete`；不适用或 item 被保留时为 `not_applicable`。 |
 | `findings` | array[Finding] | item-level blocked 或 preserved reason。 |
 
 HookRun 的非 blocked result fields：
@@ -379,7 +378,7 @@ HookRun 的非 blocked result fields：
 | `items` | array[HookItem] | 本次已观察的 direct/dependency items，按 install ID 排序。 |
 | `counts` | object | 每个 HookItem `state` 的 non-negative count；未出现 state 为 `0`。 |
 
-run 的 per-item blocked 或 `metadata_warning` 令顶层 `status: warning`，但已完成 checkout 不会回滚。全局
+run 的 per-item blocked 令顶层 `status: warning`，但已完成 checkout 不会回滚。全局
 manifest/runtime 无法读取、root/host 无法选择或 source/root mutation conflict 才令 command blocked。
 
 ## 7. `external_link_parse`

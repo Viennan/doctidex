@@ -38,6 +38,11 @@ Python 扫描器保留 `unsafe` 文件或目录的词法入口，但不读取文
 mapping，不区分 flow 或 block 写法。该边界与两种 annotation 形式由
 [`test_protocol.py`](../../../../../impls/libs/python/tests/test_protocol.py) 覆盖。
 
+文件路径 edge 的分类和目标解析共用同一个 URL 判断：存在 scheme、network location 或非空 query 的 Markdown
+hyperlink 不形成 doctidex file-path link，也不会把空 path 错当作 current document。`#section?view=compact` 中的
+`?` 位于 fragment，仍是当前文档 anchor；`guide.md?view=compact` 与 `?view=compact` 则只作为普通 hyperlink 保留。
+该 distinction 由 `test_query_links_do_not_form_file_path_edges` 覆盖。
+
 ## 证据与边界
 
 [`test_protocol.py`](../../../../../impls/libs/python/tests/test_protocol.py) 覆盖 root/configuration/link

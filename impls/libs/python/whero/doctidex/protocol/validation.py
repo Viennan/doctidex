@@ -733,7 +733,7 @@ def _normalize_entry_path(directory: Path, root: Path, value: str) -> Path | Non
 
 def _resolve_link(document: Path, root: Path, value: str) -> Path | None:
     parsed = urlsplit(value)
-    if parsed.scheme or parsed.netloc:
+    if not _is_file_link(value):
         return None
     path_value = unquote(parsed.path)
     if not path_value:
@@ -759,7 +759,7 @@ def _resolve_annotation_path(document: Path, root: Path, value: object) -> Path 
 
 def _is_file_link(value: str) -> bool:
     parsed = urlsplit(value)
-    return not parsed.scheme and not parsed.netloc
+    return not parsed.scheme and not parsed.netloc and not parsed.query
 
 
 def _link_annotations(raw: str) -> dict[int, tuple[dict[str, Any] | None, str | None]]:

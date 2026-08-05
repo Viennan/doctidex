@@ -281,6 +281,31 @@ def test_tree_observations_share_link_resolution(tmp_path: Path) -> None:
     assert validate(root)["protocol_structure"] == "pass"
 
 
+def test_query_links_do_not_form_file_path_edges(tmp_path: Path) -> None:
+    root = tmp_path / "knowledge"
+    write_root(
+        root,
+        body=(
+            "# Root\n\n"
+            "[Search](?view=compact)\n"
+            "[Guide query](guide.md?view=compact)\n"
+            "[Anchor](#details?view=compact)\n"
+        ),
+    )
+    (root / "guide.md").write_text("# Guide\n", encoding="utf-8")
+    context = root_at(root)
+    assert context is not None
+
+    observations = tree_observations(context)
+
+    assert [link.is_file_link for link in observations.links] == [False, False, True]
+    assert [link.target for link in observations.links] == [None, None, root / "index.md"]
+    assert any(
+        item["code"] == "path_unreachable" and item["path"] == str(root / "guide.md")
+        for item in validate(root)["findings"]
+    )
+
+
 def test_tree_observations_preserve_boundary_unsafe_and_symlink_scan(tmp_path: Path) -> None:
     root = tmp_path / "knowledge"
     write_root(

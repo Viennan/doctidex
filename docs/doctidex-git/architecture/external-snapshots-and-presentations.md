@@ -27,6 +27,26 @@ reference-protected remove 和 checkout 后的离线 reconciliation；不替代 
 intent 的 lookup，不授权以后刷新 branch/tag。dependency install 不在 install 内递归 materialize；
 它仅增加一个去重 parent edge。普通 install 可将同 identity 的 dependency 提升为 direct，不能降级。
 
+### 1.1 建立 snapshot 与恢复 snapshot
+
+`external install` 与 `external restore` 都会 materialize direct payload，但它们消费的 authority 不同，不能把一个
+当作另一个的重试形式。install 消费调用方本次给出的 source/selector，是建立或更新 snapshot 的显式操作；当 owner root
+没有匹配的本地 runtime install 时，它可以解析 branch/tag/default 的当前值，并将得到的 fixed commit 写入 direct
+manifest entry。同一 stable install ID 已出现在 manifest 中不使 manifest 成为 install 的 revision input；这种 apply
+造成 versioned manifest 修改是正常的待审阅/交付效果。
+
+restore 消费当前 versioned manifest 中的 `source_url`、`resolved_commit` 和 stable path，是 clone、clean、physical loss
+或 checkout 后恢复既有 snapshot 的操作。即使 manifest 的 selector 是 `main` 而 source 的 `main` 已移动，restore 仍只能
+恢复 manifest 记录的 exact commit，不能重新解析该 selector 或改写 manifest。已有匹配本地 runtime install 的同 key
+install retry 则复用其已固定的 commit/path，不刷新 moving ref；它既不是新的 selector resolution，也不是 restore。
+
+例如 manifest 中 `main -> C1`、source 的 `main -> C2` 且本地 payload 缺失时，用户授权更新 snapshot 应调用
+`external install --branch main`，其对 manifest 的 C2 变更由 native Git 审阅；用户要求恢复当前 host revision 应调用
+`external restore`，其结果必须是 C1。对已验证、clean 但 HEAD 不同的 direct payload，restore 在取得 C1 后直接
+checkout；它与重建缺失 payload 同样返回 `restored`。`hook --run` 是第三条路径：它只离线对齐已有 payload 到当前
+manifest 的 exact commit，不 materialize missing payload，也不刷新 selector。restore 若因 hook 的 `revision_not_found`
+finding 而调用，必须紧接一次 `hook --run`，由后者最终确认 runtime provenance 与 dependency state。
+
 ## 2. 主机归属与受管命名空间
 
 owner root 下的 managed namespace 位于 `/.doctidex/git/`。它不是 protocol configuration；它是产品工作
@@ -87,9 +107,10 @@ Duplicate key、invalid required field、unresolvable install reference 或 unkn
 manifest identity 必须随 semantic content 改变，以支持 cursor/concurrent detection；canonical JSON order、
 hash 和 encoding 不属于 Architecture。
 
-Restore 只从 manifest 重建 missing **direct** payload 的 exact path/commit，保持 manifest 和 existing
-presentation 不变；它不 materialize dependency-only node、follow moving ref、覆盖 damaged payload 或清理
-shared cache。
+Restore 只消费 manifest 的 exact path/commit：它重建 missing **direct** payload，或将已验证、clean 且 HEAD 不同的
+existing direct payload checkout 到该 commit；两者保持 manifest 和 existing presentation 不变，并同样报告 `restored`。
+它不 materialize dependency-only node、follow moving ref、覆盖 damaged payload 或清理 shared cache。由 hook
+`revision_not_found` finding 触发的 restore 之后必须重跑 hook，完成 runtime/dependency reconciliation 的最终确认。
 
 ## 4. 运行时安装与链接记录
 
@@ -213,7 +234,7 @@ Hook Registration 的 identity 是 `(owner root, host Git repository, post-check
 | incoming variant cannot prove compatibility | preserve entrypoint 并报告 interoperability/migration boundary；不得以 different launcher 覆盖。 |
 
 run 只处理当前 manifest 声明且当前 runtime/payload 已存在的 direct install；它校验 exact commit，离线
-切换可用 payload，尽力同步 selector/default provenance。缺失 direct payload 保留并报告，绝不自动
+切换可用 payload，并只在可证明时同步 selector/default provenance；不能安全证明时 item 保留为 blocked。缺失 direct payload 保留并报告，绝不自动
 restore。dependency forest 只在一个 aligned direct ancestor 的 content manifest 提供足够 child metadata
 时对齐；否则隐藏或保留 dependency，而不猜 revision。manifest fixed commit 永不由 hook 改写。
 

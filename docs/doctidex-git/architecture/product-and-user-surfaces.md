@@ -42,12 +42,12 @@ native Git、手工 worktree、submodule 或第三方 symlink 不因其存在而
 |---|---|---|---|
 | 阅读树 | Read Skill + 原生工具 | 一个 doctidex root 或路径。 | 文件不变；按 root、boundary、unsafe 和 link 继续读取。 |
 | 验证根或 scope | `validate ROOT [--scope PATH]...` | 省略 scope 为完整 root；重复 scope 合并。 | coverage、findings、semantic candidates；scoped pass 不等于全根 pass。 |
-| 安装 external snapshot | `external install SOURCE [REVISION]` | 默认 dry-run；省略 revision 记录 default provenance，实际读取固定 commit。 | install ID/path、manifest/runtime/ignore 的计划或变更；审阅后才 `--apply`。 |
+| 安装或更新 external snapshot | `external install SOURCE [REVISION]` | 默认 dry-run；省略 revision 记录 default provenance，实际读取固定 commit。调用本次 selector 建立或更新 snapshot，不是 manifest recovery。 | install ID/path、manifest/runtime/ignore 的计划或变更；审阅后才 `--apply`。 |
 | 展开 dependency | `external install SOURCE REVISION --dependency-of ID` | parent 必须是当前 complete install。 | 扁平 dependency edge；需要 durable restore/link 时再提升为 direct。 |
 | 解析 repository 提及 | Mentions Skill -> `external list [FILTER]` | 只读 selected owner root；可用 repository path、host、固定 revision 与 role 收窄。 | 可读 InstallReference 候选和分页事实；agent 结合上下文消歧后才把 exact ID 交给其他命令。 |
 | 建立 presentation | `external link SOURCE_DIR TARGET` | TARGET 是 user 选择且须可 track。 | relative symlink、safe/index declaration、durable mapping；Git 审阅随后由原生工具完成。 |
 | 替换或解除 presentation | `external rebind SOURCE_DIR TARGET` / `external unlink TARGET` | rebind 选择已审阅的新 direct snapshot；unlink 只接受 exact managed target。 | 同 path 切换到新 snapshot，或在 reference-free 时移除一个 presentation；不改变 install lifecycle。 |
-| 恢复 direct install | `external restore [ID...]` | 默认 dry-run；只依 manifest exact commit/path。 | `planned`、`restored`、`unchanged` 或 `blocked`；不刷新 moving ref 或改写 link。 |
+| 恢复 direct install | `external restore [ID...]` | 默认 dry-run；只依当前 manifest exact commit/path。 | `planned`、`restored`、`unchanged` 或 `blocked`；不刷新 moving ref、改写 manifest 或改写 link。 |
 | 解析 external-link 提及 | Mentions Skill -> `external link-parse PATH` | PATH 可以在 owner 或 installed content 中；不完整 spelling 先由任务上下文补全为唯一实际 path。 | current/portable mapping 与 target state；据此继续读取、restore、安装 dependency 或诊断。 |
 | 协调 checkout snapshot | `hook --install` 后 Git `post-checkout` | 用户明确安装一次；run 是离线。 | existing payload 对齐、hidden/preserved/blocked item；不 materialize missing direct install。 |
 | 移除 install | `external remove INSTALL_ID` | 默认 dry-run；只接受 exact ID。 | reference-free 才移除；reference 或 hidden state 时保留现场和 evidence。 |

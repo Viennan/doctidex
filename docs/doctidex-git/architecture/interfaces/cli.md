@@ -176,8 +176,12 @@ doctidex-git external install --url URL [--root ROOT]
   `absent` 只用于 dry-run 中尚不存在的 planned path。
 - 安装载荷必须未被宿主 Git 追踪；恢复清单必须可追踪。宿主 repository 无法唯一确定、
   载荷已有 tracked entry 或有效 ignore 规则破坏该边界时 blocked，不自动改写无关规则。
-- 同 install key 重试只幂等核对并复用记录 commit，不重新解析 branch/tag；新 selector
-  创建新 install。命令不提供 replace。
+- 当前 local runtime 已有匹配 install key 时，retry 只幂等核对并复用该 record 的 fixed commit，
+  不重新解析 branch/tag；新 selector 创建新 install。命令不提供 replace。
+- 没有匹配的 local runtime install 时，本次 `external install` 是按调用 source/selector 建立或更新 snapshot 的
+  显式操作；即使相同 stable install ID 已在 versioned manifest 中，它也可以解析 branch/tag/default 的当前值并更新
+  direct manifest entry。调用方若要重建当前 manifest 所承诺的 exact snapshot，必须使用 `external restore`，不能把
+  install 当作 recovery。
 - 省略 `--dependency-of` 创建或提升为 `direct` 并写恢复清单。提供该参数时，ID 必须属于
   selected root 的完整 install；结果建立/复用 `dependency`，只更新运行期 parent edge，
   不写恢复清单。direct 不降级，dependency-only 可由后续普通调用原地提升。
@@ -250,15 +254,22 @@ doctidex-git external restore [--root ROOT] [--install INSTALL_ID]...
 
 - 读取可版本化恢复清单中的 portable facts，只按记录的 source、exact resolved commit 和
   stable install path 恢复；不发现 default branch、不解析移动 ref。
+- 因此 manifest 记录 `main -> C1` 而 source `main` 已为 C2 时，restore 仍只可恢复 C1。需要有意按 selector
+  建立或更新到 C2 是 `external install` 的职责；restore 不得改写 manifest 来实现这种更新。
 - 省略 `--install` 时分页处理全部记录；指定时按稳定 install ID 排序、去重和过滤。未知
   ID 返回 item-level blocked，不把它当作空匹配。
 - dry-run 可检查本地对象并按需访问记录的 source，但不写入。apply 在对象不足时可以联网
-  获取 exact commit，并把缺失 install 重建到原路径。
-- 每项返回 `planned|restored|unchanged|blocked`；`planned` 只用于 dry-run 中可重建的缺失项。
+  获取 exact commit；缺失 install 重建到原路径，已验证且 clean 但 HEAD 不同的 direct install 则直接 detached checkout
+  到该 commit。两者均返回 `restored`。
+- 每项返回 `planned|restored|unchanged|blocked`；`planned` 用于 dry-run 中可完成的 exact restore，
+  包括缺失 payload 的重建与已验证 existing direct payload 的 checkout。
   单项失败不撤销其他项。路径被未受管内容占用、清单损坏或 Git 排除边界不成立时保留
   现场并给出恢复动作。
 - 从 manifest 重建必要的内部 install/link mapping，但不重写、重建或 stage 已有 external
   link symlink。恢复成功后 symlink 因固定目标路径重新可用。
+- 若调用来自 `hook --run` 的 `revision_not_found` finding，restore 返回 `restored` 后，调用方必须再运行
+  `hook --run --root ROOT --json`。这一步是 runtime provenance 与 dependency reconciliation 的最终确认；其他 restore
+  场景不因此自动运行 hook。
 - cursor 绑定 root、恢复清单 identity、规范化 install filter、排序后的 install-ID selection、limit
   和 dry-run/apply mode；清单变化令 cursor invalid，恢复载荷本身不令 cursor 失效。每次调用只
   dry-run/apply 当前页，调用方以 next cursor 继续后续项。
@@ -329,8 +340,8 @@ doctidex-git hook (--install | --run) [--root ROOT] [--json]
   显式诊断性调用。它离线运行，不 fetch、不重新解析 moving branch/tag/default branch，也不创建、
   restore 或删除未安装 direct install。
 - run 先处理 current manifest 中 physical payload 存在的 direct install：其 Git `HEAD` 必须变为
-  `resolved_commit`，runtime 的 selector/default-branch provenance 尽力与 manifest 同步。commit 或
-  metadata 无法安全对齐时保留该 item、报告 field-level outcome，不能以 commit 相同冒充 complete。
+  `resolved_commit`，并同步可证明的 runtime selector/default-branch provenance。任一 required provenance
+  无法安全对齐时保留该 item 为 blocked；不能以 commit 相同或未定义的 metadata warning 冒充 complete。
 - 然后从已完成 direct install 遍历 runtime dependency parent edges。parent content 是 doctidex root、
   有合法 manifest 且包含 child metadata 时，按同一 commit/provenance contract 处理 child 并递归；
   否则 child subtree 为 hidden。所有 existing hidden nodes 每次都重新判定，不能被忽略。

@@ -46,6 +46,5 @@ conflict 和 concurrent change 转换为稳定的 operation results。
 [`test_git_plugin.py`](../../../../../impls/libs/python/tests/test_git_plugin.py) 通过已安装的 console script 覆盖
 managed install idempotence、foreign hook preservation、无 runtime `PATH` 的 direct commit/provenance alignment，
 以及 hidden dependency recheck/unhide。公开的
-`metadata_warning`/非空 `metadata_mismatches` contract 当前没有 Python producer；其已记录的 material
-limitation [见此处](../architecture-coverage-evidence-and-worksite-validation.md#5-known-gaps-and-limits)，不能被
-本组件 normal-path evidence 掩盖。
+每个 HookItem 只使用 Architecture 定义且 Python 可证明的 `revision_alignment: complete|not_applicable`；无法安全
+证明所需 revision provenance 的 item 保留为 blocked，并通过 finding 给出恢复边界。
