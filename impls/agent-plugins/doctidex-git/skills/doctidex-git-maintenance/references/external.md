@@ -14,7 +14,7 @@ not force a stale mapping, parent edge, manifest record, or deletion through nat
 ## Install a Fixed Snapshot
 
 ```text
-DOCTIDEX_GIT external install --url URL [--root ROOT]
+doctidex-git external install --url URL [--root ROOT]
   [--commit COMMIT | --tag TAG | --branch BRANCH]
   [--dependency-of INSTALL_ID]
   [--dry-run | --apply] --json
@@ -72,7 +72,7 @@ credentials/network/revision/tracking/parent/target decisions before retrying.
 ## Create a Durable Relative Link
 
 ```text
-DOCTIDEX_GIT external link SOURCE_DIRECTORY TARGET_PATH [--root ROOT]
+doctidex-git external link SOURCE_DIRECTORY TARGET_PATH [--root ROOT]
   [--dry-run | --apply] --json
 ```
 
@@ -98,7 +98,7 @@ copy fallback.
 ## Rebind a Nearby Presentation
 
 ```text
-DOCTIDEX_GIT external rebind SOURCE_DIRECTORY TARGET_PATH [--root ROOT]
+doctidex-git external rebind SOURCE_DIRECTORY TARGET_PATH [--root ROOT]
   [--dry-run | --apply] --json
 ```
 
@@ -124,7 +124,7 @@ install-removal authority after its references are gone.
 ## Unlink One Presentation
 
 ```text
-DOCTIDEX_GIT external unlink TARGET_PATH [--root ROOT]
+doctidex-git external unlink TARGET_PATH [--root ROOT]
   [--dry-run | --apply] --json
 ```
 
@@ -144,7 +144,7 @@ to edit frontmatter by hand.
 ## Restore Direct Installs
 
 ```text
-DOCTIDEX_GIT external restore [--root ROOT] [--install INSTALL_ID]...
+doctidex-git external restore [--root ROOT] [--install INSTALL_ID]...
   [--limit N] [--cursor TOKEN]
   [--dry-run | --apply] --json
 ```
@@ -160,7 +160,7 @@ For example, when the manifest records `main` at C1 and the source's current `ma
 clean, or checkout recovery must use restore and recover C1. Use `external install --branch main`
 only when the user has authorized creating or updating the snapshot to the selector's current C2.
 When this restore follows a `hook --run` item with `revision_not_found`, always run
-`DOCTIDEX_GIT hook --run --root ROOT --json` after a `restored` result. It is the required final
+`doctidex-git hook --run --root ROOT --json` after a `restored` result. It is the required final
 confirmation of runtime provenance and dependency reconciliation, not a second checkout request.
 
 Read `applied`, `recovery_manifest`, `recovery_manifest_identity`, normalized `install_filter`, and
@@ -176,7 +176,7 @@ state under installed content or repair links by changing their targets.
 ## Remove a Managed Install
 
 ```text
-DOCTIDEX_GIT external remove INSTALL_ID [--root ROOT]
+doctidex-git external remove INSTALL_ID [--root ROOT]
   [--dry-run | --apply] --json
 ```
 

@@ -5,19 +5,22 @@ description: Establish the installed doctidex-git mental model, shared CLI gramm
 
 # Use doctidex-git
 
+Current product metadata: `doctidex-git` Skill version `1.0.0`; doctidex protocol version `v1.1.0`.
+
 Read this Skill once for a task, then load only the selected specialist. Do not reopen this Skill
 when a specialist refers back to shared terms.
 
 ## Select a Python Runtime
 
-Before invoking this product's CLI, select one compatible `.venv` that contains the current
-`doctidex-git` package. For the entire task, use that environment's exact console script. In this
-Skill and its specialist references, `DOCTIDEX_GIT` denotes that executable; it is a notation to
-replace with the selected path, not a shell variable or a bare command name.
+The `doctidex-git` CLI requires a compatible Python environment with the `whero-doctidex` package
+installed; use the `doctidex-git` command from that environment.
 
-Do not rely on global `PATH`, shell activation, or another Python environment. If no selected
-environment has the executable, stop and report the runtime prerequisite. This product does not
-specify how to choose, create, or install a `.venv`.
+## Install the CLI from GitHub
+
+```text
+python -m pip install --no-input \
+  "whero-doctidex @ git+https://github.com/Viennan/doctidex.git@v1.0.0#subdirectory=impls/libs/python"
+```
 
 ## Choose the User Cache Location
 
@@ -48,21 +51,21 @@ When authorized to install a checkout hook, identify the current owner root and 
 that root's host Git repository:
 
 ```text
-DOCTIDEX_GIT hook --install --root OWNER_ROOT --json
+doctidex-git hook --install --root OWNER_ROOT --json
 ```
 
 Never run `hook --install` from, or pass as `--root`, a Git repository installed beneath
 `OWNER_ROOT`. Its content root and checkout are not a hook target for the owner root: installing a
 hook for one owner root never recursively installs hooks in its managed repositories.
 
-After `DOCTIDEX_GIT hook --install` has been installed for a root, its Git checkouts automatically
+After `doctidex-git hook --install` has been installed for a root, its Git checkouts automatically
 reconcile managed external dependency state. Do not repeat equivalent manual reconciliation after an
 ordinary checkout. If Git reports a `post-checkout` hook failure or warning, inspect its result and
 resolve any issue that is within the current authority. Then rerun reconciliation directly for the
 exact affected owner root:
 
 ```text
-DOCTIDEX_GIT hook --run --root ROOT --json
+doctidex-git hook --run --root ROOT --json
 ```
 
 Read the new result before proceeding. If it remains blocked or requests a user decision, preserve
@@ -89,7 +92,7 @@ the hook again.
 
 ## Invoke the CLI
 
-Use `DOCTIDEX_GIT ... --json` for agent decisions. Put `--json` once at the end. JSON results use
+Use `doctidex-git ... --json` for agent decisions. Put `--json` once at the end. JSON results use
 `schema_version: "1.0"`; unknown major schemas require a compatible product version rather than
 guessing fields.
 

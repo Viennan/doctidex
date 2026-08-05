@@ -123,9 +123,11 @@ Impls 负责。
 Published agent bundle 是已安装产品的离线工作流入口。四个 `skills/*/SKILL.md` 是其可移植核心：host 可以使用自己的
 plugin/skill 注册机制导入整个 `skills/` 目录，或在没有该机制时直接读取与任务相关的 Skill。`.codex-plugin` 和
 `agents/openai.yaml` 是 Codex 的可选包装 metadata，不能成为其他 agent 使用 bundle 的前提，也不定义通用 host command
-或安装位置。Skill 正文只说明产品使用场景和相应操作，不包含协议/产品版本、Git tag、package 或运行时安装/重装、开发、
-发布、tag 确认、测试或维护验证描述。README 提供同一 tag 的 Python package 与 bundle 获取入口；Architecture、Impls、
-Requirement 和后置验证负责版本关系、release identity 与安装可用性。
+或安装位置。Skill 正文只说明产品使用场景和相应操作；唯一例外是 Overview 中受限的 GitHub distribution bootstrap，
+它必须明确当前 Skill/product metadata 与协议版本、匹配的 tag、GitHub URL 和 package 子目录，并说明命令在已选兼容
+`.venv` 中执行。该段是已安装产品的版本化分发入口，不是 repository
+development setup，也不得扩展为 editable install、发布、tag 确认、测试或维护验证教程。README 提供同一 tag 的 Python
+package 与 bundle 获取入口；Architecture、Impls、Requirement 和后置验证负责版本关系、release identity 与安装可用性。
 
 `DOCTIDEX_GIT_CACHE` 是可选的 user configuration。非空值选择当前进程的 shared user-cache root；未设置时
 variant 使用其平台默认值。一个需共享 cache 的 CLI、automation 或 host hook 进程必须继承同一用户设置，产品不保存、

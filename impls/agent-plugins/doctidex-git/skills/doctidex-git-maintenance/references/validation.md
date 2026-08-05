@@ -3,7 +3,7 @@
 Run:
 
 ```text
-DOCTIDEX_GIT validate [ROOT] [--scope INTERNAL_DIRECTORY]...
+doctidex-git validate [ROOT] [--scope INTERNAL_DIRECTORY]...
   [--limit N] [--cursor TOKEN] --json
 ```
 

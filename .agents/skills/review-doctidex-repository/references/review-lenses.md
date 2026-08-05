@@ -30,8 +30,11 @@ and metadata, and the public behavior they claim. For doctidex-git Published Ski
 Classify each Skill as published or repository-local. Apply installed-product information boundaries
 only to published Skills. Verify trigger precision, audience, acyclic reading, workflow and command
 completeness, native-tool freedom, deterministic helpers, bounded output, actionable failures,
-metadata, validation, and proportionate forward-test evidence. Treat style preferences as advisory
-unless they create ambiguity, unsafe action, or a false surface.
+metadata, validation, and proportionate forward-test evidence. For doctidex-git, the Overview's
+fixed-tag GitHub distribution bootstrap is an Architecture-authorized product user surface; do not
+classify it as repository development information or recommend removing it merely because it states
+the current version and package installation command. Treat style preferences as advisory unless
+they create ambiguity, unsafe action, or a false surface.
 
 ## Requirement Fulfillment and Lifecycle
 

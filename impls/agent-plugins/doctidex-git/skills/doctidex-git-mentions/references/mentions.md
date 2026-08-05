@@ -7,7 +7,7 @@ write.
 ## Discover Current Managed Installs
 
 ```text
-DOCTIDEX_GIT external list [--root ROOT]
+doctidex-git external list [--root ROOT]
   [--repository REPOSITORY_PATH] [--host HOST]
   [--commit COMMIT | --tag TAG | --branch BRANCH]
   [--role direct | --role dependency]
@@ -30,7 +30,7 @@ the same root, filters, and limit; restart from the first page on `cursor_invali
 ## Interpret an Exact External Link
 
 ```text
-DOCTIDEX_GIT external link-parse PATH [--root ROOT] --json
+doctidex-git external link-parse PATH [--root ROOT] --json
 ```
 
 `PATH` is one existing readable directory or symlink; a broken symlink itself is valid, but a nonexistent

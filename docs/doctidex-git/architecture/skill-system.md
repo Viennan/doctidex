@@ -44,9 +44,13 @@ cleanup。
 字符。name 使用不超过 64 个字符的 lowercase hyphenated identifier，优先动词开头。`SKILL.md` 与其直接
 reference 构成跨 host 的可移植 bundle；Codex 可读取 `.codex-plugin` 和 `agents/openai.yaml`，其他 host 可以忽略
 这些 metadata 并使用自身的注册机制或直接读取 Skill。新建 Skill 在获创建授权后使用 active Skill catalog 提供的
-初始化工作流；不要新增 README、changelog、安装教程或没有明确读取条件的 reference 目录。Published Skill 不得
-包含 package/运行时安装或重装、开发、发布、tag 确认、测试或维护验证的描述；这些事实和流程由 README、Architecture、
-Impls、Requirement 与后置验证负责。
+初始化工作流；不要新增 README、changelog 或没有明确读取条件的 reference 目录。Published Skill 一般不得包含
+package/运行时安装或重装、开发、发布、tag 确认、测试或维护验证的描述；但 Overview 可以保留一个明确标注的 GitHub
+distribution bootstrap，简洁说明当前 Skill/product metadata 与协议版本、匹配 tag、GitHub URL 和 package 子目录，并
+说明命令在已选兼容 `.venv` 中执行。四个 Published Skills 的命令示例直接使用原始 `doctidex-git` 命令名，不使用
+`DOCTIDEX_GIT` 占位符；`DOCTIDEX_GIT_CACHE` 仍是独立的用户环境变量。该受限段是
+已安装产品的分发入口，不是 repository development setup；其余事实和维护流程仍由 README、Architecture、Impls、
+Requirement 与后置验证负责。
 
 Skill 先定义工作流所用术语、调用方输入、默认 context、可观察结果和下一决策，再说明步骤。产品
 概念足以让 agent 完成任务，但不公开 cache、key、lock、worktree 管理、内部 schema、repository
@@ -67,8 +71,9 @@ Mentions 必须足以完成一个只读提及解析场景；无需解析提及�
 
 README 负责面向安装者的同 tag Git package 安装与 Published agent bundle 获取入口；Architecture、Impls、Requirement
 与后置验证负责 release identity、metadata 关系和安装可用性的说明与核对。README 给出 bundle checkout 与其中
-`skills/` 路径，但不假定所有 host 都使用 Codex 或存在统一 plugin command。Published Skill 只描述已安装产品的用户
-工作流，不重复协议/产品版本、Git tag 或 package 安装命令，也不以这些事实要求 agent 执行开发、发布或验证动作。
+`skills/` 路径，但不假定所有 host 都使用 Codex 或存在统一 plugin command。Overview 可在其受限 distribution bootstrap
+中重复当前 Skill/product metadata 与协议版本、GitHub tag、package 安装命令和 package 子目录，以便从已安装 Skill 追溯同一分发入口；其他
+Published Skill 仍只描述已安装产品的用户工作流，不重复这些事实，也不要求 agent 执行开发、发布或验证动作。
 
 只有 Overview 说明可选 `DOCTIDEX_GIT_CACHE` 的用户配置：用户在启动 CLI、automation 或会触发 hook 的 Git
 进程前自行选择可写路径，agent 不持久化该选择。专项 Skill 继承这项前提而不重复环境设置步骤，仍不得路由、
@@ -115,8 +120,9 @@ catalog 取得当前 validator 路径，不把这些仓库维护命令复制进 
 
 涉及 release identity 或 cache 配置时，额外在 README、metadata、Architecture、Impls 与相应测试中验证协议、plugin
 与 distribution 的 major 版本关系、同一 Git tag 的 package 安装和 bundle checkout、可移植 `skills/` 路径，以及
-Overview 对手动配置、process inheritance、无持久化和 `cache clean` 边界的说明；同时检查四个 Published Skills 未引入
-package/运行时安装、开发、发布、tag 确认、测试或维护验证描述。
+Overview 对当前版本、受限 distribution bootstrap、手动配置、process inheritance、无持久化和 `cache clean` 边界的说明；
+同时检查非 Overview Published Skills 未引入 package/运行时安装、开发、发布、tag 确认、测试或维护验证描述，并检查
+Overview 没有把分发入口扩展成开发、发布或验证教程。
 
 复杂 workflow 的变更还需用 fresh independent agent 进行 forward test。测试只提供公开 artifacts，
 不泄漏预期 finding 或修复，并覆盖正常、clean/no-op、歧义、failure 和授权边界。

@@ -54,18 +54,49 @@ def test_release_metadata_is_current_and_major_compatible() -> None:
     _release_facts()
 
 
-def test_published_skills_exclude_release_and_package_installation_guidance() -> None:
+def test_published_skills_keep_release_bootstrap_only_in_overview() -> None:
     skills_root = REPOSITORY_ROOT / "impls" / "agent-plugins" / "doctidex-git" / "skills"
     skill_paths = sorted(skills_root.glob("*/SKILL.md"))
 
     assert {path.parent.name for path in skill_paths} == SKILL_NAMES
+    overview = (skills_root / "doctidex-git-overview" / "SKILL.md").read_text(encoding="utf-8")
+    metadata = (
+        "Current product metadata: `doctidex-git` Skill version `1.0.0`; "
+        "doctidex protocol version `v1.1.0`."
+    )
+    assert metadata in overview
+    assert "The `doctidex-git` CLI requires a compatible Python environment" in overview
+    assert "the `whero-doctidex` package" in overview
+    package_install = (
+        "whero-doctidex @ git+https://github.com/Viennan/doctidex.git"
+        "@v1.0.0#subdirectory=impls/libs/python"
+    )
+    assert package_install in overview
+    install_section = (
+        overview.split("## Install the CLI from GitHub", 1)[1]
+        .split("## Choose the User Cache Location", 1)[0]
+        .strip()
+    )
+    assert install_section == (
+        "```text\n"
+        "python -m pip install --no-input \\\n"
+        '  "whero-doctidex @ git+https://github.com/Viennan/doctidex.git'
+        '@v1.0.0#subdirectory=impls/libs/python"\n'
+        "```"
+    )
+
     for path in skill_paths:
+        if path.parent.name == "doctidex-git-overview":
+            continue
         text = path.read_text(encoding="utf-8")
         assert "## Product Version" not in text
         assert "This Skill uses doctidex protocol" not in text
         assert "Python distribution" not in text
         assert "git+https://github.com/Viennan/doctidex.git@" not in text
         assert "whero-doctidex @ git+" not in text
+
+    for path in sorted(skills_root.rglob("*.md")):
+        assert "DOCTIDEX_GIT " not in path.read_text(encoding="utf-8")
 
 
 def test_readmes_keep_the_install_target_parameterized() -> None:
