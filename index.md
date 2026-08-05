@@ -30,7 +30,7 @@ agent surfaces when building or maintaining a concrete variant.
 - [Archived v0.1.0 protocol](spec/archive/v0.1.0.md): the unchanged historical
   protocol superseded by the current specification.
 - [Design documentation](docs/index.md): current implementation Architecture,
-  project-wide Requirements, and concrete implementation Details.
+  project-wide Requirements and Issues, and concrete implementation Details.
 - [Implementations](impls/index.md): shared libraries and agent-facing plugins.
 - [Repository guide](AGENTS.md): repository layout, maintenance boundaries, and
   documentation and Skill design rules.

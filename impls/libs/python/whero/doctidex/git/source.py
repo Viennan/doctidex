@@ -37,6 +37,10 @@ class ResolvedSource:
 
 
 def sanitize_url(value: str) -> str:
+    if _is_scp_like(value):
+        host, path = value.split(":", 1)
+        public_path = path.split("?", 1)[0].split("#", 1)[0]
+        return f"{host.rsplit('@', 1)[-1]}:{public_path}"
     parsed = urlsplit(value)
     if parsed.scheme and parsed.hostname:
         host = parsed.hostname
@@ -44,11 +48,13 @@ def sanitize_url(value: str) -> str:
             host = f"[{host}]"
         if parsed.port:
             host = f"{host}:{parsed.port}"
-        return urlunsplit((parsed.scheme, host, parsed.path, parsed.query, parsed.fragment))
+        return urlunsplit((parsed.scheme, host, parsed.path, "", ""))
     return value
 
 
 def canonical_source(value: str, *, cwd: Path | None = None) -> str:
+    if _is_scp_like(value):
+        return value.rstrip("/")
     parsed = urlsplit(value)
     if parsed.scheme == "file":
         if parsed.netloc not in {"", "localhost"}:
@@ -59,8 +65,6 @@ def canonical_source(value: str, *, cwd: Path | None = None) -> str:
         return urlunsplit(
             (sanitized.scheme.lower(), sanitized.netloc.lower(), sanitized.path.rstrip("/"), sanitized.query, "")
         )
-    if _is_scp_like(value):
-        return value.rstrip("/")
     candidate = Path(value).expanduser()
     if not candidate.is_absolute() and cwd is not None:
         candidate = cwd / candidate
@@ -487,7 +491,7 @@ def _common_gitdir(path: Path) -> Path | None:
 
 def _is_scp_like(value: str) -> bool:
     colon = value.find(":")
-    if colon <= 0:
+    if colon <= 0 or "://" in value:
         return False
     prefix = value[:colon]
     return "/" not in prefix and "\\" not in prefix

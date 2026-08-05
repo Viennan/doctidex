@@ -343,7 +343,7 @@ def _worktree_item(record: dict[str, Any]) -> dict[str, Any]:
     return {
         "source_kind": record["source_kind"],
         "owner_root": str(path.parents[3]) if len(path.parents) >= 4 else None,
-        "source_url": record.get("source_url"),
+        "source_url": sanitize_url(record["source_url"]) if isinstance(record.get("source_url"), str) else None,
         "revision_selector": record["revision_selector"],
         "base_commit": record["base_commit"],
         "root_internal_path": record["root_internal_path"],

@@ -152,7 +152,7 @@ InstallReference 是 selected owner root 的一个 current runtime install recor
 | 字段 | 类型 | 含义 |
 |---|---|---|
 | `install_id` | opaque string | 当前 owner root 内精确 target；不是要求 human/agent 记忆的显示名称。 |
-| `source_url` | sanitized string | 不含 credential 的 source identity。 |
+| `source_url` | sanitized string | 去除 URL userinfo、query、fragment 与 SCP 用户名的 source identity；即使 runtime record 来自旧版本或外部写入，公开结果也必须在返回前脱敏。 |
 | `source_host` | string/null | 从 source identity 可公开得出的 host；local source 为 null。 |
 | `repository_path` | non-empty string | source repository 的可读路径线索，例如 `Viennan/wiki`；不是完整 URL 或 filesystem path。 |
 | `revision_selector` | RevisionSelector | 原 install selector provenance；不用于刷新 ref。 |

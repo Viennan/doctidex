@@ -47,7 +47,8 @@ Python 接受并产生 `schema_version: "1.0"`。`RootStorage` 在使用记录�
 
 | 文件或记录 | Python 物理表示 | 验证与转换边界 |
 |---|---|---|
-| `index.md` 与关联 doctidex annotation | YAML frontmatter 保留顶层 `type: index`、`doctidex` root/local configuration，以及链接需要时相邻的 `<!-- doctidex: {...} -->` comment。 | `protocol.document` 在应用负责声明时保留无关 frontmatter/comments/Markdown；annotation 仍与其链接关联。 |
+| root `index.md` 的受管命名空间入口 | `RootStorage.ensure_host_layout()` 在 `boundary-set` 与 `unsafe` 中加入 `.doctidex`，并加入带 `unsafe: true` 的 Markdown entry；host 就是 root 时也加入 `.gitignore` entry。 | 不递归列举 `/.doctidex` 内容；`test_validate_cli_and_nested_host_gitignore` 验证 materialize 后全根仍可通过 protocol validation。 |
+| 其它 `index.md` 内容与关联 doctidex annotation | YAML frontmatter 保留顶层 `type: index`、`doctidex` root/local configuration，以及链接需要时相邻、以 `doctidex:` 开始且可采用 flow 或 block YAML mapping 的 comment。 | `protocol.document` 在应用负责声明时保留无关 frontmatter/comments/Markdown；annotation 仍与其链接关联。 |
 | `manifest.json` 顶层 | 含有 `schema_version`、对象 `installs`、对象 `links` 的 JSON object。 | `read_manifest(required=...)` 拒绝非 `1.0`、无效记录或缺失的必需 manifest。 |
 | portable install | 以相同的 `install_id` 为键的 object；仅含直接记录。 | `install_path` 必须是正常 namespace path；selector/commit/value/source 字段写入前均会验证。 |
 | portable link | 以相同的规范化 `target_path` 为键的 object，可有 `frontmatter_ownership`。 | 被引用的直接 install、root-relative target、repository suffix、`safe_state`、负责的 `index.md` 均会验证；新 record 的 ownership 用于 unlink/rebind，旧 record 缺失时保守保留 index state。 |

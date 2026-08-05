@@ -19,6 +19,9 @@ from whero.doctidex.errors import DoctidexError
 from whero.doctidex.protocol.document import DoctidexDocument
 
 SCHEMA_VERSION = "1.0"
+_MANAGED_NAMESPACE = ".doctidex"
+_MANAGED_NAMESPACE_ENTRY = "[doctidex-git managed namespace](.doctidex)\n<!-- doctidex: {unsafe: true} -->"
+_GITIGNORE_ENTRY = "[Git ignore rules](.gitignore)"
 
 
 def cache_root() -> Path:
@@ -40,6 +43,16 @@ def source_id(canonical_source: str) -> str:
 
 def source_cache(canonical_source: str) -> Path:
     return cache_root() / "sources" / f"{source_id(canonical_source)}.git"
+
+
+def _append_index_entry(document: DoctidexDocument, entry: str) -> bool:
+    if entry in document.body:
+        return False
+    separator = document.newline if document.body else ""
+    if document.body and not document.body.endswith(("\n", "\r")):
+        separator += document.newline
+    document.body = f"{document.body}{separator}{entry}{document.newline}"
+    return True
 
 
 class RootStorage:
@@ -139,12 +152,9 @@ class RootStorage:
             if not isinstance(entries, list):
                 entries = CommentedSeq()
                 doctidex[key] = entries
-            if not any(isinstance(item, dict) and item.get("path") == ".doctidex/git/installs" for item in entries):
-                entries.append(CommentedMap({"path": ".doctidex/git/installs"}))
+            if not any(isinstance(item, dict) and item.get("path") == _MANAGED_NAMESPACE for item in entries):
+                entries.append(CommentedMap({"path": _MANAGED_NAMESPACE}))
                 frontmatter[report_key] = "add"
-        if "add" in frontmatter.values():
-            document.write()
-            changed.append(index_path)
 
         host_result = git(
             ["-C", str(self.root), "rev-parse", "--show-toplevel"],
@@ -176,6 +186,13 @@ class RootStorage:
             content = "\n".join([*existing, *missing]).strip("\n") + "\n"
             _atomic_text(gitignore, content)
             changed.append(gitignore)
+        index_changed = "add" in frontmatter.values()
+        index_changed = _append_index_entry(document, _MANAGED_NAMESPACE_ENTRY) or index_changed
+        if host == self.root:
+            index_changed = _append_index_entry(document, _GITIGNORE_ENTRY) or index_changed
+        if index_changed:
+            document.write()
+            changed.append(index_path)
         return changed, frontmatter
 
 

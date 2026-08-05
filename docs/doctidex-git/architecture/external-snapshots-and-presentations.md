@@ -29,8 +29,11 @@ intent 的 lookup，不授权以后刷新 branch/tag。dependency install 不在
 
 ## 2. 主机归属与受管命名空间
 
-owner root 下的 managed namespace 为 `/.doctidex/git/`。它不是 protocol configuration；它是产品工作
-现场，故其已经存在的文件必须可由本页解释。
+owner root 下的 managed namespace 位于 `/.doctidex/git/`。它不是 protocol configuration；它是产品工作
+现场，故其已经存在的文件必须可由本页解释。首次 materialize 该命名空间时，root `index.md` 必须把
+`/.doctidex` 同时声明为 `boundary-set` 与 `unsafe`，并以带 `unsafe: true` 的 root link 建立入口。这个范围
+覆盖所有受管状态的 protocol structure/link exception；manifest 仍是可 track 的 portable configuration，unsafe
+不表示忽略、信任或删除授权。
 
 | 位置 / host artifact | owner 与 trackability | variant 接手规则 |
 |---|---|---|

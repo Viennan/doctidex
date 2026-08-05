@@ -44,7 +44,8 @@ mutation mechanics，不进入 public result。Runtime/manifest/index 是分别 
 
 `list_installs` 不 materialize worksite，也不读取 manifest、payload、source cache 或 remote。它仅从 runtime 的
 `installs` 和 `links` 建立 `InstallReference`：SCP-like 或 URL source 公开其 host 与去除 `.git` 后的 repository
-path，local source 的 host 为 null。重复 `--role`、repository path、host、selector provenance 或 fixed commit 在
+path，local source 的 host 为 null。无论 runtime record 的来历，Python 在把 `source_url` 放入公开 list、link、
+link-parse 或 restore result 前都会去除 URL credential。重复 `--role`、repository path、host、selector provenance 或 fixed commit 在
 已记录事实上交集过滤；tag/branch 不会重新解析，commit 使用完整 object ID validation。结果按公开 schema 的 key
 排序，`presentation_paths` 从指向该 install ID 的 runtime link target 稳定得出。cursor state 是 runtime
 `schema_version`、installs 和 links 的 deterministic identity，因此任何相关 record 变化都会拒绝下一页，而不会将

@@ -1,6 +1,6 @@
 ---
 name: review-doctidex-repository
-description: Coordinate an evidence-based review of doctidex repository changes through independent protocol, agent-Skill, Requirement, Architecture, Impls, and engineering lenses. Use only when the user explicitly requests a review, audit, compliance check, or review-and-repair cycle; ordinary implementation or documentation work does not authorize this Skill.
+description: Coordinate an evidence-based review of doctidex repository changes through independent protocol, agent-Skill, Requirement, Architecture, Impls, Issue-association, and engineering lenses. Use only when the user explicitly requests a review, audit, compliance check, or review-and-repair cycle; ordinary implementation or documentation work does not authorize this Skill.
 ---
 
 # Review the doctidex Repository
@@ -31,6 +31,23 @@ commit and include later commits plus the worktree. Ask when more than one base 
 
 Read raw changed artifacts, nearby callers, tests, public surfaces, and required authorities before
 forming conclusions. Preserve unrelated dirty work.
+
+## Associate Existing Issues
+
+Before reporting findings, read `docs/issues/index.md` and every existing `confirmed` and `ignored`
+Issue it indexes. Compare each verified candidate against their stated root cause, affected scope,
+and evidence; a filename or broad topic alone is not a match.
+
+For a matching `confirmed` Issue, cite its stable ID with the verified finding and report the current
+problem only once. For a matching `ignored` Issue, suppress the candidate entirely, including from
+the finding count and residual-risk report, unless the user explicitly asks to include ignored
+Issues. A changed cause, materially broader impact, or different affected scope is a new candidate
+and must not be hidden merely because an Issue has a similar title.
+
+Review, validation, a verified finding, or review-and-repair authorization does not authorize
+creating, editing, or changing the status of an Issue document. Apply
+`$write-doctidex-issue-docs` only after the user explicitly authorizes the particular record or
+status change.
 
 ## Run Independent Lenses
 

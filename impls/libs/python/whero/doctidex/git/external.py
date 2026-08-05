@@ -28,6 +28,7 @@ from .source import (
     make_logically_read_only,
     remove_detached_worktree,
     resolve_source,
+    sanitize_url,
     source_relation,
     validate_revision_selector,
     verify_exact_commit,
@@ -474,7 +475,7 @@ class ExternalService:
             presentation_path=str(target),
             working_path=str(source_directory),
             repository_relative_path=repository_relative,
-            source_url=install["source_url"],
+            source_url=sanitize_url(install["source_url"]),
             source_relation=install["source_relation"],
             revision_selector=install["revision_selector"],
             default_branch=install.get("default_branch"),
@@ -654,7 +655,7 @@ class ExternalService:
             source_path=str(source_directory),
             working_path=str(source_directory),
             repository_relative_path=repository_relative,
-            source_url=install["source_url"],
+            source_url=sanitize_url(install["source_url"]),
             source_relation=install["source_relation"],
             revision_selector=install["revision_selector"],
             default_branch=install.get("default_branch"),
@@ -1312,7 +1313,7 @@ class ExternalService:
             dependency_of=_dependency_summary(install.get("parents", [])),
             dependency_parent_install_id=None,
             target_state=target_state,
-            source_url=install["source_url"],
+            source_url=sanitize_url(install["source_url"]),
             source_relation=install["source_relation"],
             revision_selector=install["revision_selector"],
             default_branch=install.get("default_branch"),
@@ -1383,7 +1384,7 @@ class ExternalService:
             dependency_of=_dependency_summary(match.get("parents", [])) if match else _dependency_summary([]),
             dependency_parent_install_id=parent_id,
             target_state=state,
-            source_url=source["source_url"],
+            source_url=sanitize_url(source["source_url"]),
             source_relation=source.get("source_relation", "unknown"),
             revision_selector=source["revision_selector"],
             default_branch=source.get("default_branch"),
@@ -1560,7 +1561,8 @@ def _external_list_argument_error(message: str, value: str) -> DoctidexError:
 
 
 def _install_reference(runtime: dict[str, Any], record: dict[str, Any]) -> dict[str, Any]:
-    source_host, repository_path = _source_reference(record["source_url"])
+    source_url = sanitize_url(record["source_url"])
+    source_host, repository_path = _source_reference(source_url)
     identifier = record["install_id"]
     presentations = sorted(
         target
@@ -1569,7 +1571,7 @@ def _install_reference(runtime: dict[str, Any], record: dict[str, Any]) -> dict[
     )
     return {
         "install_id": identifier,
-        "source_url": record["source_url"],
+        "source_url": source_url,
         "source_host": source_host,
         "repository_path": repository_path,
         "revision_selector": record["revision_selector"],
@@ -1581,12 +1583,12 @@ def _install_reference(runtime: dict[str, Any], record: dict[str, Any]) -> dict[
 
 
 def _source_reference(source_url: str) -> tuple[str | None, str]:
-    parsed = urlsplit(source_url)
-    if parsed.scheme:
-        return parsed.hostname.lower() if parsed.hostname else None, _repository_path(parsed.path)
     if _is_scp_like(source_url):
         prefix, path = source_url.split(":", 1)
         return prefix.rsplit("@", 1)[-1].lower(), _repository_path(path)
+    parsed = urlsplit(source_url)
+    if parsed.scheme:
+        return parsed.hostname.lower() if parsed.hostname else None, _repository_path(parsed.path)
     return None, _repository_path(source_url)
 
 
@@ -1599,7 +1601,7 @@ def _repository_path(value: str) -> str:
 
 def _is_scp_like(value: str) -> bool:
     colon = value.find(":")
-    return colon > 0 and "/" not in value[:colon] and "\\" not in value[:colon]
+    return colon > 0 and "://" not in value and "/" not in value[:colon] and "\\" not in value[:colon]
 
 
 def _matches_install_reference(
@@ -1703,7 +1705,7 @@ def _frontmatter_plan(document: DoctidexDocument) -> dict[str, str]:
     for field, key in (("boundary-set", "boundary_set"), ("unsafe", "unsafe")):
         entries = mapping.get(field, [])
         exists = isinstance(entries, list) and any(
-            isinstance(item, dict) and item.get("path") == ".doctidex/git/installs" for item in entries
+            isinstance(item, dict) and item.get("path") == ".doctidex" for item in entries
         )
         result[key] = "existing" if exists else "add"
     return result
@@ -2119,7 +2121,7 @@ def _restore_item_payload(record: dict[str, Any], state: str, findings: list[dic
     return {
         "install_id": record["install_id"],
         "install_path": record["install_path"],
-        "source_url": record["source_url"],
+        "source_url": sanitize_url(record["source_url"]),
         "revision_selector": record["revision_selector"],
         "default_branch": record.get("default_branch"),
         "resolved_commit": record["resolved_commit"],

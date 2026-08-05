@@ -136,8 +136,8 @@ def tree_observations(
 ) -> TreeObservations:
     """Interpret a full root without producing protocol findings.
 
-    Excluded roots and local-configuration scopes remain lexical entries but their contents are not
-    recursively enumerated.
+    Excluded roots, selected local-configuration scopes, and protocol unsafe scopes remain lexical
+    entries but their contents are not recursively enumerated.
     """
 
     engine = _Validator(
@@ -236,11 +236,13 @@ class _Validator:
         else:
             for scope in self.scope_paths:
                 self._scan_tree(scope)
-                current = scope
+                if self._is_excluded(scope):
+                    continue
+                current = scope.parent if scope.is_symlink() else scope
                 while True:
                     self.paths.add(current)
                     index = current / "index.md"
-                    if index.is_file():
+                    if index.is_file() and not self._is_excluded(index):
                         self._read_markdown(index, support=True)
                     if current == self.root:
                         break
@@ -250,7 +252,7 @@ class _Validator:
         self.paths.add(self.context.index.path)
 
     def _scan_tree(self, start: Path) -> None:
-        if self._is_excluded(start):
+        if start.is_symlink() or self._is_excluded(start):
             self.paths.add(start)
             return
         for directory, dirnames, filenames in os.walk(start, followlinks=False):
@@ -272,7 +274,7 @@ class _Validator:
             for name in sorted(filenames):
                 path = current / name
                 self.paths.add(path)
-                if path.suffix.lower() != ".md":
+                if self._is_excluded(path) or path.suffix.lower() != ".md":
                     continue
                 self._read_markdown(path)
 
@@ -282,6 +284,8 @@ class _Validator:
         if path in self.markdown:
             return
         self.paths.add(path)
+        if path.is_symlink():
+            return
         try:
             raw = path.read_text(encoding="utf-8")
             self.markdown[path] = raw
@@ -315,6 +319,7 @@ class _Validator:
                 if (
                     target is None
                     or not is_within(target, self.root)
+                    or self._is_excluded(target)
                     or target.suffix.lower() != ".md"
                     or not target.is_file()
                 ):
@@ -330,7 +335,10 @@ class _Validator:
         responsible = self._responsible_index(path)
         return bool(
             responsible
-            and any(_matches_entry(path, responsible, field) for field in self.excluded_configuration_fields)
+            and (
+                _matches_entry(path, responsible, "unsafe")
+                or any(_matches_entry(path, responsible, field) for field in self.excluded_configuration_fields)
+            )
         )
 
     def _observed_links_for(self, path: Path) -> tuple[ObservedMarkdownLink, ...]:
@@ -496,6 +504,8 @@ class _Validator:
 
     def _validate_atomic_and_logs(self) -> None:
         for path in sorted(self.paths):
+            if path.is_symlink():
+                continue
             responsible = self._responsible_index(path)
             if responsible is None:
                 continue
@@ -655,7 +665,7 @@ class _Validator:
     def _required_targets(self, directory: Path, info: IndexInfo) -> set[Path]:
         required: set[Path] = set()
         for path in self.paths:
-            if not is_within(path, directory) or path == info.document.path:
+            if not is_within(path, directory) or path in {directory, info.document.path}:
                 continue
             owner = self._responsible_index(path)
             if owner is None:
@@ -773,7 +783,7 @@ def _link_annotations(raw: str) -> dict[int, tuple[dict[str, Any] | None, str | 
                     raise ValueError
                 found.append(dict(value))
             except Exception:
-                results[order] = (None, "The doctidex link annotation must be a valid YAML flow mapping.")
+                results[order] = (None, "The doctidex link annotation must be a valid YAML mapping.")
                 break
         else:
             pass

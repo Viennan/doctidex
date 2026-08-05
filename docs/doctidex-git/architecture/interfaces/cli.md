@@ -168,9 +168,10 @@ doctidex-git external install --url URL [--root ROOT]
   分配稳定不透明 `install_id`，并由它确定 `/.doctidex` 下的稳定 `install_path`；调用方不
   提供 target。同 source 的不同 normalized selector 通常不共用路径；default provenance 的 key
   处理见对应 Impls。
-- apply 持久取得 fixed commit，维护内部受管命名空间的边界/unsafe 结构、精确宿主
-  `.gitignore` 规则和不被忽略的恢复清单，再发布逻辑只读 install。它不生成 prose 或
-  Markdown link，也不执行 Git stage/commit/`rm --cached`。
+- apply 持久取得 fixed commit，将 `/.doctidex` 维护为 root index 的 boundary/unsafe 入口，维护该入口的
+  `unsafe: true` Markdown link、精确宿主 `.gitignore` 规则和不被忽略的恢复清单，再发布逻辑只读 install。
+  当 `.gitignore` 位于 selected root 时，也维护其可达的 root link；除此以外不生成 prose 或 Markdown link，
+  也不执行 Git stage/commit/`rm --cached`。
 - result 分别报告 `.gitignore` 和恢复清单的 `absent|tracked|modified|untracked` 状态；
   `absent` 只用于 dry-run 中尚不存在的 planned path。
 - 安装载荷必须未被宿主 Git 追踪；恢复清单必须可追踪。宿主 repository 无法唯一确定、

@@ -8,9 +8,12 @@ design goals are interoperability, extensibility, and minimal format constraints
 ## Repository Layout
 
 - `spec/overview.md` contains the draft normative protocol; `spec/refs/` is background material.
-- `docs/` contains non-normative current design and project-wide Requirement history.
+- `docs/` contains non-normative current design, project-wide Requirement history, and
+  user-authorized Issue records.
 - `docs/requirements/` contains numbered Requirements. A user-selected large Requirement uses one
   numbered directory with an `overview.md` and independently statused children.
+- `docs/issues/` contains numbered Issue records collected from review or user reports; it is not a
+  substitute for Requirements, Architecture, or Impls authority.
 - `docs/<artifact>/architecture/` defines current cross-implementation design;
   `docs/<artifact>/impls/<variant>/` defines a condition-specific realization.
 - `docs/doctidex-git/` documents the Git plugin using that Architecture/Impls structure.
@@ -75,17 +78,20 @@ Each document type has one repository-local authoring authority:
 | Document | Current authority | Use when |
 |---|---|---|
 | Requirement | `.agents/skills/write-doctidex-requirement-docs/` | Recording intent, refining an active Requirement, handling user feedback, status, dependencies, approval, or implementation tracking. |
+| Issue | `.agents/skills/write-doctidex-issue-docs/` | Recording a user-authorized reported or reviewed problem, its evidence, disposition, and relationship to later review results. |
 | Architecture | `.agents/skills/write-doctidex-architecture-docs/` | Defining current language-neutral user surfaces, common capabilities, key models, worksite/handoff semantics, policies, workflows, and observable contracts. |
 | Impls | `.agents/skills/write-doctidex-impls-docs/` | Defining a language/runtime/platform realization, worksite construction and physical design, code ownership, evidence, coverage, and material limitations. |
 
 Use this order when work spans layers:
 
-1. If the user intends to create or record a Requirement, use the Requirement Skill immediately.
-2. If a requested artifact change belongs to a corresponding active Requirement, update that
+1. Create or revise an Issue only when the user has explicitly authorized the specific Issue record
+   or its target status; a review authorization never supplies that authorization.
+2. If the user intends to create or record a Requirement, use the Requirement Skill immediately.
+3. If a requested artifact change belongs to a corresponding active Requirement, update that
    Requirement before editing the artifact.
-3. Update Architecture before Impls when common design changes; update only Impls for a purely
+4. Update Architecture before Impls when common design changes; update only Impls for a purely
    variant-specific change.
-4. Align other authorized implementation, test, or public surfaces, validate, and return to the
+5. Align other authorized implementation, test, or public surfaces, validate, and return to the
    Requirement lifecycle.
 
 Do not create a Requirement merely to document already-current behavior when there is no recording

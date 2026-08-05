@@ -30,7 +30,8 @@ root、host repository、installed content、cache 和 diagnostic 中的配置�
 
 | 可出现对象 | 类别与发现位置 | 直接 authority | incoming variant 的最低责任 |
 |---|---|---|---|
-| `index.md` 与关联的 doctidex link annotation | doctidex configuration；root 或 responsible index。 | [树与验证](tree-and-validation.md#2-索引配置与根观察) | 解释 top-level `type`、`doctidex` options 与 `unsafe`/boundary annotation，并仅按 protocol 修改/保留。 |
+| root `index.md` 中 `/.doctidex` 的 boundary/unsafe entry 与关联 link annotation | doctidex-git materialize 的 doctidex configuration；selected root。 | [树与验证](tree-and-validation.md#2-索引配置与根观察) | 保持 `/.doctidex` 同时为 boundary/unsafe，且入口 link 声明 `unsafe: true`；该范围覆盖受管状态，但不改变 manifest 的可追踪性。 |
+| 其它 `index.md` 与关联的 doctidex link annotation | doctidex configuration；root 或 responsible index。 | [树与验证](tree-and-validation.md#2-索引配置与根观察) | 解释 top-level `type`、`doctidex` options 与 `unsafe`/boundary annotation，并仅按 protocol 修改/保留。 |
 | host `.gitignore` | host configuration；包含 owner root 的 Git repository。 | [外部快照](external-snapshots-and-presentations.md#2-主机归属与受管命名空间) | 保持 managed payload/runtime/worktree/lock 不被 track，同时不得隐藏 manifest 或 durable presentation。 |
 | `/.doctidex/git/manifest.json` | versioned portable configuration；owner root。 | [外部快照](external-snapshots-and-presentations.md#3-可移植恢复清单) | 读取每个 entry，按 exact snapshot restore/link；未知 version preserve/reject。 |
 | `/.doctidex/git/runtime.json` | host-local handoff configuration；owner root。 | [外部快照](external-snapshots-and-presentations.md#4-运行时安装与链接记录) 和 [工作树](worktrees-and-cache.md#2-运行时工作树记录) | 解释 install/link/worktree record；读取、转换或保留，不能静默猜测或丢弃。 |

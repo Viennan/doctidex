@@ -33,16 +33,18 @@ Architecture reader 在工作现场遇到 `index.md` 时必须理解的全部 do
 | `doctidex.boundary-set[].path` | root 内相对目录路径列表。 | 进入/离开该目录的 file-path link 是 cross-boundary；external link apply 可在 responsible index 维护对应 declaration。 |
 | `doctidex.atomic-indexing[].path` | root 内相对目录路径列表。 | 该目录作为整体可达，内部不递归索引；不能含 protocol `index.md`/`log.md`。 |
 | `doctidex.unsafe[].path` | root 内相对文件或目录路径列表。 | 声明 strict structure/link exception；safe link 进入它必须带 protocol annotation，且不表示信任/权限。 |
-| 与 Markdown file-path link 关联的 `<!-- doctidex: {...} -->` comment | 一个 link 最多一个 annotation；当前字段是 boolean `unsafe` 与可选的 `cross-boundary-point` path。 | `unsafe: true` 明确 safe 文档进入 unsafe path；跨 boundary 时 point 标识首次 boundary。它是 link 的 protocol metadata，不是独立 product configuration；修改 Markdown 时必须保持其与对应 link 的关联和语义。 |
+| 与 Markdown file-path link 关联、以 `doctidex:` 开始的 HTML comment | 一个 link 最多一个 annotation；其值是无重复键的 YAML mapping，可采用 flow 或 block 写法；当前字段是 boolean `unsafe` 与可选的 `cross-boundary-point` path。 | `unsafe: true` 明确 safe 文档进入 unsafe path；跨 boundary 时 point 标识首次 boundary。它是 link 的 protocol metadata，不是独立 product configuration；修改 Markdown 时必须保持其与对应 link 的关联和语义。 |
 
 每个 list entry 只以 `path` 表示目标，路径是相对 responsible index 的词法路径；unknown extension
 field、其它 top-level frontmatter、其它 HTML comment 与 Markdown content 都不替代上述语义。variant
 在修改一个 responsible index 前必须保留它们，保证每个 path 与 link 的 protocol meaning 不变。具体
 YAML round-trip 和 write algorithm 由 Impls 定义。
 
-受管 install/restore/worktree 可能创建或维护 root-internal `.doctidex/git/` 的必要 boundary/ignore
-关系；durable presentation link 可能维护 responsible index 的 `boundary-set`/`unsafe` entry。它们不能
-借此把 runtime、payload 或 Git state 变为 protocol requirement。
+受管 install/restore/worktree 在首次物化时必须把 `/.doctidex` 声明为 selected root 的
+`boundary-set` 与 `unsafe` 目录，并由 root `index.md` 提供带 `unsafe: true` 的入口 link。该声明覆盖
+其下的 manifest、runtime、payload、worktree 和临时状态；它不阻止 manifest 被 Git track，也不表示信任、
+权限或删除授权。durable presentation link 仍按自己的 responsible index 维护 `boundary-set`/`unsafe` entry。
+这些产品状态不能借此成为 protocol requirement。
 
 ## 3. 验证工作流
 
@@ -61,6 +63,19 @@ YAML round-trip 和 write algorithm 由 Impls 定义。
 或 candidate 不是等于 protocol failure；调用方读取 stable code、coverage、scope 和 action，而不是
 只看 exit code 或 message。具体 envelope 和 fields 见 [JSON schema](interfaces/cli-schema.md#2-common-envelope)
 及 [validate payload](interfaces/cli-schema.md#3-validate)。
+
+### 3.1 词法扫描边界
+
+验证器按 selected root 内的词法路径观察条目，不以符号链接、挂载或虚拟映射的物理目标重写该路径。`unsafe`
+目录或文件本身仍保留为可达性、声明有效性和 safe link 注释检查所需的入口；但验证器不得读取 unsafe
+文件内容，也不得递归枚举 unsafe 目录的子项。因此其内部的 frontmatter、`index.md`/`log.md` 连续性、Markdown
+link 和注释不会产生 protocol finding。这个边界不豁免 responsible index、`unsafe` 配置条目或进入该入口的
+safe link 所需的 protocol 要求。
+
+任何符号链接只作为根内词法入口观察：验证器记录该入口，并以其词法位置参与 path、可达性和局部配置判断，
+但不读取链接目标的 Markdown 内容，也不进入目标递归扫描。因此不会从链接目标发现下级 `index.md`、`log.md`
+或 Markdown link。这样既保持协议的词法根语义，也避免把根外内容或循环当作 selected root 的内容；需要检查的
+内容必须通过 selected root 内的非符号链接路径提供。
 
 ## 4. 与工作现场及跨变体的关系
 

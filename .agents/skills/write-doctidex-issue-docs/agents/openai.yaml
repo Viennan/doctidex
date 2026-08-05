@@ -1,0 +1,4 @@
+interface:
+  display_name: "Write doctidex Issue Docs"
+  short_description: "Record and maintain repository issues"
+  default_prompt: "Use $write-doctidex-issue-docs to create or update an authorized repository Issue record."

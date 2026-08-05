@@ -32,6 +32,12 @@ CLI 的 ROOT/PATH/cwd
 [external presentation](external-presentation-and-mapping.md)，其物理作用仅在
 [worksite inventory](../worksite-inventory-and-construction.md) 中统一清点。
 
+Python 扫描器保留 `unsafe` 文件或目录的词法入口，但不读取文件内容或递归其目录子树；因此只在入口、负责索引
+配置和 safe 文档进入该入口的 link 上形成协议判断。任何符号链接也只保留其词法入口，不读取或展开物理目标；
+其目标内的协议文件和 Markdown 内容不属于本次扫描。`_link_annotations` 对单个关联 comment 解析无重复键的 YAML
+mapping，不区分 flow 或 block 写法。该边界与两种 annotation 形式由
+[`test_protocol.py`](../../../../../impls/libs/python/tests/test_protocol.py) 覆盖。
+
 ## 证据与边界
 
 [`test_protocol.py`](../../../../../impls/libs/python/tests/test_protocol.py) 覆盖 root/configuration/link

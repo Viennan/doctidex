@@ -26,6 +26,10 @@ manifest 可以是空的 local pre-install state，而要求 recovery 的调用�
 identity/path/references。因此，所有会在 Python worksite 中 materialize 的 configuration fields 都列于
 [inventory](../worksite-inventory-and-construction.md#2-configuration-representations)。
 
+首次 materialize 受管状态时，`RootStorage.ensure_host_layout()` 在 root `index.md` 声明 `.doctidex` 为
+boundary/unsafe，并附加带 `unsafe: true` 的受管入口；selected root 同时是 host 时，它也附加 `.gitignore` 的
+可达入口。它保留现有 frontmatter、Markdown 和 `.gitignore` 规则，且不为 namespace 内部对象分别生成索引。
+
 当前实现的 publication 使用 same-directory temporary data、durable replacement 与 directory locks。这些原语支持
 Architecture 的 preserve/reobserve boundary，但不构成 multi-resource transaction。详细的 interruption/lock constraints
 见[publication/recovery](../publication-recovery-and-private-mechanics.md)。

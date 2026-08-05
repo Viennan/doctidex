@@ -334,6 +334,36 @@ def test_validate_cli_and_nested_host_gitignore(cli_env: dict[str, str], tmp_pat
     ignore = (host / ".gitignore").read_text(encoding="utf-8")
     assert "/docs/.doctidex/git/installs/" in ignore
     assert (root / ".doctidex" / "git" / "manifest.json").is_file()
+    index = (root / "index.md").read_text(encoding="utf-8")
+    assert "- path: .doctidex" in index
+    assert "[doctidex-git managed namespace](.doctidex)" in index
+    assert "[Git ignore rules](.gitignore)" not in index
+    assert run(["validate", str(root)], tmp_path, cli_env)["protocol_structure"] == "pass"
+
+
+def test_install_marks_root_managed_namespace_unsafe_and_reachable(
+    cli_env: dict[str, str], tmp_path: Path
+) -> None:
+    root = create_repository(tmp_path / "host")
+    source = create_repository(tmp_path / "source")
+    add_source_content(source)
+
+    run(
+        ["external", "install", "--url", str(source), "--root", str(root), "--apply"],
+        tmp_path,
+        cli_env,
+    )
+
+    index = (root / "index.md").read_text(encoding="utf-8")
+    context = root_at(root)
+    assert context is not None
+    for field in ("boundary-set", "unsafe"):
+        entries = context.index.doctidex[field]
+        assert any(item.get("path") == ".doctidex" for item in entries)
+    assert "[doctidex-git managed namespace](.doctidex)\n<!-- doctidex: {unsafe: true} -->" in index
+    assert "[Git ignore rules](.gitignore)" in index
+    assert "/.doctidex/git/installs/" in (root / ".gitignore").read_text(encoding="utf-8")
+    assert run(["validate", str(root)], tmp_path, cli_env)["protocol_structure"] == "pass"
 
 
 def test_default_revision_is_fixed_and_self_dependency_is_bounded(cli_env: dict[str, str], tmp_path: Path) -> None:
@@ -527,7 +557,7 @@ def test_external_list_discovers_managed_installs_and_rejects_stale_cursor(
     assert invalid["findings"][0]["code"] == "argument_invalid"
 
     def set_colliding_source_hosts(runtime: dict) -> None:
-        runtime["installs"][branch["install_id"]]["source_url"] = "git@github.com:Viennan/wiki.git"
+        runtime["installs"][branch["install_id"]]["source_url"] = "git@github.com:Viennan/wiki.git?token=secret"
         runtime["installs"][tagged["install_id"]]["source_url"] = "ssh://git@gitlab.com/Viennan/wiki.git"
 
     RootStorage(root).update_runtime(set_colliding_source_hosts)
@@ -551,6 +581,23 @@ def test_external_list_discovers_managed_installs_and_rejects_stale_cursor(
     )
     assert github["query"]["source_host"] == "github.com"
     assert [item["install_id"] for item in github["items"]] == [branch["install_id"]]
+    github_item = github["items"][0]
+    assert github_item["source_url"] == "github.com:Viennan/wiki.git"
+    assert "git@" not in github_item["source_url"]
+    assert "secret" not in github_item["source_url"]
+
+    def set_credential_bearing_source(runtime: dict) -> None:
+        runtime["installs"][branch["install_id"]]["source_url"] = (
+            "https://account:secret@example.invalid/Viennan/wiki.git?access_token=secret#credential"
+        )
+
+    RootStorage(root).update_runtime(set_credential_bearing_source)
+    sanitized = run(["external", "list", "--root", str(root)], tmp_path, cli_env)
+    sanitized_item = next(item for item in sanitized["items"] if item["install_id"] == branch["install_id"])
+    assert sanitized_item["source_url"] == "https://example.invalid/Viennan/wiki.git"
+    assert "account" not in sanitized_item["source_url"]
+    assert "secret" not in sanitized_item["source_url"]
+    assert "credential" not in sanitized_item["source_url"]
 
 
 def test_missing_revision_is_blocked_without_creating_root_state(cli_env: dict[str, str], tmp_path: Path) -> None:
@@ -783,8 +830,8 @@ def test_external_unlink_preserves_legacy_frontmatter_and_damaged_mapping(
     index = root / "index.md"
     content = index.read_text(encoding="utf-8")
     content = content.replace(
-        "  - path: .doctidex/git/installs\n  boundary-set:",
-        "  - path: .doctidex/git/installs\n  - path: external/owned\n  boundary-set:",
+        "  - path: .doctidex\n  boundary-set:",
+        "  - path: .doctidex\n  - path: external/owned\n  boundary-set:",
     )
     index.write_text(content, encoding="utf-8")
     run(

@@ -45,6 +45,25 @@ def test_valid_tree_and_scopes(tmp_path: Path) -> None:
     assert normalize_scopes(root, ["/", "/./"]) == ["/"]
 
 
+def test_empty_child_index_is_reachable_from_its_parent(tmp_path: Path) -> None:
+    root = tmp_path / "knowledge"
+    write_root(root, body="# Root\n\n[Empty](empty/index.md)\n")
+    empty = root / "empty"
+    empty.mkdir()
+    (empty / "index.md").write_text(
+        "---\n"
+        "type: index\n"
+        "doctidex:\n"
+        "  type: index\n"
+        "---\n"
+        "\n"
+        "# Empty\n",
+        encoding="utf-8",
+    )
+
+    assert validate(root)["protocol_structure"] == "pass"
+
+
 def test_boundary_unsafe_annotation_and_reachability(tmp_path: Path) -> None:
     root = tmp_path / "knowledge"
     write_root(
@@ -63,6 +82,30 @@ def test_boundary_unsafe_annotation_and_reachability(tmp_path: Path) -> None:
     assert result["protocol_structure"] == "pass"
     assert result["semantic_review"] == "required"
     assert {item["code"] for item in result["semantic_candidates"]} == {"unsafe_scope_review"}
+
+
+def test_unsafe_directory_keeps_its_entry_without_scanning_contents(tmp_path: Path) -> None:
+    root = tmp_path / "knowledge"
+    write_root(
+        root,
+        config="""  unsafe:
+    - path: collected
+""",
+        body="# Root\n\n[Collected](collected)\n<!-- doctidex: {unsafe: true} -->\n",
+    )
+    (root / "collected").mkdir()
+    (root / "collected" / "index.md").write_text("not a doctidex index\n", encoding="utf-8")
+    (root / "collected" / "unreachable.md").write_text("# Unreachable\n", encoding="utf-8")
+
+    context = root_at(root)
+    assert context is not None
+    observations = tree_observations(context)
+    result = validate(root)
+
+    assert root / "collected" in observations.paths
+    assert root / "collected" / "index.md" not in observations.paths
+    assert root / "collected" / "unreachable.md" not in observations.paths
+    assert result["protocol_structure"] == "pass"
 
 
 def test_invalid_annotation_and_unreachable_path_are_separate_findings(tmp_path: Path) -> None:
@@ -180,6 +223,30 @@ def test_reference_link_annotation_is_associated_with_the_link(tmp_path: Path) -
     assert "link_annotation_invalid" not in {item["code"] for item in result["findings"]}
 
 
+def test_block_mapping_link_annotation_is_valid(tmp_path: Path) -> None:
+    root = tmp_path / "knowledge"
+    write_root(
+        root,
+        config="""  boundary-set:
+    - path: external
+""",
+        body="# Root\n\n[Guide](guide.md)\n[External](external)\n",
+    )
+    (root / "external").mkdir()
+    (root / "external" / "readme.md").write_text("# External\n", encoding="utf-8")
+    (root / "guide.md").write_text(
+        "[External guide](external/readme.md)\n"
+        "<!-- doctidex:\n"
+        "  cross-boundary-point: /external\n"
+        "-->\n",
+        encoding="utf-8",
+    )
+
+    result = validate(root)
+
+    assert result["protocol_structure"] == "pass"
+
+
 def test_scoped_validation_does_not_read_unrelated_subtree(tmp_path: Path) -> None:
     root = tmp_path / "knowledge"
     write_root(root, body="# Root\n\n[A](a)\n[B](b)\n")
@@ -254,3 +321,31 @@ def test_tree_observations_preserve_boundary_unsafe_and_symlink_scan(tmp_path: P
     assert root / "unsafe" in safe_observations.paths
     assert root / "boundary" / "guide.md" not in safe_observations.paths
     assert root / "unsafe" / "guide.md" not in safe_observations.paths
+
+
+def test_validator_keeps_symlink_entries_without_scanning_their_targets(tmp_path: Path) -> None:
+    root = tmp_path / "knowledge"
+    write_root(root, body="# Root\n\n[Linked](linked)\n[Linked document](linked-document.md)\n")
+    external = tmp_path / "external"
+    external.mkdir()
+    (external / "index.md").write_text("not a doctidex index\n", encoding="utf-8")
+    (external / "unreachable.md").write_text("# Unreachable\n", encoding="utf-8")
+    (external / "linked-document.md").write_text("[Outside](../../outside.md)\n", encoding="utf-8")
+    linked = root / "linked"
+    linked_document = root / "linked-document.md"
+    try:
+        linked.symlink_to(external, target_is_directory=True)
+        linked_document.symlink_to(external / "linked-document.md")
+    except OSError:
+        pytest.skip("This environment cannot create directory symlinks")
+
+    observations = tree_observations(root_at(root))
+    scoped = validate(root, scopes=["/linked"])
+
+    assert linked in observations.paths
+    assert linked / "index.md" not in observations.paths
+    assert linked / "unreachable.md" not in observations.paths
+    assert linked_document in observations.paths
+    assert linked_document not in observations.markdown
+    assert scoped["protocol_structure"] == "pass"
+    assert scoped["scan_complete"] is True
