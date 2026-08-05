@@ -161,3 +161,10 @@ validation failure unless it is an exact identifier, command, path, schema, code
 technical term, or quotation. Record completed validation and any out-of-scope gap without silently
 expanding the Requirement. Mark `implemented` only when all authorized work is complete and no live
 comment or blocking decision remains.
+
+For a Requirement that changes version metadata, do not specify, execute, await, or use as a lifecycle
+gate a remote release-specific VCS package installation forward test such as `git+URL@vX.Y.Z`. The
+release tag necessarily follows the commit being validated, so this test cannot converge within that
+commit. Validate the locally available version relationships, package metadata, documentation, and
+affected tests instead. Treat any later release verification as a separately authorized operational
+activity, not as Requirement work or evidence that changes its status.

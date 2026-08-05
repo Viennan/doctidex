@@ -3,7 +3,7 @@
 | 属性 | 值 |
 |---|---|
 | ID | `DX-REQ-0022` |
-| 状态 | `draft` |
+| 状态 | `approved` |
 | 日期 | 2026-08-05 |
 | 来源 | 用户要求优化 doctidex 安装指引，随后明确版本治理、GitHub tag、Published Skills、双语 README、`DOCTIDEX_GIT_CACHE` 的 user surface、项目最初的跨仓库知识互联愿景，以及 agent 可同时获得代码与跨平台 Published Skill bundle 的安装入口；当前指定 Python 代码版本与 `doctidex-git` 版本均为 `1.0.0`。 |
 | 实施授权 | 用户于 2026-08-05 明确授权按本记录实现 README、根导航、Architecture、Python Impls、Published Skills、版本一致性验证和 cache 配置说明；GitHub tag 的创建与发布仍由用户完成。 |
@@ -104,8 +104,8 @@ authoring workflow 更新 Python package/platform evidence、metadata 对应关�
 
 实现层需要创建双语根 README 并更新根导航；使 plugin metadata、Python package metadata 与 README 的 release facts
 可被一致维护，并通过后置校验检查 Published Skills 的非开发边界。cache 行为已存在，但仍需通过 user-surface 测试或
-验证证明 override、默认 fallback、CLI/automation inheritance 和文档描述一致。README 保持版本参数化；只有用户创建
-并确认 target GitHub tag 后，才可运行 release-specific package 安装验证。
+验证证明 override、默认 fallback、CLI/automation inheritance 和文档描述一致。README 保持版本参数化；不将依赖同一
+commit 之后 GitHub tag 的 release-specific package 安装验证纳入本 Requirement 的执行或状态门槛。
 
 本需求不要求发布 PyPI distribution、修改 doctidex protocol 或将当前 package、plugin、protocol 的 minor/patch
 版本绑定为相同值。除 cache public contract 的必要实现/测试对齐外，不预设修改 CLI command 或现有
@@ -130,9 +130,9 @@ external/worktree lifecycle。
 6. `DOCTIDEX_GIT_CACHE` 作为可选 user configuration 被 Architecture、Python Impls、README 和适用 Skill 一致说明：
    用户手动设置，未设置时使用平台默认值，进程继承决定其生效范围，agent 不持久化该设置；不公开内部 cache layout，
    也不改变 `cache clean` 的 Skill 路由边界。
-7. 相关 Architecture、Impls、README、plugin/Skill metadata、Python tests 与版本校验完成后，执行适用的 package
-   installation forward test、Published Skill/containing plugin validation、文档可达性检查、Python lint/tests 和
-   `git diff --check`；全部授权工作完成前，本记录保持 `draft`。
+7. 相关 Architecture、Impls、README、plugin/Skill metadata、Python tests 与版本校验完成后，执行适用的 Published
+   Skill/containing plugin validation、文档可达性检查、Python lint/tests 和 `git diff --check`。不执行、不等待也不以
+   GitHub tag 为前提的 release-specific package installation forward test 作为版本变更 Requirement 的验收条件。
 
 ## 7. 进展与边界
 
@@ -177,6 +177,7 @@ plugin metadata JSON 解析和 `git diff --check` 也通过。更新后的 relea
 `.venv/bin/python -m pytest impls/libs/python/tests -q` 通过（67 passed），`.venv/bin/python -m ruff check
 impls/libs/python` 通过。
 
-2026-08-05 只读核验 GitHub `refs/tags/v1.0.0` 返回不存在，因此无法运行真实 GitHub package installation forward
-test，也不能将 `v1.0.0` 表述为已发布 release。用户仍需创建并确认该 tag；agent 不创建或推送 tag。在该外部发布前置
-条件满足并完成网络安装验证前，本 Requirement 保持 `draft`。
+2026-08-05 只读核验 GitHub `refs/tags/v1.0.0` 返回不存在，因此未将 `v1.0.0` 表述为已发布 release。用户明确决定：
+后续涉及版本变更的 Requirement 不执行、不等待也不以此类远程 release-specific package installation forward test
+作为状态门槛，因为它无法在同一 commit 中收敛；该规则已写入 Requirement maintenance Skill。用户同时明确认可本记录
+的当前实现，本 Requirement 现为 `approved`。GitHub tag 的创建、发布及其后独立运行的验证仍由用户另行授权。
