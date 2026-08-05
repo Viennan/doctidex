@@ -23,7 +23,7 @@
 `-- diagnostics/<diagnostic-id>.log
 ```
 
-`RootStorage` 负责 owner-root 路径和 [`git/storage.py`](../../../../impls/libs/python/whero/doctidex/git/storage.py)中的 JSON 验证。`cache_root()` 负责平台 cache 的选择；source ID/hash、lock directory 名称、JSON key 顺序和 atomic-write 实现属于私有机制。下表是完整的用户界面工作现场清单：
+`RootStorage` 负责 owner-root 路径和 [`git/storage.py`](../../../../impls/libs/python/whero/doctidex/git/storage.py)中的 JSON 验证。`cache_root()` 负责 `DOCTIDEX_GIT_CACHE` override 与平台 fallback；source ID/hash、lock directory 名称、JSON key 顺序和 atomic-write 实现属于私有机制。下表是完整的用户界面工作现场清单：
 
 | 对象与物理形式 | Python 生产者与责任方 | Architecture 语义 | Python 构造与证据 |
 |---|---|---|---|
@@ -36,6 +36,7 @@
 | 持久的相对 symlink | `ExternalService.link` 创建；`rebind` 以 sibling replace 切换；`unlink` 在 reference-free 时移除。source 是完整的直接 payload suffix。 | [持久呈现](../../architecture/external-snapshots-and-presentations.md#5-安装载荷隐藏状态与持久呈现) | [`external.py`](../../../../impls/libs/python/whero/doctidex/git/external.py)；link/rebind/unlink/safe-state 测试。 |
 | host `post-checkout` executable | `HookService.install`；路径由 host Git 解析，launcher 使用安装时 Python runtime 的 exact console executable。 | [受管 hook](../../architecture/external-snapshots-and-presentations.md#6-受管-checkout-hook) | [`hooks.py`](../../../../impls/libs/python/whero/doctidex/git/hooks.py)；install/foreign-hook/PATH-independent checkout 测试。 |
 | `worktrees/<id>` 与 runtime record | `WorktreeService.open/list/close`。 | [worktree 记录/生命周期](../../architecture/worktrees-and-cache.md#2-运行时工作树记录) | [`worktrees.py`](../../../../impls/libs/python/whero/doctidex/git/worktrees.py)；clean/changed/unavailable/orphan 测试。 |
+| `DOCTIDEX_GIT_CACHE` process environment | 用户在启动 CLI、automation 或 host Git process 前选定；`cache_root()` 在每个进程读取非空 override，未设置时使用平台 fallback。 | [发布、安装与用户 cache 配置](../../architecture/product-and-user-surfaces.md#6-release-and-cache-configuration) | [`storage.py`](../../../../impls/libs/python/whero/doctidex/git/storage.py)、release-surface 测试；agent 不持久化该值，hook 由用户确保继承。 |
 | `sources/<id>.git` bare cache | source resolver 与 `CacheService`。 | [共享 cache](../../architecture/worktrees-and-cache.md#4-共享来源缓存与清理) | [`source.py`](../../../../impls/libs/python/whero/doctidex/git/source.py)、[`worktrees.py`](../../../../impls/libs/python/whero/doctidex/git/worktrees.py)；cleanup 测试。 |
 | opaque diagnostic log | 意外失败时由 `git.diagnostics` 产生。 | [diagnostic artifact](../../architecture/operation-safety-and-recovery.md#4-诊断锁与临时产物) | [`diagnostics.py`](../../../../impls/libs/python/whero/doctidex/git/diagnostics.py)。 |
 | root/source/hook locks、cache-private lock container、temp files 与原生 Git metadata | `storage`/source/hook 服务和 Git。 | [瞬态证据](../../architecture/operation-safety-and-recovery.md#4-诊断锁与临时产物) | [`storage.py`](../../../../impls/libs/python/whero/doctidex/git/storage.py)、component recovery 页面。 |

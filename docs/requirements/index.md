@@ -52,6 +52,7 @@ overview 才可成为 `approved`。详见 [DX-REQ-0006](0006-large-requirement-d
 | 0019 | [就近 external link 映射与受管重绑定](0019-nearby-external-link-rebinding.md) | 以就近、按需的 external presentation 组织文档内容，并定义安全重绑定同名 link 至新 fixed install 的工作流。 | `approved` |
 | 0020 | [installed repository 的可读提及与消歧](0020-installed-repository-mentions.md) | 定义用户与 agent 以可读 repository reference 发现、消歧并选择 owner-root-scoped installed repository 的工作流，避免要求记忆 opaque `install_id`。 | `approved` |
 | 0021 | [解决 2026-08-05 全仓 review 的已确认问题](0021-resolve-confirmed-review-issues/overview.md) | 以七个独立子需求解决六项 confirmed Issue，并补齐 hook 缺失 exact object 时的 agent-facing restore 路径。 | `implemented` |
+| 0022 | [优化 doctidex 安装、版本与缓存指引](0022-optimize-doctidex-installation-guidance.md) | 定义同 tag 的 Python package 安装与跨 host Published Skill bundle 获取、版本关系、双语 README 与 cache 环境变量配置。 | `draft` |
 
 新记录按全项目连续编号。`draft` 中可使用 `<question>` 与紧邻的 `<answer>` 块协作；
 用户也可以用 `<comment>...</comment>` 在相关位置留下评论。agent 不得代用户创建评论，

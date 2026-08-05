@@ -31,7 +31,7 @@ realization 仍属于 Impls。
 | owner root | 一个 selected doctidex root | 受管 external install、manifest/runtime、worktree 的产品 ownership。 |
 | content root | install 或 presentation 内被读取的 doctidex root | portable mapping、link-parse 与 dependency relation。 |
 | host Git repository | 包含或关联 owner root 的 Git working tree | `.gitignore`、trackability、host hook 与 Git delivery。 |
-| user cache | 不属于任一 owner root 的本机 namespace | shared source objects、diagnostic 与可选 cleanup。 |
+| user cache | 不属于任一 owner root、可由用户为进程选定的本机 namespace | shared source objects、diagnostic 与可选 cleanup。 |
 
 owner root 只在调用 external/worktree/hook surface 后存在相应受管状态。普通 doctidex 阅读、
 native Git、手工 worktree、submodule 或第三方 symlink 不因其存在而成为 doctidex-git state。
@@ -106,3 +106,29 @@ doctidex-git 不：
 - 用 checkout hook 重建缺失 direct payload、覆盖 foreign hook 或为 metadata 对齐改写 manifest fixed commit；
 - 由 install/restore/close/普通读取隐式回收 source cache；
 - 强制 agent 使用受管 external/worktree 而排除 native 或第三方工作流。
+
+<a id="6-release-and-cache-configuration"></a>
+## 6. 发布身份、安装与用户 cache 配置
+
+doctidex 协议、`doctidex-git` 产品和其 distribution 各自拥有完整的语义版本。它们的 major 必须一致；minor
+与 patch 独立演进，不能因三者当前恰好相同而建立完整版本绑定。协议版本由 `spec/overview.md` 的 `vX.Y.Z`
+标识，产品版本由已安装 plugin metadata 标识，distribution 版本由其 variant package metadata 标识。
+
+每个产品 release 以用户创建和确认的 Git tag `v<doctidex-git-version>` 固定 source revision；agent 可以建议
+版本，但不能自行创建 tag 或发布。README 是参数化安装入口：用户提供 target `doctidex-git` version 后，调用方以
+该值选择 `vX.Y.Z` tag，不能改用默认 branch、猜测 tag 或从 distribution version 推导 target。该 tag 同时定位 Python
+distribution 和 Published agent bundle；具体 Git URL、package identity、subdirectory、checkout 路径与安装命令由相应
+Impls 负责。
+
+Published agent bundle 是已安装产品的离线工作流入口。四个 `skills/*/SKILL.md` 是其可移植核心：host 可以使用自己的
+plugin/skill 注册机制导入整个 `skills/` 目录，或在没有该机制时直接读取与任务相关的 Skill。`.codex-plugin` 和
+`agents/openai.yaml` 是 Codex 的可选包装 metadata，不能成为其他 agent 使用 bundle 的前提，也不定义通用 host command
+或安装位置。Skill 正文只说明产品使用场景和相应操作，不包含协议/产品版本、Git tag、package 或运行时安装/重装、开发、
+发布、tag 确认、测试或维护验证描述。README 提供同一 tag 的 Python package 与 bundle 获取入口；Architecture、Impls、
+Requirement 和后置验证负责版本关系、release identity 与安装可用性。
+
+`DOCTIDEX_GIT_CACHE` 是可选的 user configuration。非空值选择当前进程的 shared user-cache root；未设置时
+variant 使用其平台默认值。一个需共享 cache 的 CLI、automation 或 host hook 进程必须继承同一用户设置，产品不保存、
+同步或猜测该值。用户决定是否配置及其可写路径；agent 可以解释这项配置，却不得写 shell profile、project
+configuration 或其他持久环境设置。该配置不公开 cache 内部 layout，也不改变 `cache clean` 仅由 human/program
+operator 显式调用的边界。

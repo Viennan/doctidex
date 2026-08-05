@@ -9,6 +9,7 @@ doctidex:
     - path: .github
     - path: spec
   unsafe:
+    - path: .doctidex
     - path: .git
     - path: .asserts
     - path: .tmp
@@ -25,6 +26,8 @@ agent surfaces when building or maintaining a concrete variant.
 
 ## Primary Entrypoints
 
+- [English README](README.md): a concise product overview and parameterized GitHub-tag installation guide.
+- [中文 README](README.zh-CN.md)：产品能力与按用户指定版本安装的中文引导。
 - [Protocol specification](spec/overview.md): the normative Draft v1.1.0 and
   the authority for current doctidex conformance. The `spec/` directory uses
   atomic indexing; this document is its primary entrypoint.
@@ -50,6 +53,7 @@ without expanding the doctidex index hierarchy.
 
 ## Declared Unsafe Material
 
+- `/.doctidex/` is reserved for doctidex-git runtime state when present.
 - [`.asserts/`](.asserts/) <!-- doctidex: {unsafe: true} --> contains read-only collected sources used
   to construct tests.
 - [`.tmp/`](.tmp/) <!-- doctidex: {unsafe: true} --> contains disposable test workspaces.

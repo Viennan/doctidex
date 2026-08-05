@@ -19,6 +19,15 @@ Do not rely on global `PATH`, shell activation, or another Python environment. I
 environment has the executable, stop and report the runtime prerequisite. This product does not
 specify how to choose, create, or install a `.venv`.
 
+## Choose the User Cache Location
+
+The user may set the optional `DOCTIDEX_GIT_CACHE` environment variable to an absolute, writable
+shared cache path before starting CLI, automation, or host Git processes. Recommend that the user
+configure it and ensure every process that must share the cache inherits it. Do not write shell
+profiles, project settings, or other persistent environment configuration for the user. If it is
+unset, the current variant chooses its platform default. This setting does not route `cache clean`;
+that command remains a human/program operator surface.
+
 ## Choose a Workflow
 
 - Load `$doctidex-git-read` to navigate indexes and links, search content with native tools, diagnose

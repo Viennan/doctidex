@@ -21,6 +21,10 @@
 cache clean 面向 human/program operator，不由当前 Published Skills 路由。close、restore、install、
 普通读取和 hook 都不会隐式 clean cache。
 
+user-cache root 的选择由[产品与 user surface](product-and-user-surfaces.md#6-release-and-cache-configuration)中的
+`DOCTIDEX_GIT_CACHE` contract 负责。每个 source cache、diagnostic、lock 和 cleanup 只使用其所属进程继承的
+同一配置；本页不重新定义环境变量、平台 fallback 或持久化方式。
+
 ## 2. 运行时工作树记录
 
 `runtime.json.worktrees` 是 owner-local configuration；每个 object key 和 `worktree_id` 都是相同

@@ -17,7 +17,7 @@
 | 可写 worktree | `worktree open/list/close`；`WorktreeService`。 | [worktree component](components/worktrees-and-cache-cleanup.md)、插件 clean/changed/unavailable/orphan 测试。 |
 | 共享 cache 清理 | `cache clean`；`CacheService`。 | worktree component、插件 active/prunable/auto/recheck 测试。 |
 | 并发、恢复与 diagnostic | 所有写服务、`RootStorage`、source/hook mutation 辅助逻辑。 | [发布/恢复](publication-recovery-and-private-mechanics.md)、lock/interruption/recovery 测试。 |
-| 已安装的 agent 用户界面 | 插件 manifest 加 Overview/Read/Maintenance Skills。 | [变体交付](variant-delivery-and-surface.md)、[Skill system](../../architecture/skill-system.md)；产品验证不在 Python unit suite 范围内。 |
+| 已安装的 agent 用户界面 | 插件 manifest 加 Overview/Mentions/Read/Maintenance Skills，以及 Overview 的 user-cache configuration。 | [变体交付](variant-delivery-and-surface.md)、[Skill system](../../architecture/skill-system.md)；release-surface 测试验证 README/metadata 安装信息及 Skill 的非开发边界。 |
 
 <a id="2-worksite-evidence-matrix"></a>
 ## 2. 工作现场证据矩阵

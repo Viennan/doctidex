@@ -41,9 +41,12 @@ cleanup。
 每个 Skill 的 frontmatter 只含 `name` 和完整的 `description`。description 必须说明触发场景和
 不会触发的相邻场景；目录名、frontmatter name、`agents/openai.yaml` 的显示 metadata 及
 `$skill-name` prompt 必须一致。metadata 保持 quoted strings，`short_description` 为 25--64 个
-字符。name 使用不超过 64 个字符的 lowercase hyphenated identifier，优先动词开头。新建 Skill
-在获创建授权后使用 active Skill catalog 提供的初始化工作流；不要新增 README、changelog、安装教程
-或没有明确读取条件的 reference 目录。
+字符。name 使用不超过 64 个字符的 lowercase hyphenated identifier，优先动词开头。`SKILL.md` 与其直接
+reference 构成跨 host 的可移植 bundle；Codex 可读取 `.codex-plugin` 和 `agents/openai.yaml`，其他 host 可以忽略
+这些 metadata 并使用自身的注册机制或直接读取 Skill。新建 Skill 在获创建授权后使用 active Skill catalog 提供的
+初始化工作流；不要新增 README、changelog、安装教程或没有明确读取条件的 reference 目录。Published Skill 不得
+包含 package/运行时安装或重装、开发、发布、tag 确认、测试或维护验证的描述；这些事实和流程由 README、Architecture、
+Impls、Requirement 与后置验证负责。
 
 Skill 先定义工作流所用术语、调用方输入、默认 context、可观察结果和下一决策，再说明步骤。产品
 概念足以让 agent 完成任务，但不公开 cache、key、lock、worktree 管理、内部 schema、repository
@@ -60,7 +63,18 @@ Overview 是共同心智模型、术语、共享 CLI grammar、结果与安全�
 可置于紧邻的 reference，但每个 reference 必须由主 Skill 直接链接并声明读取条件。Overview 加
 Mentions 必须足以完成一个只读提及解析场景；无需解析提及的读取或维护场景则由 Overview 加相应专项完成。
 
-### 2.3 工作流、命令与决定边界
+### 2.3 用户 cache 配置与非开发边界
+
+README 负责面向安装者的同 tag Git package 安装与 Published agent bundle 获取入口；Architecture、Impls、Requirement
+与后置验证负责 release identity、metadata 关系和安装可用性的说明与核对。README 给出 bundle checkout 与其中
+`skills/` 路径，但不假定所有 host 都使用 Codex 或存在统一 plugin command。Published Skill 只描述已安装产品的用户
+工作流，不重复协议/产品版本、Git tag 或 package 安装命令，也不以这些事实要求 agent 执行开发、发布或验证动作。
+
+只有 Overview 说明可选 `DOCTIDEX_GIT_CACHE` 的用户配置：用户在启动 CLI、automation 或会触发 hook 的 Git
+进程前自行选择可写路径，agent 不持久化该选择。专项 Skill 继承这项前提而不重复环境设置步骤，仍不得路由、
+推荐或调用 `cache clean`，也不得披露 cache 内部 layout。
+
+### 2.4 工作流、命令与决定边界
 
 每个 Skill 以用户场景说明 prerequisite、输入、默认值、所选 context、可观察结果、保留状态、
 failure 和非责任。保留原生 file、search、shell、edit 和 Git 工具；CLI 只提供普通工具不能可靠
@@ -93,11 +107,16 @@ manifest/Git tracking、dirty worktree 或 delivery 不能以无限重试代替�
 不要把 stack trace 或内部 storage 当作正常决策界面；无法恢复时向用户报告 operation、affected
 object、已保留结果和可用的 diagnostic fact。
 
-### 2.4 发布前验证
+### 2.5 维护侧验证
 
 每次变更都检查 trigger、frontmatter、metadata、直接 links、无环阅读链、命令契约、用户/内部信息
 边界、bounded output 和 failure guidance。验证变更的 Skill 及其 containing plugin；从 active Skill
 catalog 取得当前 validator 路径，不把这些仓库维护命令复制进 Published Skill。
+
+涉及 release identity 或 cache 配置时，额外在 README、metadata、Architecture、Impls 与相应测试中验证协议、plugin
+与 distribution 的 major 版本关系、同一 Git tag 的 package 安装和 bundle checkout、可移植 `skills/` 路径，以及
+Overview 对手动配置、process inheritance、无持久化和 `cache clean` 边界的说明；同时检查四个 Published Skills 未引入
+package/运行时安装、开发、发布、tag 确认、测试或维护验证描述。
 
 复杂 workflow 的变更还需用 fresh independent agent 进行 forward test。测试只提供公开 artifacts，
 不泄漏预期 finding 或修复，并覆盖正常、clean/no-op、歧义、failure 和授权边界。
