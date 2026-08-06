@@ -1,0 +1,4 @@
+interface:
+  display_name: "User Docs"
+  short_description: "Write user-centered repository documentation"
+  default_prompt: "Use $user-docs to write or revise a user-facing repository document."
