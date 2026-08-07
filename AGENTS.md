@@ -24,5 +24,5 @@ Apply those rules only during artifact development and validation.
 Prefer simple, direct solutions; introduce additional abstractions only as complexity grows and they
 provide clear value.
 
-Use diagrams, tables, and other Markdown-renderable structures proactively to simplify prose and
-improve comprehension.
+Use diagrams, tables, code blocks, and other Markdown-renderable structures proactively to simplify
+prose and improve comprehension.

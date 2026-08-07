@@ -21,12 +21,15 @@ Architecture is the product's complete design authority. It must define:
 Use DDD patterns as a source of core principles for organizing internal architecture, not as a
 formal structure to apply mechanically.
 
-## Model and Field Completeness
+## Model and Abstraction Completeness
 
-Document every domain and public data model. For every field, explain its meaning, role and
-responsibility in related workflows, model position, lifecycle or presence, and applicable design
-constraints. Do not describe only request and response fields or rely on names and schemas without
-explanation.
+Document every domain model and every key data model or abstraction needed to understand the
+implementation, including public and user-visible models. Cover the critical conceptual structure
+of the implementation, not only its input and output surfaces.
+
+For every field of a documented data model and every key abstraction, explain its meaning, role and
+responsibility in related workflows, position in the design, lifecycle or presence, and applicable
+design constraints. Do not rely on names, schemas, or class boundaries without explanation.
 
 ## Workflow Completeness
 

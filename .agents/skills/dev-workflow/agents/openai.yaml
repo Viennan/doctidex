@@ -1,0 +1,4 @@
+interface:
+  display_name: "Dev Workflow"
+  short_description: "Coordinate repository development and maintenance"
+  default_prompt: "Use $dev-workflow to plan and execute this repository change."
