@@ -21,8 +21,8 @@ reference its authoritative location and direct the Skill to read it instead.
 Do not declare, emphasize, or encode artifact-maintenance rules in an artifact's functional content.
 Apply those rules only during artifact development and validation.
 
-Prefer simple, direct solutions; introduce additional abstractions only as complexity grows and they
-provide clear value.
+Prefer thoughtful, elegant, lean, straightforward solutions; introduce additional abstractions only as complexity
+grows and they provide clear value.
 
 Use diagrams, tables, code blocks, and other Markdown-renderable structures proactively to simplify
 prose and improve comprehension.
