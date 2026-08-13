@@ -7,9 +7,28 @@ import json
 import re
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import NoReturn
 
-from .results import argument_error, error
+from whero.doctidex import boundary as boundary_workflow
+from whero.doctidex import imports as import_workflow
+from whero.doctidex import worktree as worktree_workflow
+from whero.doctidex.errors import CommandFailure
+from whero.doctidex.git_cache import GitCache
+from whero.doctidex.initialization import (
+    WORKSPACE_ARTIFACTS,
+    GitRootUnresolved,
+    WorkspaceInitializeFailed,
+    initialize,
+)
+from whero.doctidex.model import ModelFormatError
+from whero.doctidex.model_view import RuntimeModelView
+from whero.doctidex.paths import normalize_repo_path
+from whero.doctidex.repository import resolve_git_root
+from whero.doctidex.store.files import StoreFailure
+from whero.doctidex.store.runtime import RuntimeStore
+
+from .results import argument_error, error, success
 
 COMMANDS = ("init", "boundary-set", "import", "worktree", "validate", "repair")
 SUBCOMMANDS = {
@@ -49,7 +68,7 @@ class CliArgumentParser(argparse.ArgumentParser):
 
 @dataclass(frozen=True, slots=True)
 class ParsedInvocation:
-    """The small dispatch contract shared by all phase-one command registrations."""
+    """The common command and Git-root selection contract used by dispatch."""
 
     command: str
     repos_path: str | None
@@ -87,11 +106,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def dispatch(args: argparse.Namespace) -> ParsedInvocation:
-    """Dispatch a parsed command to its phase-one registration.
-
-    Later implementation phases replace this registration with command workflows. Keeping the
-    dispatch contract explicit now ensures every command shares root selection and result handling.
-    """
+    """Return the common invocation information used by command workflows."""
 
     return ParsedInvocation(command=_command_path(args), repos_path=args.repos_path)
 
@@ -118,13 +133,270 @@ def main(argv: list[str] | None = None) -> int:
         print(_json(payload))
         return 2
 
+    if args.command == "init":
+        return _run_init(invocation)
+    if args.command == "boundary-set":
+        return _run_boundary(invocation, args)
+    if args.command == "import":
+        return _run_import(invocation, args)
+    if args.command == "worktree":
+        return _run_worktree(invocation, args)
     payload = error(
         command=invocation.command,
         code="command.phase-unavailable",
         summary="The command is registered, but its workflow is implemented in a later phase.",
-        details={"implementation-phase": 1},
+        details={"implementation-phase": _implementation_phase(args.command)},
         repos_path=invocation.repos_path,
     )
+    print(_json(payload))
+    return 2
+
+
+def _run_boundary(invocation: ParsedInvocation, args: argparse.Namespace) -> int:
+    try:
+        root = resolve_git_root(invocation.repos_path)
+        operation = ParsedInvocation(invocation.command, str(root))
+        store = _runtime_store(root)
+        if args.boundary_command == "add":
+            boundary_workflow.add(store, args.path)
+            payload = success(command=operation.command)
+        elif args.boundary_command == "remove":
+            boundary_workflow.remove(store, args.path)
+            payload = success(command=operation.command)
+        else:
+            payload = success(command=operation.command, results=boundary_workflow.parse(store, args.path))
+    except CommandFailure as exc:
+        payload = _command_failure(locals().get("operation", invocation), exc)
+    except GitRootUnresolved as exc:
+        payload = error(
+            command=invocation.command,
+            code="git-root.unresolved",
+            summary="The command could not resolve the requested Git root.",
+            details={
+                "requested-repos-path": exc.requested_repos_path,
+                "discovery-start-path": str(exc.discovery_start_path),
+            },
+            repos_path=invocation.repos_path,
+        )
+    except (StoreFailure, ModelFormatError) as exc:
+        payload = _store_or_model_failure(locals().get("operation", invocation), exc)
+    print(_json(payload))
+    return 0 if payload["status"] == "ok" else 2
+
+
+def _run_import(invocation: ParsedInvocation, args: argparse.Namespace) -> int:
+    try:
+        root = resolve_git_root(invocation.repos_path)
+        operation = ParsedInvocation(invocation.command, str(root))
+        store = _runtime_store(root)
+        cache = GitCache.from_environment()
+        name = args.import_command
+        if name == "install":
+            item = import_workflow.install(
+                store,
+                cache,
+                tracked=args.tracked,
+                git_url=args.url,
+                branch=args.branch or "",
+                tag=args.tag or "",
+                commit=args.commit or "",
+                keys=args.key,
+            )
+            payload = success(
+                command=operation.command, **{"install-id": item.install_id, "install-path": item.install_path}
+            )
+        elif name == "restore":
+            item = import_workflow.restore(store, cache, args.install_id)
+            payload = success(
+                command=operation.command, **{"install-id": item.install_id, "install-path": item.install_path}
+            )
+        elif name == "track":
+            item = import_workflow.track(store, args.install_id)
+            payload = success(
+                command=operation.command, **{"install-id": item.install_id, "install-path": item.install_path}
+            )
+        elif name == "remove":
+            import_workflow.remove(store, args.install_id, untracked=args.untracked, auto=args.auto)
+            payload = success(command=operation.command)
+        elif name == "ref":
+            import_workflow.ref(store, args.install_id, args.src_sub_dir or "", args.target_dir)
+            payload = success(command=operation.command)
+        elif name == "unref":
+            import_workflow.unref(store, args.target_dir)
+            payload = success(command=operation.command)
+        else:
+            install_path = _normalize_optional_path(args.install_path, "--install-path")
+            ref_path = _normalize_optional_path(args.ref_path, "--ref-path")
+            with store.read_only_transaction() as transaction:
+                candidates = import_workflow.query(
+                    RuntimeModelView(transaction),
+                    install_id=args.install_id,
+                    install_path=install_path,
+                    ref_path=ref_path,
+                    keys=args.key,
+                )
+            payload = success(command=operation.command, candidates=candidates)
+    except CommandFailure as exc:
+        payload = _command_failure(locals().get("operation", invocation), exc)
+    except GitRootUnresolved as exc:
+        payload = error(
+            command=invocation.command,
+            code="git-root.unresolved",
+            summary="The command could not resolve the requested Git root.",
+            details={
+                "requested-repos-path": exc.requested_repos_path,
+                "discovery-start-path": str(exc.discovery_start_path),
+            },
+            repos_path=invocation.repos_path,
+        )
+    except (StoreFailure, ModelFormatError) as exc:
+        payload = _store_or_model_failure(locals().get("operation", invocation), exc)
+    print(_json(payload))
+    return 0 if payload["status"] == "ok" else 2
+
+
+def _run_worktree(invocation: ParsedInvocation, args: argparse.Namespace) -> int:
+    try:
+        root = resolve_git_root(invocation.repos_path)
+        operation = ParsedInvocation(invocation.command, str(root))
+        store = _runtime_store(root)
+        name = args.worktree_command
+        if name == "create":
+            record = worktree_workflow.create(
+                store,
+                GitCache.from_environment(),
+                install_id=args.install_id,
+                git_url=args.url,
+                work_path=args.work_path,
+                branch=args.branch or "",
+                tag=args.tag or "",
+                commit=args.commit or "",
+                tree_name=args.tree_name,
+            )
+            payload = success(command=operation.command, **{"work-path": record.work_path})
+        elif name == "remove":
+            worktree_workflow.remove(
+                store,
+                GitCache.from_environment(),
+                work_path=args.work_path,
+                force=args.force,
+            )
+            payload = success(command=operation.command)
+        else:
+            record = worktree_workflow.query(store, work_path=args.work_path)
+            fields: dict[str, object] = {}
+            if record.install_id is not None:
+                fields["install-id"] = record.install_id
+            payload = success(command=operation.command, **fields)
+    except CommandFailure as exc:
+        payload = _command_failure(locals().get("operation", invocation), exc)
+    except GitRootUnresolved as exc:
+        payload = error(
+            command=invocation.command,
+            code="git-root.unresolved",
+            summary="The command could not resolve the requested Git root.",
+            details={
+                "requested-repos-path": exc.requested_repos_path,
+                "discovery-start-path": str(exc.discovery_start_path),
+            },
+            repos_path=invocation.repos_path,
+        )
+    except (StoreFailure, ModelFormatError) as exc:
+        payload = _store_or_model_failure(locals().get("operation", invocation), exc)
+    print(_json(payload))
+    return 0 if payload["status"] == "ok" else 2
+
+
+def _command_failure(invocation: ParsedInvocation, exc: CommandFailure) -> dict[str, object]:
+    return error(
+        command=invocation.command,
+        code=exc.code,
+        summary=exc.summary,
+        subject=exc.subject,
+        details=exc.details,
+        repos_path=invocation.repos_path,
+    )
+
+
+def _store_or_model_failure(invocation: ParsedInvocation, exc: Exception) -> dict[str, object]:
+    if isinstance(exc, StoreFailure):
+        details: dict[str, object] = {"store": exc.store, "phase": exc.phase, "state-path": str(exc.state_path)}
+        if exc.transaction_id is not None:
+            details["transaction-id"] = exc.transaction_id
+        return error(
+            command=invocation.command,
+            code="store.transaction.unavailable",
+            summary="The doctidex-git state store could not complete the requested operation.",
+            details=details,
+            repos_path=invocation.repos_path,
+        )
+    return error(
+        command=invocation.command,
+        code="work-model.invalid",
+        summary="The doctidex-git work model is not valid for this operation.",
+        details={"violations": [{"artifact": exc.artifact, "expected": exc.expected_shape}]},
+        repos_path=invocation.repos_path,
+    )
+
+
+def _runtime_store(root: Path) -> RuntimeStore:
+    store = RuntimeStore(root)
+    if not store.workspace_path.is_dir():
+        raise CommandFailure(
+            code="work-model.uninitialized",
+            summary="The doctidex-git work model has not been initialized.",
+            subject={"kind": "workspace", "path": "/.doctidex-git"},
+            details={"required-command": "init"},
+        )
+    return store
+
+
+def _normalize_optional_path(value: str | None, parameter: str) -> str | None:
+    return normalize_repo_path(value, parameter=parameter) if value is not None else None
+
+
+def _run_init(invocation: ParsedInvocation) -> int:
+    try:
+        initialize(invocation.repos_path)
+    except GitRootUnresolved as exc:
+        payload = error(
+            command="init",
+            code="git-root.unresolved",
+            summary="The command could not resolve the requested Git root.",
+            details={
+                "requested-repos-path": exc.requested_repos_path,
+                "discovery-start-path": str(exc.discovery_start_path),
+            },
+        )
+    except WorkspaceInitializeFailed as exc:
+        payload = error(
+            command="init",
+            code="workspace.initialize.failed",
+            summary="The doctidex-git workspace could not be initialized completely.",
+            subject={"kind": "workspace", "path": "/.doctidex-git"},
+            details={
+                "required-artifacts": list(WORKSPACE_ARTIFACTS),
+                "unavailable-artifacts": list(exc.unavailable_artifacts),
+            },
+            repos_path=str(exc.git_root),
+        )
+    except StoreFailure as exc:
+        payload = error(
+            command="init",
+            code="store.transaction.unavailable",
+            summary="The RuntimeStore could not be read while initializing the work model.",
+            details={
+                "store": exc.store,
+                "phase": exc.phase,
+                "state-path": str(exc.state_path),
+                **({"transaction-id": exc.transaction_id} if exc.transaction_id is not None else {}),
+            },
+            repos_path=invocation.repos_path,
+        )
+    else:
+        print(_json(success(command="init")))
+        return 0
+
     print(_json(payload))
     return 2
 
@@ -189,7 +461,11 @@ def _add_worktree_parser(commands: argparse._SubParsersAction[argparse.ArgumentP
     source = create.add_mutually_exclusive_group(required=True)
     source.add_argument("--install-id", type=_non_empty, metavar="INSTALL-ID")
     source.add_argument("--url", type=_non_empty, metavar="GIT-URL")
+    create.add_argument("--branch", type=_non_empty, metavar="BRANCH")
+    create.add_argument("--tag", type=_non_empty, metavar="TAG")
+    create.add_argument("--commit", type=_non_empty, metavar="HASH")
     create.add_argument("--work-path", type=_non_empty, metavar="REPOSITORY-INTERNAL-ABSOLUTE-PATH")
+    create.add_argument("--tree-name", type=_non_empty, metavar="TREE-NAME")
 
     remove = subcommands.add_parser("remove", help="Remove a managed worktree.")
     remove.add_argument("--work-path", required=True, type=_non_empty, metavar="REPOSITORY-INTERNAL-ABSOLUTE-PATH")
@@ -205,12 +481,38 @@ def _add_validate_parser(commands: argparse._SubParsersAction[argparse.ArgumentP
 
 
 def _validate_revision_arguments(args: argparse.Namespace) -> None:
-    if args.command != "import" or args.import_command != "install":
+    if args.command == "import" and args.import_command == "install":
+        if sum(bool(value) for value in (args.branch, args.tag, args.commit)) != 1:
+            raise UsageError(
+                "exactly one of --branch, --tag, or --commit is required",
+                parameter="--branch/--tag/--commit",
+            )
         return
-    if args.branch and args.tag:
-        raise UsageError("--branch and --tag are mutually exclusive", parameter="--branch/--tag")
-    if not any((args.branch, args.tag, args.commit)):
-        raise UsageError("one of --branch, --tag, or --commit is required", parameter="--branch/--tag/--commit")
+    if args.command != "worktree" or args.worktree_command != "create":
+        return
+    selectors = (args.branch, args.tag, args.commit)
+    if args.install_id is not None and any(selectors):
+        raise UsageError(
+            "revision selectors are only available with --url",
+            parameter="--branch/--tag/--commit",
+        )
+    if args.url is not None and sum(bool(value) for value in selectors) != 1:
+        raise UsageError(
+            "exactly one of --branch, --tag, or --commit is required with --url",
+            parameter="--branch/--tag/--commit",
+        )
+    if args.work_path is not None and args.tree_name is not None:
+        raise UsageError("--tree-name requires the default work-path", parameter="--tree-name")
+
+
+def _implementation_phase(command: str) -> int:
+    return {
+        "boundary-set": 4,
+        "import": 4,
+        "worktree": 5,
+        "validate": 6,
+        "repair": 6,
+    }[command]
 
 
 def _command_path(args: argparse.Namespace) -> str:

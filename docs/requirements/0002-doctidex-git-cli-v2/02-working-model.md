@@ -49,7 +49,6 @@ doctidex v2 目录树 Architecture 配套，但不得替代或改变其目录树
   "tracked": true,
   "git-url": "",
   "commit-hash": "",
-  "is-auto-resolved-hash": true,
   "install-id": "",
   "install-path": "",
   "keys": [],
@@ -62,13 +61,24 @@ doctidex v2 目录树 Architecture 配套，但不得替代或改变其目录树
 |---|---|
 | `tracked` | 安装产物是否作为 tracked install 管理。 |
 | `git-url` | 外部 Git 仓库 URL。 |
-| `commit-hash` | 安装产物对应的 commit hash。 |
-| `is-auto-resolved-hash` | `commit-hash` 是否由工具自动解析。未指定 `--commit` 时，工具从远程同步 branch 或 tag 后确定并设置该 hash，将此字段设为 `true`；显式指定 `--commit` 时设为 `false`。该标记影响同一仓库在未指定 hash 且 revision 过滤条件相同情况下的覆盖行为。 |
+| `commit-hash` | 安装产物最终对应的 commit hash；branch 或 tag selector 在安装时解析并记录其当前指向的 hash。 |
 | `install-id` | 安装产物标识符。 |
-| `install-path` | 安装产物的路径。 |
-| `keys` | 用于查询安装产物的 query key；其中包含内置默认值。 |
-| `branch` | 可选的 branch。 |
-| `tag` | 可选的 tag。 |
+| `install-path` | 按 Git URL 和 revision selector 派生的安装产物路径。 |
+| `keys` | `import query` 用于用户模糊搜索安装产物的 query key；其中包含内置默认值。key 的匹配与结果排序属于 `import query` 私有逻辑，不属于工作模型通用查询。 |
+| `branch` | branch selector 的值；使用 tag 或 commit selector 时为空。 |
+| `tag` | tag selector 的值；使用 branch 或 commit selector 时为空。 |
+
+Installation 的 revision selector 由 `branch` 与 `tag` 字段确定：`branch` 非空时为 branch selector，
+`tag` 非空时为 tag selector，两者均为空时为 commit selector；三种 selector 互斥。`commit-hash`
+始终保存 Installation 最终对应的 commit。
+
+`install-path` 不是命令输入，而是位于 `/.doctidex-git/imports/` 下的语义化派生路径：依次使用
+Git URL 中仓库的 Domain、Name 和 revision selector 值。Git URL
+`git@github.com:Viennan/doctidex.git` 的 branch、tag 或 commit Installation 分别位于
+`/.doctidex-git/imports/github.com/Viennan/doctidex/<branch>`、
+`/.doctidex-git/imports/github.com/Viennan/doctidex/<tag>` 或
+`/.doctidex-git/imports/github.com/Viennan/doctidex/<commit-hash>`。selector 值包含 `/` 时，保留
+其路径层级。
 
 #### `Ref`
 
@@ -116,6 +126,7 @@ doctidex v2 目录树 Architecture 配套，但不得替代或改变其目录树
 {
   "url": "[${GIT-URL}]",
   "install-id": "[${INSTALL-ID}]",
+  "base-commit-hash": "",
   "work-path": "<REPOSITORY-INTERNAL-ABSOLUTE-PATH>"
 }
 ```
@@ -124,16 +135,23 @@ doctidex v2 目录树 Architecture 配套，但不得替代或改变其目录树
 |---|---|
 | `url` | 外部 Git 仓库 URL。 |
 | `install-id` | 可选的关联安装产物标识符。 |
+| `base-commit-hash` | Worktree 创建时实际使用的基准 commit hash。使用 Installation 创建时，它等于该 Installation 已记录的 hash；使用 URL 创建时，branch 或 tag 在创建时解析为此 hash。 |
 | `work-path` | worktree 的仓库内部绝对路径。 |
+
+`Worktree` 不持久化 URL 来源所使用的 branch 或 tag selector。它们只用于创建时确定 revision；后续
+repair 依据 `base-commit-hash` 重建 URL 来源 Worktree，避免远程引用变化改变已记录工作区的 revision。
+该字段不跟踪 worktree 工作区后续的提交变化，也不会因其当前 `HEAD` 改变而更新。
 
 ### 3.4 全局缓存
 
 #### `CacheItem`
 
-`CacheItem` 表示用户级 Git object cache pool 中一个外部 Git 仓库的缓存记录。
+`CacheItem` 是 `CacheStore` 内部用于管理特定 Git 仓库缓存的记录，不属于 doctidex-git
+面向用户的领域模型。同一 `CacheStore` 中，一个 `git-url` 只能对应一条记录。
 
 ```jsonc
 {
+  "status": "published",
   "git-url": "",
   "path": ""
 }
@@ -141,8 +159,9 @@ doctidex v2 目录树 Architecture 配套，但不得替代或改变其目录树
 
 | 字段 | 当前含义 |
 |---|---|
-| `git-url` | 外部 Git 仓库 URL。 |
-| `path` | 相对于缓存状态文件的路径。 |
+| `status` | `CacheStore` 内部状态，仅允许 `preparing` 或 `published`，不作为外部命令结果或工作模型字段暴露。 |
+| `git-url` | 外部 Git 仓库 URL，在当前 `CacheStore` 中唯一。 |
+| `path` | 相对于 `cache-path` 的 bare Git repository 路径。 |
 
 ## 4. 已确认运行环境与物理目录结构
 
@@ -224,23 +243,9 @@ cache-path = 'cache'
 }
 ```
 
-`records` 中的每一项都是一个 `CacheItem`，用于关联 Git URL 与缓存仓库路径。
-`CacheItem` 只记录 Git URL 和本地 bare Git repository 的位置；缓存仓库自身负责提供更详细的
-Git 状态。
-
-`CacheStore` 通过事务上下文访问数据：
-
-- 创建事务时获取锁并读取缓存目录下的 `status.json`；
-- 事务上下文提供缓存条目的读写操作；
-- 退出事务时写回变更并释放锁。
-
-缓存状态恢复时按以下规则处理 `status.json` 与本地 bare Git repository 的不一致：
-
-| 不一致情况 | 处理方式 |
-|---|---|
-| `status.json` 存在记录，但对应 bare Git repository 不存在 | 直接恢复对应的 bare Git repository。 |
-| 记录路径上的 bare Git repository 与记录的 `git-url` 不匹配 | 删除不匹配的本地 bare Git repository，并恢复正确的 repository。 |
-| `status.json` 没有记录，但本地存在 bare Git repository | 默认不处理，留待后续 cache 维护命令处理。 |
+`CacheStore` 只负责 `status.json` 与记录路径上的 bare Git repository 之间的缓存状态协调，
+不负责 revision 解析、fetch、clone 或 Git 对象验证。其事务协议和 `GitCache` 对外封装以
+[需求 0002-08](08-store-transactions.md) 为准。
 
 ### 5.3 `RuntimeStore`
 
@@ -272,12 +277,25 @@ Git 状态。
 
 `worktrees` 不写入 Git tracked 文件，所有 Worktree 均不需要被 Git tracked。
 
-`RuntimeStore` 通过事务上下文访问数据：
+`RuntimeStore` 通过区分只读和写入的事务上下文访问数据：
 
-- 创建事务时获取锁，读取 `runtime.json` 及各 tracked 文件，并重建完整的内存运行时数据；
-- 事务上下文提供 `boundary-set`、`imports`、`import-refs` 和 `worktrees` 的读写操作，必要时可通过索引或访问方法封装查询；
-- 退出事务时分别写回 `runtime.json` 和各 tracked 文件，然后释放锁；
-- 写入时可以进行必要的优化，避免每次退出事务都覆盖未发生变化的文件。
+- 两类事务创建时都获取锁，读取 `runtime.json` 及各 tracked 文件，并重建完整的内存运行时数据；
+- Transaction 持有完整状态、维护 Installation、Ref、Worktree 和 BoundaryPoint 的索引，并负责锁、
+  恢复、journal 与持久化。索引是 Transaction 的内部数据结构，不直接构成命令簇查询 API；每次状态
+  变更后必须立即与当前状态一致；
+- `RuntimeModelView` 是依赖 Transaction 的更高层模型抽象，而不是 Transaction 的成员。命令簇在
+  Transaction 上下文内显式创建 View；View 在 Transaction 索引之上提供公共领域查询与关联逻辑，命令
+  簇不得为常规查询自行遍历状态集合或读取 Transaction 的内部索引；
+- 只读 Transaction 不创建事务目录；其上下文中只能使用只读 `RuntimeModelView`；
+- 写 Transaction 在进入上下文完成恢复和快照后立即创建事务目录及初始 journal。它的
+  `RuntimeWriteModelView` 在公共查询基础上提供标准领域记录的新增、更新、替换和删除，并将集合状态
+  变更委托给 Transaction。调用方只表达领域记录与字段变化，不手动重建完整 `RuntimeState` 或复制未
+  变化的记录字段；当一个命令的多个同类记录构成一个逻辑变更时，写 View 必须提供批量接口并一次提交
+  该集合变更；
+- 命令簇可以在公共 View 查询和 Transaction 事务边界的基础上实现自己的私有查询、更新与物理副作用，
+  但不得绕过 View 访问模型关系或绕过 Transaction 修改状态；
+- 写事务退出时分别写回 `runtime.json` 和各 tracked 文件，然后释放锁；写入时可以进行必要的优化，
+  避免每次退出事务都覆盖未发生变化的文件。
 
 多文件事务的锁、journal、提交和恢复要求以
 [需求 0002-08：`CacheStore` 与 `RuntimeStore` 事务机制实现设计要求](08-store-transactions.md) 为准。

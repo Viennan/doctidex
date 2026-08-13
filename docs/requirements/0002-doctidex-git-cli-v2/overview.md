@@ -37,6 +37,21 @@
 - 本次需求暂不撰写 user 文档；人类维护者、agent 和自动化程序的差异仅在后续 user 文档中用于
   调整内容组织。
 
+### 并发与外部修改边界
+
+- 并发与 race 设计只覆盖遵守本架构的 `doctidex-git` CLI 命令之间对同一 Store 或工作模型的
+  操作；这些命令通过既定锁顺序和事务协议协调。
+- 不对用户、编辑器或其他非 `doctidex-git` 程序直接修改状态文件或物理目录所形成的 race 提供
+  防御性保证，也不以提交前 snapshot hash 对比等局部检查伪装为能够解决此类问题。
+- 最终交付的 Architecture 文档必须将这一并发保证边界作为设计约束明确说明。
+
+### 删除幂等性
+
+- 删除命令请求的可删除模型记录不存在时，命令成功完成且不修改 Store 或物理状态。
+- 此规则不适用于记录存在但由其他模型管理、因而当前命令无权删除的对象；此类操作继续返回其对应的
+  受管对象错误。
+- 最终交付的 Architecture 文档必须将删除命令的这一幂等性约束作为设计规则明确说明。
+
 ### Python 代码库组织
 
 - Python 源代码位于 `src/python/whero/doctidex/`。
@@ -45,6 +60,31 @@
 - `whero` 是共享的顶级 package name，其他仓库也维护以 `whero` 为顶级 package name 的
   Python 库；本项目不得改用其他顶级 import 前缀或将 `whero` 视为本项目独占的顶级 package。
 
+### 跨命令簇领域工具要求
+
+`BoundaryPoint`、`Installation`、`Ref`、`Worktree`、仓库内路径和 Markdown link 的关系属于
+doctidex-git 工作模型的共同概念，不能由单个命令簇各自解释或维护。实现必须在
+`whero.doctidex` 内提供跨命令簇复用的内部领域工具，使 `import`、`validate`、`repair` 及后续需要
+这些关系的命令使用同一套语义。
+
+- 共享工具必须从完整 `RuntimeState` 视图浏览和关联 Installation、Ref、Worktree 与派生
+  BoundaryPoint，包括按 install-id、install-path、Ref target-dir 及其关系定位模型对象。
+- 对多个路径或扫描结果查询 BoundaryPoint 的共享工具，必须提供保序批量接口，并在这类批量流程中
+  基于同一份当前模型视图快照完成查询，避免在循环中反复派生完整 boundary-set。单路径查询仍可作为
+  调用方只处理一个路径时的便利接口；事务状态更新或建立新的模型视图后，查询自然使用其新的当前快照。
+- 共享工具必须按完整 BoundaryPoint 视图枚举当前 doctidex 目录树范围内的 Markdown 文件，不进入任何
+  BoundaryPoint 后代或 `/.doctidex-git`；并统一解析本地 link 的仓库内部目标、源文件行号和第一个
+  跨越的 BoundaryPoint。
+- Markdown link 的语法识别必须使用已显式声明的成熟 CommonMark 解析器，不得以正则表达式模拟 Markdown
+  语法。阶段 4 选用 `markdown-it-py`；领域工具只补充解析器已识别 link 的源行定位、本地路径解释和模型
+  关联，不另行定义 Markdown 语法。
+- 共享工具必须能将第一个跨越的 `import` 或 `import-ref` BoundaryPoint 分别关联到 Installation，或
+  经 Ref 关联到其 Installation。`import remove`、`import unref` 的删除阻塞、`validate` 的 link
+  诊断和 `repair` 的受管理路径扫描均复用这一关联语义。
+- 工具只负责模型浏览、目录扫描、link 解析和关系关联，不决定命令是否删除、报告诊断或创建物理对象；
+  这些命令策略仍由各自工作流定义。具体 Python 模块、类或函数名称由实施确定，但不得继续在各命令
+  模块中复制这些语义。
+
 ### Architecture 文档交付要求
 
 - Architecture 文档在本次需求的代码库开发完成后撰写，作为实现完成后的独立交付物。
@@ -52,6 +92,7 @@
   不直接复用或照搬本需求的子需求结构。
 - 需要理清并解耦当前混合在各子需求中的定义、规则和概念描述，将分散在各子需求中的有效信息
   整合到 Architecture 文档中。
+- 必须纳入本页“并发与外部修改边界”所定义的设计约束与保证范围。
 - 本次需求不包含 user 文档撰写。
 
 ## 3. 与 Architecture 的已知依赖
@@ -86,6 +127,7 @@
 | 校验与诊断 | 报告目录树、link、工作模型和 worktree 状态问题 | 由需求 0002-07 定义 |
 | 输出接口 | 提供统一 JSON 成功、错误和 validate 诊断结构 | 由需求 0002-01 定义 |
 | Python 代码库组织 | 定义源码目录、项目配置文件位置和 Python import 包前缀 | 约束已确认 |
+| 跨命令簇领域工具 | 统一工作模型关系、boundary-scoped 目录扫描和 Markdown link 跨界关联 | 约束已确认；由阶段 4 实现并供阶段 6 复用 |
 | 文档与发布 | 代码开发完成后的 Architecture 文档；user 文档暂不撰写 | Architecture 文档为本次需求后续交付物 |
 
 ## 5. 设计决策记录
@@ -94,8 +136,14 @@
 
 - CLI 采用六个命令簇，并为每个命令使用通用 `--repos-path`。
 - 工作模型以 tracked 状态投影和 `runtime.json` 共同提供权威数据，边界点按来源模型派生。
-- CacheStore 使用单文件原子提交，RuntimeStore 使用带 journal 的多文件可恢复事务。
-- 除 `validate`、`init` 外，事务回滚后命令在继续业务流程前执行一次内部 `repair`。
+- CacheStore 使用带 `preparing`/`published` 状态恢复的单文件原子更新，RuntimeStore 使用带
+  journal 的多文件可恢复事务；两者都不是数据库事务。
+- 并发控制只处理遵守协议的 `doctidex-git` CLI 命令；不为外部直接修改提供不完整的 race 防御。
+- 除 `validate`、`init` 外，任何非 `committed` 残留事务被成功处理后，命令在继续业务流程前执行
+  一次内部 `repair`；只有已确认 `committed` 的残留事务可直接清理并跳过修复。
+- 工作模型关系、boundary-scoped 目录扫描和本地 link 的跨界关联由共享领域工具统一解释；命令簇仅在
+  此基础上定义各自的修改、校验或修复策略。
+- 删除命令对不存在的可删除模型记录保持幂等；对仍受其他模型管理的对象保留明确的禁止删除语义。
 - Python 代码库按本页第 2 节的 `src/python/whero/doctidex` 布局组织。
 - 代码开发完成后，按本页第 2 节的 Architecture 文档交付要求完成独立 Architecture 文档。
 - 当前不额外定义 v2.x.x 的版本兼容或向后兼容承诺。
@@ -156,16 +204,100 @@
 通过检查点后再进入下一阶段；`planned` 只表示计划已记录，不授权直接修改实现代码、测试、
 Architecture 或 Skills。实施前仍需取得明确的实现授权。
 
+### 8.1 分阶段实施原则
+
+- 每个阶段只实现已由本需求及其子需求确定的行为。不能由当前阶段独立确定、且与后续命令工作流
+  或诊断模型强耦合的细节，必须在代码中保留可见的最小占位，并在本节说明由哪个后续阶段决定。
+- 阶段建立的基础设施可以被后续阶段复用，但不得预先以部分校验、临时错误语义或物理修复行为
+  固化后续阶段的公开契约。
+- 需要作出实现选择时，必须记录选择、未选择的方案和后续复核点；不得将其分散为没有来源说明的
+  helper 或测试假设。
+
 | 阶段 | 状态 | 范围与具体输出 | 验证与审阅检查点 |
 |---|---|---|---|
 | 1. Python 工程与 CLI 基础 | `completed` | 在 `src/python/whero/doctidex/` 建立 Python 包，在 `src/python/pyproject.toml` 建立项目配置；实现 CLI 入口、通用 `--repos-path`、六个命令簇的分发和基础参数错误/返回结构。依据 [需求 0002-01](01-cli-arguments-results.md) 固化公共 CLI 契约。 | 已验证项目可编辑安装、`whero.doctidex` 可导入和 `doctidex-git` 入口；已为命令分发、通用参数、JSON 成功/错误结构建立自动化检查，并完成与 01 的一致性审阅。 |
-| 2. 工作模型、Store 与初始化 | `pending` | 实现 [需求 0002-02](02-working-model.md) 定义的领域模型和状态投影，实现 [需求 0002-08](08-store-transactions.md) 的 CacheStore/RuntimeStore 事务、锁、journal、恢复及并发保护，实现 [需求 0002-04](04-init.md) 的工作空间初始化。 | 验证状态文件重建、tracked/untracked 投影、事务提交/回滚/遗留恢复和 `init` 幂等行为；模拟中断和外部 hash 变化后审阅模型不变量。 |
-| 3. boundary-set 与 import | `pending` | 实现 [需求 0002-03](03-boundary-set.md) 的 custom/派生边界点和路径解析，实现 [需求 0002-05](05-import.md) 的 install、restore、track、remove、ref、unref、query，以及 CacheStore、安装目录和受管 link 的交互。 | 使用包含 tracked/untracked、revision 组合、缺失 install-path、受管 link 和边界合并的场景验证；检查失败时物理对象与 Store 状态不产生未提交变更。 |
-| 4. worktree | `pending` | 实现 [需求 0002-06](06-worktree.md) 的 worktree create/remove/query、Installation/URL 两种来源、默认及自定义 work-path、Git ignore 和派生 BoundaryPoint。 | 验证创建、查询、缺失目录清理、`--force` 移除、路径冲突及自定义 ignore 规则；审阅与 Worktree 生命周期和事务边界的一致性。 |
-| 5. repair 与 validate | `pending` | 实现 [需求 0002-09](09-repair.md) 的 JSON 基准物理对齐和事务回滚后的内部 repair；实现 [需求 0002-07](07-validate.md) 的范围限制、工作模型校验、Markdown/link 诊断、待恢复事务短路和退出状态，并复用 [需求 0002-01](01-cli-arguments-results.md) 的结构化错误。 | 建立有效、失效、待恢复和可 repair 场景矩阵；验证 `validate` 只读、`repair` 幂等、错误信息具备模型诊断意义，以及非 `validate`/`init` 命令的内部 repair 行为。 |
-| 6. 集成验收与 Architecture 交付 | `pending` | 完成各命令簇端到端集成、回归验证和需求验收证据；在代码库开发完成后，依据 Architecture 文档自身的组织要求重新撰写并整合 Architecture 文档。此阶段不撰写 user 文档。 | 运行完整自动化测试和跨阶段场景检查，校验需求、Architecture 与实现的链接及术语一致性；完成 Architecture 文档审阅后，才可将父需求转为 `implemented`。 |
+| 2. 工作模型、RuntimeStore 与初始化 | `completed` | 实现已确定的领域记录、tracked/runtime 投影、RuntimeStore 锁、journal、恢复和并发保护。RuntimeStore 明确区分只读事务和写事务：只读事务不创建 journal，写事务在进入上下文后立即登记 journal。`init` 仅在工作空间不存在时创建完整初始状态、Git ignore 规则并重建该空状态；工作空间已存在时保持不修改。CacheStore/GitCache 不属于本阶段的有效实现范围；阶段 2 中遗留的旧 CacheStore 事务实现由新的 phase 3 取代。 | 已通过 24 个自动化测试验证状态文件重建、tracked/untracked 投影、RuntimeStore 事务提交/回滚/遗留恢复、读写事务边界、全新工作空间初始化、已有工作空间不被修改和可见占位；Ruff、`pip check` 和 CLI 入口检查通过。CacheStore/GitCache 协议、既有工作空间的完整 validate、待恢复事务诊断、跨 Store 协调和物理目录补偿按后续阶段实施。 |
+| 3. CacheStore 与 GitCache | `completed` | 已依据 [需求 0002-08](08-store-transactions.md) 重新实现 CacheStore 与 GitCache：CacheItem 的 `preparing`/`published` 状态、CacheStore 的 ReadOnly/Write 事务和立即生效的 `replace_records`、事务进入时的 `preparing` 清理，以及 GitCache 对外的 ReadOnly/Write 事务和 Write `load`。所有缓存访问改经 GitCache 事务；本阶段不实现 revision 选择、fetch 或 Git worktree 操作，也未恢复 boundary-set 或 import 命令工作流。 | 已验证同 URL 的唯一记录、可用 published cache 的复用、load 的 preparing 到 published 转换、clone 失败后的下一次事务清理、ReadOnly 接口限制、立即状态发布、路径清理范围和 bare Git object 残留边界；30 个自动化测试、Ruff、`pip check` 和 `git diff --check` 通过。GitCache/RuntimeStore 的命令级嵌套锁顺序留待 phase 4 的实际命令协调验证。 |
+| 4. boundary-set 与 import | `completed` | 已实现 custom/派生边界点、路径解析、`boundary-set add/remove/parse`、完整 import 工作流和共享领域工具。`import install` 以 branch、tag、commit 三选一的 revision selector 执行：branch/tag 同步远程后，当前 commit 不变时 no-op，变化时替换 Installation；commit 命中同一 Git URL 与 commit hash 时 no-op，未命中时获取并安装。`restore` 严格使用记录的 commit hash；Installation 不再持久化 `is-auto-resolved-hash`；install-path 由 Git URL 和 selector 值语义化派生。revision 更新保留既有受管理 Ref 关系并维持其 Installation 的 tracked 约束。revision 操作、RuntimeStore 写事务和依赖 cache repository 的 worktree 操作均在同一 GitCache 事务中完成，嵌套锁顺序为 `GitCache -> RuntimeStore`。 | 已验证 custom/派生边界、批量 boundary 查询、tracked/untracked 投影、track、受管 ref/unref、query、安装移除阻塞、Markdown link 行号、View 与共享领域工具；另验证互斥 selector 参数、branch/tag 最新 commit 的 no-op 与替换、commit 命中复用、仅按记录 commit restore、语义化 install-path（包含 branch `/` 层级）、`is-auto-resolved-hash` 移除及 revision 更新后的 Ref 关系。55 个自动化测试、Ruff、`pip check` 和 `git diff --check` 通过。 |
+| 5. worktree | `completed` | 已按 [需求 0002-06](06-worktree.md) 重新实现 `worktree create/remove/query`。URL 来源使用 branch、tag、commit 三选一，在 GitCache 事务内解析创建时的 base commit；Worktree 在 `runtime.json` 持久化 `base-commit-hash`，不跟踪后续 `HEAD`。默认 work-path 使用 `/.doctidex-git/worktrees/<domain>/<repository-path-without-.git>/<tree-name>`，支持仅用于默认路径的 `--tree-name` 和短随机末级名称；随机名称发生模型或物理路径冲突时重试。Installation 来源、BoundaryPoint、Git ignore、移除和 `GitCache -> RuntimeStore` 事务协调保持有效。 | 已验证 URL 三种 selector、base commit 持久化及 worktree 后续提交不改变它、URL 层级默认路径、嵌套 tree-name 和短随机名称及其冲突重试，以及 Installation 来源、移除、边界、ignore、路径占用、缺失清理和事务顺序。70 个自动化测试、Ruff、`pip check` 和 `git diff --check` 通过。 |
+| 6. repair 与 validate | `pending` | 实现 [需求 0002-09](09-repair.md) 的 JSON 基准物理对齐和事务回滚后的内部 repair；实现 [需求 0002-07](07-validate.md) 的范围限制、工作模型校验、Markdown/link 诊断、待恢复事务短路和退出状态，并复用 [需求 0002-01](01-cli-arguments-results.md) 的结构化错误和阶段 4 建立的共享领域工具。 | 建立有效、失效、待恢复和可 repair 场景矩阵；验证 `validate` 只读、`repair` 幂等、错误信息具备模型诊断意义、各命令的 BoundaryPoint/link 关联结果一致，以及非 `validate`/`init` 命令的内部 repair 行为。 |
+| 7. 集成验收与 Architecture 交付 | `pending` | 完成各命令簇端到端集成、回归验证和需求验收证据；在代码库开发完成后，依据 Architecture 文档自身的组织要求重新撰写并整合 Architecture 文档。此阶段不撰写 user 文档。 | 运行完整自动化测试和跨阶段场景检查，校验需求、Architecture 与实现的链接及术语一致性；完成 Architecture 文档审阅后，才可将父需求转为 `implemented`。 |
+
+阶段 5 的重新实施记录：
+
+- 先前的 phase 5 实现将 URL 来源固定到 bare repository 的 `HEAD`，默认路径使用
+  `/.doctidex-git/worktrees/<uuid>`，且 Worktree 未持久化 base commit。这些行为与更新后的
+  [需求 0002-06](06-worktree.md) 不一致，原实现及其测试结果不再构成阶段完成证据。
+- 已保留 Installation 来源的既有 commit 语义，并为 URL 来源实现 branch、tag、commit selector 的
+  解析、base commit 持久化及 URL 层级默认路径。自定义 `work-path` 的工具管理 Git ignore 成对规则
+  保持不变并已重新验证。revision 解析与 Git URL 的位置解释抽取为共享仓库工具，以保证 import 与
+  worktree 采用一致的来源解释。
+- 未提供 `--tree-name` 时，随机默认末级目录在 RuntimeStore 写事务内确认其未被模型或物理路径占用；
+  发生冲突即重新生成，直至可用。显式 `--work-path` 或 `--tree-name` 保持原有的冲突即报错语义。
+
+阶段 2 的实现选择与延后事项：
+
+- 状态文件直接使用需求 0002-02 所列集合的最小 JSON 表示：`boundary-set.json`、`imports.json`
+  和 `import-refs.json` 为数组，`runtime.json` 使用已明确的 `imports` 与 `worktrees` 对象字段。
+  未引入额外的版本包装、索引或领域关系校验；这些包装和校验没有已确认的需求依据。阶段 4 的
+  命令工作流可复用该投影，阶段 6 负责工作模型的完整有效性诊断。
+- `init` 对已存在工作空间的完整内部 `validate` 分支、待恢复事务诊断和返回语义由阶段 6 的
+  `validate` 统一确定。阶段 2 仅保留一个不修改状态的显式占位，避免以部分文件检查预先定义
+  `work-model.invalid` 的诊断集合。
+- CacheStore/GitCache 与 bare Git repository 的恢复、GitCache/RuntimeStore 的命令级锁协调，以及
+  install/worktree 物理目录的补偿属于阶段 3 及之后命令工作流的责任。阶段 2 仅保证 RuntimeStore
+  状态 JSON 的事务语义；旧 CacheStore 实现不作为新阶段的设计或验收依据。
+- RuntimeStore 按需求 0002-08 使用工作空间内的 `.lock` 文件；该内部锁文件随其他运行时工件
+  加入 Git ignore，不作为工作模型记录。只读事务仅在锁内读取快照，不创建事务目录；写事务在
+  `__enter__()` 完成恢复后立即创建 `.transactions/<transaction-id>/` 及初始 journal，使进程
+  中断时下一次命令可以感知遗留事务。后续阶段若统一工作空间保护规则，需复核其 ignore 表达，
+  但不改变锁路径契约。
+- Store 的并发控制只处理遵守锁和事务协议的 doctidex-git CLI 命令；不对外部直接修改增加
+  snapshot hash 对比等不完整的 race 防御。该保证边界将在最终 Architecture 文档中继续保留。
+- `init` 的新工作空间文件先在系统临时目录直接写入，完成后一次性同步到 Git root；不在 Git root
+  创建初始化临时目录，也不把初始化过程纳入 RuntimeStore journal。该选择只适用于尚不存在的
+  工作空间，已有工作空间仍由后续 validate 规则决定处理方式。
+
+已作废的旧阶段 3 实施记录：
+
+- 先前以 `boundary-set` 与 `import` 为范围的 phase 3 已被本计划明确作废；其代码、测试结果和
+  实现选择不再构成需求 0002 的已完成实施成果，也不得作为后续阶段的依赖或验收证据。
+- 作废原因是其 CacheStore/Git cache 实现不符合 [需求 0002-08](08-store-transactions.md) 现已确认的
+  `preparing`/`published` 状态、CacheStore ReadOnly/Write 事务、立即 `replace_records`、事务进入时
+  清理，以及 GitCache 对外事务封装要求。
+- 新 phase 3 完成并通过审阅前，不得恢复或扩展旧 phase 3 的 boundary-set/import 实现；相关命令簇
+  将在新的 phase 4 基于已完成的 GitCache 协议重新实现。
+
+新阶段 3 的实施约束：
+
+- 只实现 0002-08 第 4 节的 CacheStore/GitCache 协议及其直接测试；不新增或恢复任何 import、
+  boundary-set、worktree、repair、validate 的业务工作流。
+- `preparing` 记录的清理仅针对 CacheStore 内部生成、并且已验证位于 `cache-path` 下的 repository
+  路径；不把外部输入或 RuntimeStore 数据作为缓存清理目标。
+- 该阶段通过 GitCache 作为唯一缓存访问入口建立与 RuntimeStore 的固定锁顺序，但不提前确定
+  Installation、Ref 或 Worktree 的物理目录补偿细节；这些细节仍由 phase 4 至 6 的命令工作流决定。
+
+阶段 3 的实现选择与延后事项：
+
+- CacheStore 在 ReadOnly/Write 事务进入时都会持有缓存锁、读取 `status.json` 并清理其中的
+  `preparing` 记录及其受控 repository 路径。该恢复步骤会立即发布清理后的记录集合；ReadOnly
+  不对调用方公开记录替换能力，Write 的 `replace_records` 每次调用即时原子发布。
+- GitCache 是外部模块访问 bare repository 的唯一入口。ReadOnly 只能寻找已发布且可用的 repository；
+  Write 的 `load` 在 clone 前立即登记 `preparing`，成功后改为 `published`。失败或中断时保留
+  `preparing`，由下一次 CacheStore 事务清理并允许重新加载。
+- `GitCache.with_repository` 统一先在 ReadOnly 事务中查询；查询未命中时退出 ReadOnly 事务，再重新
+  打开 Write 事务调用 `load`，不得在只读事务内升级或嵌套写事务。调用方将依赖 repository 的
+  工作流作为 callback 传入，使选定事务保持至 callback 结束。
+- GitCache 的公开事务接口没有缓存 remove；phase 4 之后的命令只能删除自己的安装目录、引用或
+  worktree，不能把命令移除扩展为 CacheStore 清理。
+- GitCache 只管理缓存记录和 bare repository 的加载、获取；revision 解析、来源同步和安装 worktree
+  由 phase 4 的 `import` 实现，用户 worktree 的创建与移除由 phase 5 实现。
+- phase 3 不恢复已作废的 boundary-set/import 实现。RuntimeStore 与 GitCache 的命令级嵌套、
+  Installation/Ref 的物理目录操作和跨 Store 补偿由 phase 4 重新实现时确定并验证。
 
 ## 9. 实施与状态
 
-本记录目前为 `planned`。阶段 1 已完成并待审阅，阶段 2 至 6 尚未开始；每个阶段完成后应暂停
-并进行人类审阅，未取得下一阶段的明确实现授权前不得继续修改代码、测试或 Architecture 文档。
+本记录目前为 `planned`。阶段 1 至 5 已完成并待审阅；阶段 4 已按重定位后的 revision selector
+设计重新实现，阶段 5 已按更新后的 worktree revision 与默认路径设计重新实现并完成验证。阶段 6 至 7
+尚未开始。作废记录、阶段 2 至 5 的实现选择与延后事项记录于第 8.1 节。未取得相应阶段的明确实现
+授权前不得继续修改代码、测试或 Architecture 文档。

@@ -68,6 +68,11 @@
 
 `init` 不创建 custom `BoundaryPoint`，也不改变用户级 `CacheStore` 中的缓存条目。
 
+工作空间文件先在系统临时目录中直接写入，完成完整的 `.doctidex-git/` 工作空间后，再一次性
+同步到 Git root 的目标路径；临时目录内的单个文件不需要分别使用原子写入。Git root 下不创建
+形如 `.doctidex-git.initializing-*` 的初始化临时目录；初始化临时目录也不使用 RuntimeStore 的
+`.transactions/` journal 进行恢复。同步失败时仅清理本次尚未完成的初始化产物，不改变已有工作空间。
+
 ## 5. 工作模型生命周期
 
 | 阶段 | 进入方式 | 状态特征 |

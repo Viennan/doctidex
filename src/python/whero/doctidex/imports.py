@@ -1,0 +1,440 @@
+"""Import installation and managed-reference command workflows."""
+
+from __future__ import annotations
+
+import os
+import shutil
+import subprocess
+import uuid
+from pathlib import Path
+
+from whero.doctidex.errors import CommandFailure
+from whero.doctidex.git_cache import GitCache
+from whero.doctidex.model import Installation, Ref
+from whero.doctidex.model_view import RuntimeModelView, RuntimeWriteModelView, scan_markdown_links
+from whero.doctidex.paths import normalize_repo_path, repo_path_to_fs
+from whero.doctidex.repository import repository_location, resolve_revision
+from whero.doctidex.store.runtime import RuntimeStore
+
+
+def install(
+    store: RuntimeStore,
+    cache: GitCache,
+    *,
+    tracked: bool,
+    git_url: str,
+    branch: str,
+    tag: str,
+    commit: str,
+    keys: list[str],
+) -> Installation:
+    selector_kind, selector_value = _revision_selector(branch=branch, tag=tag, commit=commit)
+    if selector_kind == "commit":
+        with store.read_only_transaction() as transaction:
+            existing = RuntimeModelView(transaction).installation_for_commit(git_url, selector_value)
+        if existing is not None:
+            return existing
+
+    def install_from_repository(repository: Path) -> Installation:
+        commit_hash = _resolve_revision(repository, git_url, kind=selector_kind, value=selector_value)
+        with store.write_transaction() as transaction:
+            view = RuntimeWriteModelView(transaction)
+            existing = (
+                view.installation_for_selector(git_url, branch=branch, tag=tag)
+                if selector_kind in {"branch", "tag"}
+                else view.installation_for_commit(git_url, commit_hash)
+            )
+            if existing is not None and existing.commit_hash == commit_hash:
+                return existing
+
+            install_id = uuid.uuid4().hex
+            install_path = _install_path(git_url, selector_value)
+            target = repo_path_to_fs(store.git_root, install_path)
+            if target.exists() or target.is_symlink():
+                if existing is None:
+                    raise _installation_target_failure(install_path, "existing-path")
+                _remove_worktree(repository, target)
+            _create_worktree(repository, target, commit_hash, install_path=install_path)
+            installation = Installation(
+                tracked=tracked or bool(existing is not None and view.refs_for(existing)),
+                git_url=git_url,
+                commit_hash=commit_hash,
+                install_id=install_id,
+                install_path=install_path,
+                keys=tuple(dict.fromkeys((*_default_keys(git_url, branch=branch, tag=tag), *keys))),
+                branch=branch,
+                tag=tag,
+            )
+            if existing is None:
+                view.upsert_installation(installation)
+            else:
+                view.replace_installation(existing, installation)
+        return installation
+
+    return cache.with_repository(git_url, install_from_repository)
+
+
+def restore(store: RuntimeStore, cache: GitCache, install_id: str) -> Installation:
+    with store.read_only_transaction() as transaction:
+        view = RuntimeModelView(transaction)
+        installation = _find_installation(view, install_id)
+    if not installation.tracked:
+        raise _installation_failure(
+            "installation.tracking-state.invalid", installation, {"required-tracked": True, "actual-tracked": False}
+        )
+
+    def restore_from_repository(repository: Path) -> Installation:
+        with store.write_transaction() as transaction:
+            view = RuntimeWriteModelView(transaction)
+            current = _find_installation(view, install_id)
+            if not current.tracked:
+                raise _installation_failure(
+                    "installation.tracking-state.invalid",
+                    current,
+                    {"required-tracked": True, "actual-tracked": False},
+                )
+            target = repo_path_to_fs(store.git_root, current.install_path)
+            if target.exists() or target.is_symlink():
+                if not _worktree_at(target, current.commit_hash):
+                    raise _installation_target_failure(current.install_path, "existing-path")
+                return current
+            _create_worktree(repository, target, current.commit_hash, install_path=current.install_path)
+            return current
+
+    return cache.with_repository(installation.git_url, restore_from_repository)
+
+
+def track(store: RuntimeStore, install_id: str) -> Installation:
+    with store.write_transaction() as transaction:
+        view = RuntimeWriteModelView(transaction)
+        installation = _find_installation(view, install_id)
+        if installation.tracked:
+            return installation
+        return view.set_installation_tracking(installation, tracked=True)
+
+
+def remove(
+    store: RuntimeStore,
+    install_id: str | None,
+    *,
+    untracked: bool,
+    auto: bool,
+) -> None:
+    with store.write_transaction() as transaction:
+        view = RuntimeWriteModelView(transaction)
+        selected = _select_installations(view, install_id, untracked=untracked, auto=auto)
+        selected_ids = {item.install_id for item in selected}
+        blocked = _blocked_installations(store.git_root, view, selected)
+        if blocked:
+            raise CommandFailure(
+                code="installation.remove.blocked",
+                summary="The selected installation is still referenced by the current doctidex tree.",
+                subject={
+                    "kind": "installation" if install_id else "installation-selection",
+                    **({"install-id": install_id} if install_id else {}),
+                },
+                details={"blocked-installations": blocked},
+            )
+        for item in selected:
+            _remove_path(repo_path_to_fs(store.git_root, item.install_path))
+        view.remove_installations(selected_ids)
+
+
+def ref(store: RuntimeStore, install_id: str, src_sub_dir: str, target_dir: str) -> Ref:
+    target_dir = normalize_repo_path(target_dir, parameter="--target-dir")
+    if src_sub_dir:
+        src_sub_dir = normalize_repo_path(src_sub_dir, parameter="--src-sub-dir")
+    with store.write_transaction() as transaction:
+        view = RuntimeWriteModelView(transaction)
+        installation = _find_installation(view, install_id)
+        source = repo_path_to_fs(store.git_root, installation.install_path)
+        if src_sub_dir:
+            source = source / src_sub_dir.lstrip("/")
+        if not source.exists():
+            raise _installation_failure(
+                "ref.source.unavailable",
+                installation,
+                {"install-path": installation.install_path, "src-sub-dir": src_sub_dir},
+            )
+        target = repo_path_to_fs(store.git_root, target_dir)
+        if target.exists() or target.is_symlink():
+            raise CommandFailure(
+                code="ref.target.unavailable",
+                summary="The managed reference target is already occupied.",
+                subject={"kind": "ref", "target-dir": target_dir},
+                details={"install-id": install_id, "operation": "create"},
+            )
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.symlink(os.path.relpath(source, start=target.parent), target, target_is_directory=source.is_dir())
+        except OSError as exc:
+            raise CommandFailure(
+                code="ref.target.unavailable",
+                summary="The managed reference could not be created.",
+                subject={"kind": "ref", "target-dir": target_dir},
+                details={"install-id": install_id, "operation": "create"},
+            ) from exc
+        record = Ref(install_id=install_id, src_sub_dir=src_sub_dir, target_dir=target_dir)
+        view.set_installation_tracking(installation, tracked=True)
+        view.upsert_ref(record)
+        return record
+
+
+def unref(store: RuntimeStore, target_dir: str) -> None:
+    target_dir = normalize_repo_path(target_dir, parameter="--target-dir")
+    with store.write_transaction() as transaction:
+        view = RuntimeWriteModelView(transaction)
+        record = view.ref(target_dir)
+        if record is None:
+            return
+        blocking_links = [
+            link.reference_details()
+            for link in scan_markdown_links(store.git_root, view)
+            if link.ref == record
+        ]
+        if blocking_links:
+            raise CommandFailure(
+                code="ref.remove.blocked",
+                summary="The managed reference is still linked from the current doctidex tree.",
+                subject={"kind": "ref", "target-dir": target_dir},
+                details={"blocking-links": blocking_links},
+            )
+        installation = _find_installation(view, record.install_id)
+        source = repo_path_to_fs(store.git_root, installation.install_path) / record.src_sub_dir.lstrip("/")
+        target = repo_path_to_fs(store.git_root, target_dir)
+        if not target.is_symlink() or target.resolve(strict=False) != source.resolve(strict=False):
+            raise CommandFailure(
+                code="ref.target.inconsistent",
+                summary="The managed reference target does not match its recorded source.",
+                subject={"kind": "ref", "target-dir": target_dir},
+                details={
+                    "expected-source": str(source),
+                    "actual-target": os.readlink(target) if target.is_symlink() else None,
+                },
+        )
+        target.unlink()
+        view.remove_ref(target_dir)
+
+
+def query(
+    model: RuntimeModelView, *, install_id: str | None, install_path: str | None, ref_path: str | None, keys: list[str]
+) -> list[dict[str, object]]:
+    candidates = _query_installations(
+        model,
+        install_id=install_id,
+        install_path=install_path,
+        ref_path=ref_path,
+        keys=tuple(keys),
+    )
+    return [
+        {
+            "git-url": item.git_url,
+            "commit-hash": item.commit_hash,
+            "install-id": item.install_id,
+            "install-path": item.install_path,
+            "keys": list(item.keys),
+            "refs": [
+                {"src-sub-dir": ref.src_sub_dir, "target-dir": ref.target_dir}
+                for ref in model.refs_for(item)
+            ],
+            "branch": item.branch,
+            "tag": item.tag,
+        }
+        for item in candidates
+    ]
+
+
+def _query_installations(
+    model: RuntimeModelView,
+    *,
+    install_id: str | None,
+    install_path: str | None,
+    ref_path: str | None,
+    keys: tuple[str, ...],
+) -> tuple[Installation, ...]:
+    """Apply import query selectors, including its user-facing fuzzy key search."""
+
+    if install_id is not None:
+        installation = model.installation(install_id)
+        return (installation,) if installation is not None else ()
+    if install_path is not None:
+        installation = model.installation_at(install_path)
+        return (installation,) if installation is not None else ()
+    if ref_path is not None:
+        reference = model.ref(ref_path)
+        installation = model.installation(reference.install_id) if reference is not None else None
+        return (installation,) if installation is not None else ()
+    return _fuzzy_key_matches(model.installations, keys)
+
+
+def _fuzzy_key_matches(installations: tuple[Installation, ...], keys: tuple[str, ...]) -> tuple[Installation, ...]:
+    """Return fuzzy key matches ordered by matching-key and exact-match counts."""
+
+    matches: list[tuple[int, int, Installation]] = []
+    for installation in installations:
+        matched_keys = tuple(
+            installation_key
+            for installation_key in installation.keys
+            if any(query_key in installation_key for query_key in keys)
+        )
+        if matched_keys:
+            exact_matches = sum(installation_key in keys for installation_key in matched_keys)
+            matches.append((len(matched_keys), exact_matches, installation))
+    matches.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    return tuple(item[2] for item in matches)
+
+
+def _revision_selector(*, branch: str, tag: str, commit: str) -> tuple[str, str]:
+    selectors = (("branch", branch), ("tag", tag), ("commit", commit))
+    selected = [(kind, value) for kind, value in selectors if value]
+    if len(selected) != 1:
+        raise ValueError("exactly one revision selector is required")
+    return selected[0]
+
+
+def _resolve_revision(repository: Path, git_url: str, *, kind: str, value: str) -> str:
+    return resolve_revision(repository, git_url, kind=kind, value=value)
+
+
+def _create_worktree(repository: Path, target: Path, commit_hash: str, *, install_path: str) -> None:
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            ["git", "-C", str(repository), "worktree", "prune"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repository), "worktree", "add", "--detach", str(target), commit_hash],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise _installation_target_failure(install_path, "unavailable-path") from exc
+
+
+def _remove_worktree(repository: Path, target: Path) -> None:
+    try:
+        subprocess.run(
+            ["git", "-C", str(repository), "worktree", "remove", "--force", str(target)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        _remove_path(target)
+
+
+def _worktree_at(target: Path, commit_hash: str) -> bool:
+    if not target.is_dir():
+        return False
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(target), "rev-parse", "HEAD"], check=True, capture_output=True, text=True
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return False
+    return result.stdout.strip() == commit_hash
+
+
+def _install_path(git_url: str, selector_value: str) -> str:
+    domain, repository_name = _repository_location(git_url)
+    components = (".doctidex-git", "imports", domain, *repository_name, *selector_value.split("/"))
+    if any(component in {"", ".", ".."} for component in components):
+        raise _installation_target_failure("/.doctidex-git/imports", "invalid-source-path")
+    return f"/{'/'.join(components)}"
+
+
+def _repository_location(git_url: str) -> tuple[str, tuple[str, ...]]:
+    return repository_location(git_url)
+
+
+def _find_installation(model: RuntimeModelView, install_id: str) -> Installation:
+    installation = model.installation(install_id)
+    if installation is None:
+        raise CommandFailure(
+            code="installation.not-found",
+            summary="The requested installation does not exist.",
+            subject={"kind": "installation", "install-id": install_id},
+            details={"operation": "find"},
+        )
+    return installation
+
+
+def _select_installations(
+    model: RuntimeModelView, install_id: str | None, *, untracked: bool, auto: bool
+) -> tuple[Installation, ...]:
+    if install_id:
+        installation = model.installation(install_id)
+        return (installation,) if installation is not None else ()
+    if untracked:
+        return tuple(item for item in model.installations if not item.tracked)
+    return tuple(
+        item
+        for item in model.installations
+        if not item.tracked or not model.refs_for(item)
+    )
+
+
+def _installation_failure(code: str, installation: Installation, details: dict[str, object]) -> CommandFailure:
+    return CommandFailure(
+        code=code,
+        summary="The installation cannot complete the requested operation.",
+        subject={
+            "kind": "installation",
+            "install-id": installation.install_id,
+            "install-path": installation.install_path,
+        },
+        details=details,
+    )
+
+
+def _installation_target_failure(path: str, occupant: str) -> CommandFailure:
+    return CommandFailure(
+        code="installation.target.unavailable",
+        summary="The installation path cannot be used for the requested revision.",
+        subject={"kind": "installation", "install-path": path},
+        details={"operation": "install", "occupant": occupant},
+    )
+
+
+def _remove_path(path: Path) -> None:
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+    elif path.exists():
+        shutil.rmtree(path)
+
+
+def _default_keys(git_url: str, *, branch: str, tag: str) -> tuple[str, ...]:
+    parsed = git_url.split("://", 1)[-1]
+    if ":" in parsed and "/" not in parsed.split(":", 1)[0]:
+        parsed = parsed.split(":", 1)[1]
+    base = parsed.removesuffix(".git").strip("/")
+    return (base, *(f"{base}@{value}" for value in (branch, tag) if value))
+
+
+def _blocked_installations(
+    git_root: Path, model: RuntimeModelView, selected: tuple[Installation, ...]
+) -> list[dict[str, object]]:
+    links = {item.install_id: [] for item in selected if item.tracked}
+    for link in scan_markdown_links(git_root, model):
+        if link.installation is not None and link.installation.install_id in links:
+            links[link.installation.install_id].append(link.reference_details())
+    result: list[dict[str, object]] = []
+    for item in selected:
+        if not item.tracked:
+            continue
+        reference_targets = [ref.target_dir for ref in model.refs_for(item)]
+        item_links = links.get(item.install_id, [])
+        if item_links or reference_targets:
+            result.append(
+                {
+                    "install-id": item.install_id,
+                    "install-path": item.install_path,
+                    "blocking-links": item_links,
+                    "blocking-ref-target-dirs": reference_targets,
+                }
+            )
+    return result

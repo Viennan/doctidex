@@ -214,7 +214,7 @@ doctidex-git [--repos-path <REPOSITORY-ROOT-PATH>] boundary-set parse \
 doctidex-git [--repos-path <REPOSITORY-ROOT-PATH>] import install \
   <--tracked | --untracked> \
   --url <GIT-URL> \
-  <--branch <BRANCH> [--commit <HASH>] | --tag <TAG> [--commit <HASH>] | --commit <HASH>> \
+  <--branch <BRANCH> | --tag <TAG> | --commit <HASH>> \
   [--key <QUERY-KEY>]...
 ```
 
@@ -222,20 +222,19 @@ doctidex-git [--repos-path <REPOSITORY-ROOT-PATH>] import install \
 |---|---|
 | `--tracked` / `--untracked` | 必须且只能选择一个，用于指定 import 安装产物受 Git tracked 或 untracked。 |
 | `--url <GIT-URL>` | 必填，指定外部 Git 仓库。 |
-| `--branch <BRANCH>` | revision 选择器之一；可以与 `--commit` 同时使用，但与 `--tag` 互斥。 |
-| `--tag <TAG>` | revision 选择器之一；可以与 `--commit` 同时使用，但与 `--branch` 互斥。 |
-| `--commit <HASH>` | revision 选择器之一；可以单独使用，也可以与 `--branch` 或 `--tag` 同时使用。与 `--tag` 同时使用时必须校验 tag 指向的 commit hash 与该值一致。 |
+| `--branch <BRANCH>` | revision 选择器之一；必须与 `--tag`、`--commit` 互斥。 |
+| `--tag <TAG>` | revision 选择器之一；必须与 `--branch`、`--commit` 互斥。 |
+| `--commit <HASH>` | revision 选择器之一；必须与 `--branch`、`--tag` 互斥。 |
 | `--key <QUERY-KEY>` | 可重复，提供额外的查询 key。 |
 
-revision 选择器为必填项，必须提供 `--branch`、`--commit` 或 `--tag`。`--branch` 和
-`--commit` 可以同时提供；此时将 `--branch` 的指针移动到 `--commit` 指定的 commit。
-`--tag` 和 `--commit` 也可以同时提供；此时必须校验 tag 指向的 commit hash 与传入的 hash
-一致，校验不一致时不通过。`--tag` 与 `--branch` 不得同时提供。
+revision 选择器为必填项，且必须从 `--branch`、`--tag`、`--commit` 中恰好选择一种。branch 和
+tag 安装时必须先从远程同步相应引用，记录其当前指向的最终 commit hash；commit 安装以传入 hash
+作为指定 revision。
 
-未提供 `--commit` 时，工具必须从远程同步所指定的 branch 或 tag 到本地，解析并设置最终的
-commit hash，并将 `is-auto-resolved-hash` 设为 `true`；提供 `--commit` 时，该标记设为
-`false`。自动解析 hash 的 `import install` 在相同 Git URL 和未指定 revision 条件已有
-Installation 时采用覆盖更新，不因该 Installation 的 `install-path` 已存在而报错。
+对同一 Git URL 和同一 selector，branch 或 tag 当前 commit 与已有 Installation 的记录相同时，
+命令直接成功返回；当前 commit 已变化时，删除可能存在的旧 Installation，并按最新状态重新创建。
+对 commit selector，同一 Git URL 和同一 commit hash 已有 Installation 时直接成功返回；否则获取
+所需 Git object 后安装。具体安装与替换流程以[需求 0002-05](05-import.md)为准。
 
 成功返回：
 
@@ -374,6 +373,10 @@ doctidex-git [--repos-path <REPOSITORY-ROOT-PATH>] import query \
 查询选择器为必填项，且 `--install-id`、`--install-path`、`--ref-path` 与 `--key` 互斥，
 必须且只能选择一种。选择 `--key` 时，该选项可以重复提供多个 query key。
 
+`--key` 是 `import query` 专用的用户模糊搜索：Installation 的任一已保存 key 包含任一输入 key
+即为候选。候选按匹配的已保存 key 数量降序排列；数量相同时，按其中与任一输入 key 完全相等的 key
+数量降序排列；仍相同时保持工作模型中的稳定顺序。
+
 成功返回：
 
 ```jsonc
@@ -426,13 +429,27 @@ agent 使用。该能力基于 Git，并封装一套固定的、符合 doctidex 
 
 ```bash
 doctidex-git [--repos-path <REPOSITORY-ROOT-PATH>] worktree create \
-  <--install-id <INSTALL-ID> | --url <GIT-URL>> \
-  [--work-path <REPOSITORY-INTERNAL-ABSOLUTE-PATH>]
+  <--install-id <INSTALL-ID> | --url <GIT-URL> <--branch <BRANCH> | --tag <TAG> | --commit <HASH>>> \
+  [--work-path <REPOSITORY-INTERNAL-ABSOLUTE-PATH>] \
+  [--tree-name <TREE-NAME>]
 ```
 
-`--install-id` 与 `--url` 必须且只能选择一个，分别用于指定已有 import 安装产物或外部 Git
-仓库。`--work-path` 为可选的仓库内部绝对路径；创建成功后，该 `work-path` 自动加入当前
-仓库目录树的 `boundary-set`。
+| 参数 | 要求 |
+|---|---|
+| `--install-id <INSTALL-ID>` | 与 `--url` 必须且只能选择一个。指定已有 import 安装产物；Worktree 使用其已记录的 commit-hash 作为 base-commit-hash。不能与 revision selector 一起使用。 |
+| `--url <GIT-URL>` | 与 `--install-id` 必须且只能选择一个。指定外部 Git 仓库；必须同时提供一种 revision selector。 |
+| `--branch <BRANCH>` | 仅适用于 `--url`，必须与 `--tag`、`--commit` 互斥。创建时同步远程 branch 并解析其当前 commit。 |
+| `--tag <TAG>` | 仅适用于 `--url`，必须与 `--branch`、`--commit` 互斥。创建时同步远程 tag 并解析其当前 commit。 |
+| `--commit <HASH>` | 仅适用于 `--url`，必须与 `--branch`、`--tag` 互斥。创建时获取并确认指定 Git object。 |
+| `--work-path <REPOSITORY-INTERNAL-ABSOLUTE-PATH>` | 可选的仓库内部绝对路径。提供时直接指定工作路径。 |
+| `--tree-name <TREE-NAME>` | 可选，仅在省略 `--work-path` 时参与默认 work-path 派生。可包含 `\`，按目录路径解释并创建相应目录。未提供时使用短随机标识作为末级目录名。 |
+
+`--branch`、`--tag`、`--commit` 必须从中恰好选择一个，且仅 URL 来源使用。branch 或 tag 解析出的
+commit 与直接指定的 commit 都是创建 Worktree 的基准 revision，并写入其 `base-commit-hash`。该字段
+不跟踪 worktree 后续的提交变化。`--work-path`
+省略时，默认路径为
+`/.doctidex-git/worktrees/<domain>/<repository-path-without-.git>/<tree-name>`；`--tree-name` 只在该
+默认路径中生效。创建成功后，该 `work-path` 自动加入当前仓库目录树的 `boundary-set`。
 
 成功返回：
 
@@ -652,17 +669,16 @@ doctidex-git [--repos-path <REPOSITORY-ROOT-PATH>] repair
 
 | `message.code` | 触发条件 | `subject` / `details` 必填信息 |
 |---|---|---|
-| `revision.unresolvable` | 给定 Git URL、branch、tag 或 commit 无法解析为所需 revision。 | `subject.kind: "git-source"`、`subject.git-url`、`details.branch`、`details.tag`、`details.commit-hash`、`details.operation`。 |
-| `revision.inconsistent` | tag 与显式 commit 同时提供，但 tag 指向的 commit 与输入不一致。 | `subject.kind: "git-source"`、`subject.git-url`、`details.tag`、`details.expected-commit-hash`、`details.actual-commit-hash`。 |
+| `revision.unresolvable` | 给定 Git URL 的 branch、tag 或 commit selector 无法解析为所需 revision。 | `subject.kind: "git-source"`、`subject.git-url`、`details.selector-kind`、`details.selector-value`、`details.operation`。 |
 | `cache.repository.unavailable` | 需要的 bare Git repository 无法从 CacheStore 获得或恢复。 | `subject.kind: "cache-item"`、`subject.git-url`、`details.operation`、`details.revision`。 |
 | `installation.target.unavailable` | install-path 已被非目标 Installation 占用，或无法作为指定 revision 的安装 worktree 使用。 | `subject.kind: "installation"`、`subject.install-path`、`details.operation`、`details.occupant`。 |
 | `installation.not-found` | 需要现有 Installation 的非查询命令指定的 install-id 或 install-path 无对应 Installation。 | `subject.kind: "installation"`、`subject.install-id` 或 `subject.install-path`、`details.operation`。 |
 | `installation.tracking-state.invalid` | `import restore` 要求 tracked Installation，但当前 Installation 为 untracked。 | `subject.kind: "installation"`、`subject.install-id`、`details.required-tracked: true`、`details.actual-tracked: false`。 |
 | `installation.restore.unavailable` | 依据已保存 revision 无法恢复 tracked Installation 的实际文件。 | `subject.kind: "installation"`、`subject.install-id`、`subject.install-path`、`details.commit-hash`。 |
-| `installation.remove.blocked` | tracked Installation 仍有当前目录树有效范围内的 Markdown link 或关联 Ref。 | 单个 `--install-id` 时为 `subject.kind: "installation"` 和 `subject.install-id`；多对象选择时为 `subject.kind: "installation-selection"`。`details.blocked-installations` 的每项包含 `install-id`、`install-path`、`blocking-links`（元素包含 `path`、`line`、`link-path`）和 `blocking-ref-target-dirs`。 |
+| `installation.remove.blocked` | tracked Installation 仍有当前目录树有效范围内的 Markdown link，或仍有关联 Ref。Markdown link 可以直接跨越该 Installation 的 `import` BoundaryPoint，也可以跨越关联 Ref 的 `import-ref` BoundaryPoint。 | 单个 `--install-id` 时为 `subject.kind: "installation"` 和 `subject.install-id`；多对象选择时为 `subject.kind: "installation-selection"`。`details.blocked-installations` 的每项包含 `install-id`、`install-path`、`blocking-links`（元素包含 `path`、`line`、`link-path`）和 `blocking-ref-target-dirs`。 |
 | `ref.source.unavailable` | Installation 的 install-path 或指定 src-sub-dir 不能作为受管理引用源。 | `subject.kind: "installation"`、`subject.install-id`、`details.install-path`、`details.src-sub-dir`。 |
 | `ref.target.unavailable` | target-dir 已被不相容内容占用，或无法建立受管理引用。 | `subject.kind: "ref"`、`subject.target-dir`、`details.install-id`、`details.operation`。 |
-| `ref.not-found` | `import unref` 指定的 target-dir 没有对应 Ref。 | `subject.kind: "ref"`、`subject.target-dir`、`details.operation`。 |
+| `ref.remove.blocked` | 当前目录树有效范围内仍有 Markdown link 跨越待移除 Ref 的 `import-ref` BoundaryPoint。 | `subject.kind: "ref"`、`subject.target-dir`、`details.blocking-links`；每项包含 `path`、`line`、`link-path`。 |
 | `ref.target.inconsistent` | 目标位置的受管理引用与 Ref 记录不一致，无法安全更新或移除。 | `subject.kind: "ref"`、`subject.target-dir`、`details.expected-source`、`details.actual-target`。 |
 
 `import query` 没有候选项是正常成功结果，返回空 `candidates`，不使用错误结构。
@@ -671,6 +687,7 @@ doctidex-git [--repos-path <REPOSITORY-ROOT-PATH>] repair
 
 | `message.code` | 触发条件 | `subject` / `details` 必填信息 |
 |---|---|---|
+| `revision.unresolvable` | URL 来源的 branch、tag 或 commit selector 无法解析为创建 Worktree 所需 revision。 | `subject.kind: "git-source"`、`subject.git-url`、`details.selector-kind`、`details.selector-value`、`details.operation: "worktree create"`。 |
 | `worktree.source.unavailable` | `--install-id` 没有可用 Installation，或 `--url` 对应 Git source 无法用于创建工作区。 | `subject.kind: "worktree"`、`subject.work-path`、`details.install-id` 或 `details.git-url`、`details.operation: "create"`。 |
 | `worktree.target.unavailable` | work-path 已存在、发生路径冲突或无法创建工作区。 | `subject.kind: "worktree"`、`subject.work-path`、`details.operation: "create"`、`details.occupant`。 |
 | `worktree.ignore.protection.failed` | 自定义 work-path 无法加入或移出 Git ignore，导致工作区无法满足模型约束。 | `subject.kind: "worktree"`、`subject.work-path`、`details.operation`、`details.gitignore-path`。 |

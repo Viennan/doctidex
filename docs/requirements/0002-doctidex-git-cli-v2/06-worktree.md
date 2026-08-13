@@ -33,8 +33,10 @@ CacheStore、RuntimeStore 及 `worktree` 类型 BoundaryPoint 的交互关系。
 | `Installation` | 仅在使用 `--install-id` 时被读取 | `imports.json` 或 `runtime.json` | 不因 worktree 创建额外安装记录 |
 | `CacheItem` | 全局缓存记录 | CacheStore 的 `status.json` | 无 |
 
-`Worktree` 的 `url` 始终记录其外部 Git 仓库 URL；使用已有 Installation 创建时，同时记录
-对应的 `install-id`。直接使用 `--url` 创建时不创建 Installation，`install-id` 省略。
+`Worktree` 的 `url` 始终记录其外部 Git 仓库 URL，`base-commit-hash` 记录创建时实际使用的基准
+commit。使用已有 Installation 创建时，同时记录对应的 `install-id`，并使用该 Installation 已记录的
+commit；直接使用 `--url` 创建时不创建 Installation，`install-id` 省略。该基准不跟踪 worktree 内后续的
+提交变化。
 
 ## 4. 命令工作流
 
@@ -42,14 +44,24 @@ CacheStore、RuntimeStore 及 `worktree` 类型 BoundaryPoint 的交互关系。
 
 1. 根据通用 `--repos-path` 恢复当前 Git root 的 RuntimeStore。
 2. `--install-id` 与 `--url` 必须且只能选择一个：
-   - 使用 `--install-id` 时，从 RuntimeStore 查找 Installation，并以其 Git URL 作为 Worktree 来源；
-   - 使用 `--url` 时，通过 CacheStore 获取或恢复该 Git URL 的 bare repository。
-3. 确定 `work-path`；未提供时使用 `.doctidex-git/worktrees/` 下的默认位置。
-4. 如果 `work-path` 已存在、发生路径冲突或无法创建，命令报错。
+   - 使用 `--install-id` 时，从 RuntimeStore 查找 Installation，并以其 Git URL 和已记录的
+     `commit-hash` 创建 Worktree，写入同值的 `base-commit-hash`；
+   - 使用 `--url` 时，`--branch`、`--tag` 与 `--commit` 必须且只能选择一个。通过 CacheStore
+     获取或恢复该 Git URL 的 bare repository；branch 或 tag 先与远程同步并解析为 commit，commit
+     则获取并确认所指定的 Git object。
+3. 确定 `work-path`：显式 `--work-path` 直接作为工作路径；否则以来源 Git URL 派生默认根目录
+   `/.doctidex-git/worktrees/<domain>/<repository-path-without-.git>/`，再追加 `--tree-name`。未提供
+   `--tree-name` 时，以长度近似 GitHub 展示 commit hash 的短随机标识作为末级目录名；仅在此未提供
+   `--tree-name` 和 `--work-path` 的随机命名情形，若该随机路径已被工作模型记录或对应物理路径已存在，
+   则重新生成，直至取得未冲突的路径。`--tree-name` 可包含 `\`，其中的 `\` 按目录分隔符解释；它
+   只参与默认路径的派生。
+4. 用户提供的 `--work-path` 或 `--tree-name` 所确定的 work-path 已存在、发生路径冲突或无法创建时，
+   命令直接报错，不自动重命名。
 5. 如果 `work-path` 不位于 `.doctidex-git/worktrees/` 下，将该 `work-path` 加入当前 Git root 的
    `.gitignore`。
-6. 创建 Git worktree 工作区。
-7. 创建并写入 `Worktree`，由 `work-path` 派生 `worktree` 类型 BoundaryPoint；该边界点不单独写入文件。
+6. 以最终 commit 创建 detached Git worktree 工作区。
+7. 创建并写入 `Worktree`，保存 Git URL、基准 commit、可选 install-id 及 work-path；由 work-path
+   派生 `worktree` 类型 BoundaryPoint，该边界点不单独写入文件。
 8. 提交 RuntimeStore 事务并返回需求 0002-01 定义的成功结果。
 
 创建的 Worktree 始终为 untracked，不能通过 `boundary-set remove` 或其他 tracked 投影改变其
@@ -57,8 +69,9 @@ CacheStore、RuntimeStore 及 `worktree` 类型 BoundaryPoint 的交互关系。
 
 ### 4.2 `worktree remove`
 
-1. 根据 `--work-path` 在 RuntimeStore 中查找 Worktree。
-2. 若 worktree 工作目录已缺失，不报错，继续清理对应的模型状态；否则尝试移除 Git worktree 工作区。
+1. 根据 `--work-path` 在 RuntimeStore 中查找 Worktree；没有对应记录时不报错，直接返回成功。
+2. 若已有记录的 worktree 工作目录已缺失，不报错，继续清理对应的模型状态；否则尝试移除 Git
+   worktree 工作区。
 3. worktree 存在未提交修改或 Git worktree 状态异常时，未提供 `--force` 则报错；提供 `--force`
    时强制移除。
 4. 如果该 `work-path` 不位于 `.doctidex-git/worktrees/` 下，从当前 Git root 的 `.gitignore` 中
@@ -90,22 +103,29 @@ Installation。
 ## 6. 与其他模型的交互
 
 - 使用 `--install-id` 创建时，Worktree 读取 Installation 的 `git-url` 和 install-id，但不复制或
-  移动 Installation 的 install-path。
-- 使用 `--url` 创建时，Worktree 通过 CacheStore 使用缓存对象；缓存记录不因 Worktree 的创建或移除自动删除。
+  移动 Installation 的 install-path，并以其已记录的 commit 创建 Worktree。
+- 使用 `--url` 创建时，Worktree 通过 CacheStore 使用缓存对象，将选定的 branch、tag 或 commit
+  解析为最终 commit 后创建；缓存记录不因 Worktree 的创建或移除自动删除。
 - `work-path` 创建成功后自动形成 `worktree` 类型 BoundaryPoint；移除 Worktree 后该派生点消失。
-- 默认 `work-path` 位于 `.doctidex-git/worktrees/`，该目录按工作模型规定被 Git ignore；不在默认
-  目录下的 `work-path` 在创建时加入 `.gitignore`，并在移除时删除由本命令加入的规则。
+- 默认 `work-path` 位于 `/.doctidex-git/worktrees/<domain>/<repository-path-without-.git>/<tree-name>`；
+  该目录按工作模型规定被 Git ignore。每一层保留 Git URL 的 repository path，避免不同仓库路径产生
+  相同的默认位置；不在默认目录下的 `work-path` 在创建时加入 `.gitignore`，并在移除时删除由本命令
+  加入的规则。
 
 ## 7. 已确认的通用处理规则
 
-默认或自定义 `work-path` 已存在、发生路径冲突或无法创建时，`worktree create` 报错。`worktree remove`
-的工作目录缺失不构成错误；未提交修改或 Git worktree 状态异常时，只有指定 `--force` 才可以强制移除。
+URL 来源的 `worktree create` 必须提供且只能提供一种 revision selector；branch、tag 和 commit 不能与
+`--install-id` 一起使用。branch 或 tag 的选择仅用于本次创建时解析基准 commit，Worktree 记录保存该
+base commit 供后续 repair 使用，而不保存会随远程变化的 selector，也不跟踪 worktree 后续提交。仅未指定
+`--tree-name` 和 `--work-path` 的随机默认路径可在冲突时重试；用户指定的 `--tree-name` 或 `--work-path`
+发生路径冲突或无法创建时，`worktree create` 直接报错。`worktree remove` 的未记录路径或工作目录缺失不构成错误；未提交修改
+或 Git worktree 状态异常时，只有指定 `--force` 才可以强制移除。
 
 ## 8. 受影响的产品表面
 
 | 表面 | 需要定义的内容 | 当前状态 |
 |---|---|---|
-| `worktree create` | Installation/CacheStore 来源选择、工作区创建和 BoundaryPoint 派生 | 已定义；冲突或无法创建时报错 |
+| `worktree create` | Installation/CacheStore 来源选择、revision 解析、默认路径派生、工作区创建和 BoundaryPoint 派生 | 已定义；冲突或无法创建时报错 |
 | `worktree remove` | 工作区删除、RuntimeStore 更新和边界点移除 | 已定义；缺失清理与 `--force` 规则已明确 |
 | `worktree query` | RuntimeStore 查询和可选 install-id 返回 | 已定义 |
 | Worktree 生命周期 | 创建、运行、失效和移除 | 已定义 |
@@ -120,8 +140,9 @@ Installation。
 
 - [x] `create`、`remove`、`query` 的 Store 交互和 BoundaryPoint 派生规则已记录。
 - [x] Worktree 的 untracked 状态、持久化来源和主要生命周期已记录。
-- [x] `--install-id` 与 `--url` 两种来源路径的模型交互已记录。
+- [x] `--install-id` 与 `--url` 两种来源路径、URL revision selector 和最终 commit 的模型交互已记录。
 - [x] 默认及自定义 `work-path` 的 Git ignore 创建、移除规则已记录。
+- [x] URL 层级默认 work-path 和 `--tree-name` 的派生规则已记录。
 - [x] 工作区冲突、缺失清理和异常移除规则已明确。
 - [x] 设计与 CLI 契约、工作模型及 Architecture 的一致性已完成审阅。
 

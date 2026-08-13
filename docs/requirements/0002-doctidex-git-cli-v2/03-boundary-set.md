@@ -70,12 +70,14 @@
 
 1. 按通用 `--repos-path` 确定 Git root，并初始化 `RuntimeStore` 事务。
 2. 事务重建当前完整的 `boundary-set`。
-3. 按输入 `--path` 定位 `type: custom` 的 `BoundaryPoint` 并移除。
+3. 按输入 `--path` 定位 `type: custom` 的 `BoundaryPoint` 并移除；没有对应 custom 记录的输入成功
+   no-op。
 4. 事务提交时更新 `boundary-set.json`；由 `Installation`、`Ref` 或 `Worktree` 派生的边界点不受影响。
 5. 按需求 0002-01 的通用成功返回结构返回结果。
 
-`remove` 只能移除由 `boundary-set add` 创建的 custom 边界点；不能通过该命令移除
-`import`、`import-ref` 或 `worktree` 类型的边界点。
+`remove` 只能移除由 `boundary-set add` 创建的 custom 边界点；不存在的 custom 记录不构成错误。
+不能通过该命令移除 `import`、`import-ref` 或 `worktree` 类型的边界点；这些派生点仍存在且受其来源
+模型管理时，命令返回禁止删除错误。
 
 ### 4.3 `boundary-set parse`
 

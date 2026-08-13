@@ -18,9 +18,9 @@ Coordinate the repository's standard development and maintenance workflow.
    responsibilities and design constraints. If it requires an Architecture change, state the
    affected models, constraints, rationale, and scope in the proposal and update Architecture with
    `$write-architecture-docs` when authorized.
-3. **Implement the approved plan.** Obtain explicit implementation authorization, then follow the
-   approved plan without silently changing it. If blocked or if the plan no longer fits, stop,
-   report the evidence to the user, and discuss the revision before continuing.
+3. **Implement the approved plan.** Follow the implementation workflow below. If implementation
+   reveals that the plan no longer fits, stop, report the evidence, and revise the Requirement or
+   plan before continuing; do not silently force a local design decision.
 4. **Keep design and implementation aligned.** Update Architecture promptly when implementation
    reveals or changes a key model, abstraction, or constraint. Link Architecture, Requirements,
    Issues, and implementation documents or code where links improve the project knowledge network;
@@ -38,3 +38,33 @@ request.
 When the user changes an active Requirement, integrate the change into the Requirement first. Do not
 automatically implement it unless the user gives explicit authorization, such as "implement this
 change now" or "automatically implement my changes from now on."
+
+## Implementation
+
+Use this workflow when an active Requirement authorizes implementation:
+
+1. Confirm that the Requirement contains the current implementation plan and that the user has
+   explicitly authorized the requested scope. When creating or revising the plan, record each
+   phase's bounded scope, concrete outputs, and validation/review checkpoint in the Requirement;
+   keep a phase small enough to remain human-reviewable. A `planned` status records readiness and
+   plan state; it does not authorize code, tests, Architecture changes, or other artifact changes
+   by itself.
+2. Before editing, read the relevant Architecture, Requirement sections, and existing code. Treat
+   each phase as part of one coherent product design. A phase may establish foundations needed by
+   later phases, but it must not prematurely freeze details that are strongly coupled to a later
+   model or workflow.
+3. When a later-stage detail is intentionally undecided, preserve the design space with a small
+   explicit placeholder, such as Python `pass`, and a concise comment describing what later phase
+   must determine. Do not invent a partial contract merely to make the current phase appear
+   complete. Keep the placeholder visible and reachable from the relevant Requirement or phase
+   record.
+4. Implement only the current phase's settled behavior. If a local implementation choice affects
+   later phases, record the assumption, alternatives rejected, and expected follow-up instead of
+   scattering an implicit contract across helpers or tests.
+5. At phase completion, validate the implemented behavior and briefly record in the Requirement
+   overview: what was implemented, what remains intentionally deferred, which placeholders or
+   assumptions were introduced, and what the next phase must revisit. Keep later phases `pending`
+   until their own scope is authorized.
+6. Stop for user review after the phase. Multiple phases in one pass require explicit authorization
+   for that broader scope. Do not mark the Requirement `implemented` until all planned phases and
+   their validation evidence are complete.

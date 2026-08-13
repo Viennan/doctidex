@@ -83,15 +83,17 @@ Git root 的完整 doctidex 工作模型和其相关物理对象。
    链接保持不变。
 
 仓库当前 doctidex 目录树有效范围内，凡是指向某个 Installation 的 `install-path` 或其子目录、
-但没有对应 `import-refs.json` 记录的符号链接，均视为未登记链接并删除。扫描不得进入
-`/.doctidex-git` 或任何 BoundaryPoint 后代。
+但没有对应 `import-refs.json` 记录的符号链接，均视为未登记链接并删除。该扫描必须复用父需求定义的
+共享领域工具，不得自行实现与 `import` 或 `validate` 不同的 BoundaryPoint 过滤或 Installation/Ref
+关联规则；扫描不得进入 `/.doctidex-git` 或任何 BoundaryPoint 后代。
 
 ### 4.4 Worktree 对齐
 
 对每条 `runtime.json` 中的 Worktree：
 
 1. 检查记录的 `work-path` 是否存在并仍是对应 Git worktree。
-2. `work-path` 缺失时，依据 Worktree 记录的 URL 或 `install-id` 完成 worktree 创建，并保留原
+2. `work-path` 缺失时，使用 Worktree 记录的 `base-commit-hash` 重建该 worktree：URL 来源直接以其
+   `url` 和 `base-commit-hash` 创建；Installation 来源仍按其 `install-id` 关联的 Installation 创建。保留原
    Worktree 记录和 `work-path`。
 3. 不在 `.doctidex-git/worktrees/` 下的 `work-path` 必须继续满足其记录对应的 Git ignore 规则。
 
@@ -132,9 +134,13 @@ worktree、状态文件和派生边界变化。任一不可恢复的修复失败
 
 ### 5.3 事务遗留后的内部调用
 
-除 `validate` 和 `init` 外，其他命令在启动时发现 RuntimeStore 事务遗留并完成旧版本回滚后，必须
-在继续执行业务工作流前内部执行一次 `repair`。该内部调用使用当前已恢复的 JSON 状态作为基准，
-只执行一次，不对外产生嵌套命令输出；repair 本身不递归触发 repair。
+可写 RuntimeStore 事务从写入 `prepared` journal 起，即允许命令执行真实文件系统操作。因此存在
+残留事务时，只有 `committed` journal 且全部目标文件均已是 `new-sha256`，才可以直接清理并跳过
+修复。`prepared` 或 `publishing` 残留事务只要能够完成恢复处理，就必须报告 `repair-required`。
+
+除 `validate` 和 `init` 外，其他命令在启动时收到 `repair-required` 后，必须在继续执行业务工作流前
+内部执行一次 `repair`。该内部调用以当前 JSON 状态为基准，只执行一次，不对外产生嵌套命令输出；
+repair 本身不递归触发 repair。无法安全处理残留事务时，保留 journal 并停止命令，不尝试 repair。
 
 ## 6. 受影响的错误与返回
 
@@ -149,7 +155,7 @@ worktree、状态文件和派生边界变化。任一不可恢复的修复失败
 - [x] Installation、Ref、Worktree、BoundaryPoint 和 Git ignore 的修复范围已定义。
 - [x] import-ref 缺失链接的创建和未登记 import 链接的删除边界已定义。
 - [x] 缺失 Worktree 的补建流程及其事务边界已定义。
-- [x] 事务回滚后各非 `validate`、非 `init` 命令的内部 repair 行为已定义。
+- [x] 非 `committed` 残留事务处理后各非 `validate`、非 `init` 命令的内部 repair 行为已定义。
 - [x] repair 的幂等性、失败回滚和用户内容保护要求已定义。
 - [x] repair 沿用需求 0002-01 已定义的错误码，不建立独立错误目录。
 

@@ -99,8 +99,10 @@ Worktree 的 RuntimeStore 投影、路径保护和物理登记是否有效仍属
 无论 BoundaryPoint 视图是否完整，均检查 Git root 的 `/index.md` 是否满足 doctidex 根入口要求。
 在完整 BoundaryPoint 视图可用时，继续执行以下步骤：
 
-1. 从 `scope.subdir` 枚举 Markdown 文件；遇到 BoundaryPoint 时不进入该节点的后代目录。
-2. 对每个 Markdown 文档解析本地文件系统 link。带 URI scheme 的外部 link 不具有当前 Git root
+1. 使用父需求定义的共享领域工具从 `scope.subdir` 枚举 Markdown 文件；遇到 BoundaryPoint 时不进入
+   该节点的后代目录。
+2. 使用同一工具对每个 Markdown 文档解析本地文件系统 link，得到仓库内部目标、源文件行号和第一个
+   跨越的 BoundaryPoint。带 URI scheme 的外部 link 不具有当前 Git root
    的路径语义，不纳入本命令的本地路径存在性检查；只有 fragment 的 link 以源文件为目标文件。
 3. 按 Architecture 的根路径和相对路径规则解析本地 link。不能在当前 Git root 内得到规范化
    目标的 link 产生 `link.path.conforms`。
@@ -240,6 +242,7 @@ Ref 指向该安装产物，缺失的安装目录也不产生 `ref.source.unavai
 | `init` | 已有工作空间时内部采用本需求的工作模型检查。模型无效时，`init` 返回 `work-model.invalid`，其 `details.violations` 与本需求第 5 节完全一致；不会以 `validate` 的 `valid` 返回替代 `init` 的命令结果。 |
 | 非 `validate` 命令 | 在不能安全重建模型时，使用 `work-model.invalid` 返回相同违规数组；工作模型无效时不继续变更 Installation、Ref、BoundaryPoint 或 Worktree。 |
 | `import remove` | 仍按需求 0002-05 在修改前检查实际阻塞它的 Markdown link 和 Ref，并以 `installation.remove.blocked` 返回；该动作前置检查不依赖用户先执行 `validate`。 |
+| `import unref` | 与 `import remove` 使用同一 BoundaryPoint/link 关联语义；Markdown link 跨越待移除 Ref 的 `import-ref` BoundaryPoint 时，以 `ref.remove.blocked` 返回。 |
 | tracked Installation | `validate` 允许安装文件不存在，也不会执行 `import restore`。link 首次跨越 import 或 import-ref BoundaryPoint 时，若其 Installation 正处于待恢复状态，仅校验关联 `install-id` 的模型有效性和既有 tracked 约束，不检查物理 link 目标。 |
 | CacheStore | CacheStore 的状态与 bare repository 不一致由其既有恢复规则处理，不作为当前 Git root 的 `work-model.valid` 违规。缓存不可用时由执行该操作的命令报告 `cache.repository.unavailable`。 |
 | `repair` | 负责按照 JSON 描述修复物理安装、受管理引用、Worktree、派生 BoundaryPoint 和 Git ignore；`validate` 在发现待恢复事务时不调用 `repair`，而是仅报告事务并退出。 |

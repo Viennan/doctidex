@@ -30,13 +30,12 @@ Create and maintain Requirements.
 7. Validate numbering, links, status, acceptance criteria, and consistency with current repository
    files. Do not invent facts or history.
 
-## Status and Implementation Planning
+## Status and Document Structure
 
-Before beginning implementation, record a phased implementation plan in the Requirement and set its
-status to `planned`. For a large Requirement, put the plan in `overview.md` and link phase details
-or child Requirements from it when applicable. For every phase, record a bounded,
-human-reviewable scope, concrete outputs, and a validation/review checkpoint; do not make a phase
-large enough to produce unreviewable amounts of code.
+The Requirement document is authoritative for its own record structure, status, scope, decisions,
+dependencies, and acceptance criteria. For a large Requirement, `overview.md` is authoritative for
+the overall record and navigation to its child Requirements; each child remains authoritative for
+its own focused subject. Keep the links from the overview to every child current.
 
 Use the statuses as follows:
 
@@ -47,8 +46,6 @@ Use the statuses as follows:
   does not by itself authorize implementation.
 - `implemented`: every planned phase is complete and validated.
 
-Implement one phase at a time by default. When a phase ends, stop and ask the user to review before
-starting another phase. Implement multiple phases in one pass, or complete the Requirement in one
-pass, only when the user has explicitly authorized that scope. A direct `draft` to `implemented`
-transition is likewise permitted only with explicit user authorization, and the implementation plan
-is still required. Set `implemented` only after all phases and their validation are complete.
+Only explicit user approval permits the `approved` status. Set `implemented` only after every planned
+outcome is complete and validated. The Requirement status does not replace explicit authorization
+for implementation work.

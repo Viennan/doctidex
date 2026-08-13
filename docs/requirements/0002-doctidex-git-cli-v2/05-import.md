@@ -19,7 +19,7 @@
 
 ## 2. 设计依据
 
-- 子命令、参数、revision 组合和返回结构以 [需求 0002-01](01-cli-arguments-results.md) 为准。
+- 子命令、参数、revision selector 和返回结构以 [需求 0002-01](01-cli-arguments-results.md) 为准。
 - `Installation`、`Ref`、`CacheItem`、状态文件和事务规则以 [需求 0002-02](02-working-model.md) 为准。
 - `install-path` 和受管理引用目标自动形成 `import`、`import-ref` 类型的 `BoundaryPoint`，其
   重建规则以 [需求 0002-03](03-boundary-set.md) 为准。
@@ -34,24 +34,32 @@
 | 安装仓库文件 | Git ignored | `install-path` 对应文件系统目录 | 不单独持久化边界记录 |
 
 所有会修改 Installation 或 Ref 的子命令都在 `RuntimeStore` 事务中完成；需要访问或恢复外部
-Git object 时，在 `CacheStore` 事务中取得对应缓存。事务提交后，tracked 文件仅保存其负责的
-部分，`runtime.json` 不重复保存已投影数据。
+Git object 时，通过 `GitCache` 提供的只读或写事务访问缓存。`GitCache` 事务内部协调
+`CacheStore` 状态和 bare repository 的加载；tracked 文件仅保存其负责的部分，`runtime.json`
+不重复保存已投影数据。CacheStore/GitCache 事务不是数据库事务，不对 Git object 的追加写入提供
+回滚保证。`import install` 与 `import restore` 选择到 cache repository 后，revision 同步/解析和
+install-path 的 Git worktree 操作都在同一个 GitCache 事务内完成；需要同时修改 RuntimeStore 时，
+在该 GitCache 事务内再打开 RuntimeStore 写事务，锁顺序固定为 `GitCache -> RuntimeStore`。
 
 ## 4. 命令工作流
 
 ### 4.1 `import install`
 
-1. 根据通用 `--repos-path` 恢复 Git root 的 `RuntimeStore`，并按 `--url` 访问 `CacheStore` 中的 bare Git repository。
-2. 按需求 0002-01 的 revision 选择规则解析 branch、tag 和 commit，得到最终 commit hash 及
-   `is-auto-resolved-hash`。未指定 `--commit` 时，必须先从远程同步所指定的 branch 或 tag
-   到本地 CacheStore，才能确定并写入最终 commit hash；此时将 `is-auto-resolved-hash` 设为
-   `true`。显式指定 `--commit` 时该标记为 `false`。
-3. 使用 CacheStore 的 bare Git repository，在 `install-path` 创建指定 revision 的 Git worktree；
-   自动解析 hash 且相同 Git URL、未指定 revision 条件已有 Installation 时，覆盖其原安装文件。
-4. 创建或更新 `Installation`，填充 tracked 状态、Git URL、revision、`install-id`、`install-path` 和 query keys。
-5. 当同一 Git URL 使用相同的未指定 revision 条件再次安装，按覆盖处理已有 Installation 及其
-   `install-path`：重新解析 commit hash，覆盖安装文件，并以新的 revision 更新安装结果。该情形
-   不因已有 `install-path` 返回 `installation.target.unavailable`。
+1. 按 `--url` 在 GitCache ReadOnly 事务中查询 bare Git repository。命中时保持该 ReadOnly 事务；
+   未命中时先退出，再在 GitCache Write 事务中 `load` repository，并保持该 Write 事务。后续步骤
+   均在所选 GitCache 事务内执行。
+2. `--branch`、`--tag`、`--commit` 是恰好选择一种的 revision selector。branch 安装先从远程同步
+   指定 branch，tag 安装先从远程同步指定 tag，并分别解析当前指向的 commit hash；commit 安装按给定
+   hash 获取所需 Git object。
+3. 对 branch 或 tag selector，若已有同一 Git URL、同一 selector 且记录 commit hash 与当前 commit
+   相同的 Installation，直接成功返回。当前 commit 不同时，删除可能存在的旧 Installation，再按最新
+   状态创建新的 Installation。对 commit selector，若已有同一 Git URL、同一 commit hash 的
+   Installation，直接成功返回；否则继续安装。
+4. 在仍持有 GitCache 事务时打开 RuntimeStore 写事务，根据 Git URL 和 selector 派生语义化
+   `install-path`，并使用 bare Git repository 在该路径创建指定 commit 的 Git worktree。路径位于
+   `/.doctidex-git/imports/<Domain>/<Name>/<selector-value>`；branch 或 tag 值中的 `/` 保留为路径层级。
+5. 创建新的 `Installation`，填充 tracked 状态、Git URL、最终 commit hash、selector 对应的 branch 或
+   tag、`install-id`、`install-path` 和 query keys。
 6. 将 tracked install 的元信息写入 `imports.json`，untracked install
    写入 `runtime.json`。
 7. 由 `install-path` 派生 `import` 类型的 `BoundaryPoint`，不在边界文件中另行记录。
@@ -59,10 +67,12 @@ Git object 时，在 `CacheStore` 事务中取得对应缓存。事务提交后�
 
 ### 4.2 `import restore`
 
-1. 在 RuntimeStore 中按 `install-id` 查找 tracked `Installation`；untracked install 不适用本命令。
-2. 严格根据 Installation 中已保存的 `commit-hash`、`branch` 和 `tag` 访问或恢复 CacheStore
-   中的 bare Git repository，不因 `is-auto-resolved-hash` 重新解析 revision。
-3. 按已记录的 install-path 重新安装仓库文件；Installation 元信息保持不变。
+1. 在 RuntimeStore 中按 `install-id` 查找 tracked `Installation`；该查询在继续前结束，untracked
+   install 不适用本命令。
+2. 按 Installation 中保存的 Git URL 选择 GitCache ReadOnly 或 Write 事务。若 ReadOnly 未命中，
+   必须先退出并在 Write 事务中加载；严格使用记录的 `commit-hash`，不重新同步或解析 branch、tag。
+3. 在持有 GitCache 事务时打开 RuntimeStore 写事务，重新读取 Installation，并按已记录的
+   install-path 重新安装仓库文件；Installation 元信息保持不变。
 4. 重新由 install-path 派生 `import` BoundaryPoint，并提交 RuntimeStore 事务。
 5. 返回与 `import install` 一致的安装结果。
 
@@ -82,16 +92,20 @@ Installation 或 install-id。
 
 ### 4.4 `import remove`
 
-1. 在 RuntimeStore 中依据 `--install-id`、`--untracked` 或 `--auto` 解析移除选择器。
-2. 对选中的 tracked Installation，校验 boundary-set 内的 Markdown 文件不存在指向该 Installation
-   的 link，且不存在基于该 Installation 的 Ref；校验范围使用 boundary-set 过滤，修改内容优先
-   通过 Git 感知方式确定。
-3. 任何冲突或必需数据、路径缺失时，命令报错并不得完成移除。
-4. 从对应的权威状态来源移除选中的 Installation：tracked install 从 `imports.json` 移除，
-   untracked install 从 `runtime.json` 移除。
-5. 移除安装产物对应的实际文件和 install-path；由该 Installation 派生的 `import` BoundaryPoint
+1. 在 RuntimeStore 中依据 `--install-id`、`--untracked` 或 `--auto` 解析移除选择器。指定的
+   `install-id` 不存在或选择器未选中任何 Installation 时，成功 no-op。
+2. 对每个选中的 tracked Installation，使用父需求定义的共享领域工具，以完整 boundary-set 视图扫描
+   当前 doctidex 目录树范围内的 Markdown 文件，找出直接跨越 Installation 的 `import` BoundaryPoint，
+   或跨越其关联 Ref 的 `import-ref` BoundaryPoint 的 link；两类 link 都关联到该 Installation。
+3. 对每个选中的 tracked Installation，校验不存在上述 Markdown link，且不存在 `Ref.install-id` 等于该
+   Installation 的 Ref；Ref 的实际符号链接是否存在不影响该关系校验。
+4. 任何阻塞项存在时，命令以 `installation.remove.blocked` 失败，不删除任何已选择的 Installation、
+   Ref、安装目录或状态记录。
+5. 通过校验后，从对应的权威状态来源移除选中的 Installation：tracked install 从 `imports.json`
+   移除，untracked install 从 `runtime.json` 移除。
+6. 移除安装产物对应的实际文件和 install-path；由该 Installation 派生的 `import` BoundaryPoint
    随状态重建消失。
-6. 提交 RuntimeStore 事务并返回通用成功结果。
+7. 提交 RuntimeStore 事务并返回通用成功结果。
 
 `--auto` 选择所有 untracked install，以及所有未被仓库内文件建立受管理引用的 install；具体
 选择规则以需求 0002-01 为准。
@@ -100,21 +114,27 @@ Installation 或 install-id。
 
 1. 在 RuntimeStore 中按 `install-id` 查找 Installation；若其为 untracked，先将其提升为 tracked。
 2. 根据 Installation 的 install-path 和可选 `src-sub-dir` 确定引用源。
-3. 在 `target-dir` 创建受管理引用（文件系统符号链接），创建 `Ref` 并写入 `import-refs.json`。
+3. 在 `target-dir` 创建受管理引用（文件系统符号链接）。符号链接文本必须是从 `target-dir` 的父目录
+   到已验证 source 的相对路径；创建 `Ref` 并写入 `import-refs.json`。
 4. 由 `target-dir` 派生 `import-ref` 类型的 `BoundaryPoint`。
 5. 提交 RuntimeStore 事务并返回通用成功结果。
 
 ### 4.6 `import unref`
 
-1. 在 RuntimeStore 中按 `target-dir` 查找对应 Ref。
-2. 移除目标位置的受管理引用和 `Ref` 记录。
-3. 提交时更新 `import-refs.json`；对应的 `import-ref` BoundaryPoint 随状态重建消失。
-4. 返回通用成功结果。
+1. 在 RuntimeStore 中按 `target-dir` 查找对应 Ref。若不存在，则成功 no-op，不扫描 Markdown link、
+   不修改文件系统或 RuntimeStore。
+2. 若 Ref 存在，使用共享领域工具扫描当前 doctidex 目录树范围内的 Markdown 文件。若任一 link 的第一个跨越点是
+   该 Ref 的 `import-ref` BoundaryPoint，命令以 `ref.remove.blocked` 失败，不修改符号链接或 Ref 记录。
+3. 移除目标位置的受管理引用和 `Ref` 记录。
+4. 提交时更新 `import-refs.json`；对应的 `import-ref` BoundaryPoint 随状态重建消失。
+5. 返回通用成功结果。
 
 ### 4.7 `import query`
 
 1. 在 RuntimeStore 中读取 tracked 文件与 `runtime.json`，重建完整 Installation 和 Ref 集合。
-2. 按唯一选择器 `install-id`、`install-path`、`ref-path` 或一个或多个 query key 筛选候选项。
+2. 按唯一选择器 `install-id`、`install-path`、`ref-path` 或一个或多个 query key 筛选候选项。按 key
+   查询是该命令私有的用户模糊搜索：任一 Installation key 包含任一输入 key 即匹配；结果先按匹配 key
+   数量、再按精确匹配 key 数量降序排列，同分时保持工作模型稳定顺序。
 3. 查询不修改 CacheStore、RuntimeStore、安装文件或边界集合。
 4. 返回需求 0002-01 定义的 `candidates` 结果；候选项字段和 Ref 内容以该返回结构为准。
 
@@ -129,6 +149,10 @@ Installation 或 install-id。
 | tracked | `install --tracked` 创建，或由 `track`/`ref` 提升 | `track` 再次执行 no-op；`restore` 恢复实际文件；`remove` 移除 |
 | 文件待恢复 | tracked 元信息存在但 install-path 不存在 | `restore` 重新安装文件；元信息保持不变 |
 | 已移除 | `remove` 成功提交 | 不再由 RuntimeStore 恢复或派生边界点 |
+
+branch 或 tag selector 再次安装时，当前远程 commit 与同 selector Installation 的记录相同则保持其
+生命周期状态；不同则删除旧 Installation 并重新进入相应的 untracked 或 tracked 状态。commit selector
+再次安装命中同一 Git URL、同一 commit hash 的 Installation 时保持其生命周期状态。
 
 ### 5.2 `Ref`
 
@@ -161,22 +185,23 @@ Installation 或 install-id。
 `store.transaction.unavailable`。
 
 `import query` 只读取模型。任何选择器没有候选项都是成功结果，返回空 `candidates`；它不使用
-`installation.not-found` 或 `ref.not-found`。
+`installation.not-found`。
 
 ### 6.2 Installation、revision 和来源校验
 
 | 子命令 | 必须成立的前提 | 不满足时的错误 |
 |---|---|---|
-| `install` | Git URL 与 branch、tag、commit 能解析出符合参数组合的 revision。 | revision 无法解析为 `revision.unresolvable`；tag 与显式 commit 不一致为 `revision.inconsistent`。 |
-| `install` | CacheStore 能取得或恢复该 Git URL 对应的 bare repository；安装路径可用于本次 Installation。未指定 `--commit` 时，先同步远程 branch 或 tag 并自动解析 commit hash；若相同 Git URL、未指定 revision 条件已有 Installation 及其 `install-path`，则按覆盖更新处理。 | 缓存不可用为 `cache.repository.unavailable`；显式指定 `--commit` 时，或目标路径已由其他内容或不相容 Installation 占用为 `installation.target.unavailable`。 |
-| `restore` | 指定 `install-id` 存在且为 tracked Installation；恢复使用其已保存的 revision，不重新解析 branch 或 tag。 | Installation 不存在为 `installation.not-found`；状态不是 tracked 为 `installation.tracking-state.invalid`；无法取得对应 bare repository 为 `cache.repository.unavailable`；已保存 revision 无法恢复为 `installation.restore.unavailable`。 |
+| `install` | 必须恰好提供一种 revision selector。branch 或 tag 必须能从远程同步并解析为当前 commit；commit 必须能获取为指定 Git object。 | selector 不存在或无法解析为 `revision.unresolvable`。 |
+| `install` | CacheStore 能取得或恢复该 Git URL 对应的 bare repository；按 Git URL 和 selector 派生的安装路径可用于本次 Installation。 | 缓存不可用为 `cache.repository.unavailable`；目标路径被其他内容或不相容 Installation 占用为 `installation.target.unavailable`。 |
+| `restore` | 指定 `install-id` 存在且为 tracked Installation；恢复严格使用其保存的 `commit-hash`。 | Installation 不存在为 `installation.not-found`；状态不是 tracked 为 `installation.tracking-state.invalid`；无法取得对应 bare repository 为 `cache.repository.unavailable`；已保存 commit 无法恢复为 `installation.restore.unavailable`。 |
 | `track` | 指定 `install-id` 存在。untracked Installation 被提升为 tracked；已 tracked Installation 成功完成 no-op。 | Installation 不存在为 `installation.not-found`。 |
 | `ref` | 指定 `install-id` 存在。若其为 untracked，只有在后续来源与目标校验均可通过时，才在同一提交中提升为 tracked。 | Installation 不存在为 `installation.not-found`。 |
 
-对 `install` 而言，未指定 `--commit` 的自动解析 hash 场景必须先同步远程 branch 或 tag；
-相同 Git URL、未指定 revision 条件已有 Installation 时，即使其 `install-path` 已存在，也覆盖
-其安装文件和 Installation 元信息，不报告 `installation.target.unavailable`。显式指定 `--commit`
-时，或目标路径属于其他内容或不相容 Installation 时，仍须通过目标占用校验。对 `restore` 而言，
+对 `install` 而言，branch 或 tag selector 必须先同步远程引用，并以其当前 commit 与同一 Git URL、
+同一 selector 的 Installation 比较。commit 相同则直接返回；不同则删除可能存在的旧 Installation，
+并在该 selector 的语义化安装路径创建新的 Installation。commit selector 命中同一 Git URL、同一
+commit hash 的 Installation 时直接返回；未命中时获取 Git object 并安装。新建或替换安装时，目标路径
+属于其他内容或不相容 Installation，仍须返回 `installation.target.unavailable`。对 `restore` 而言，
 tracked Installation 缺少实际 `install-path` 是预期的恢复场景，不构成错误；
 但已存在的安装路径不能被本次恢复安全使用时，返回 `installation.target.unavailable`。对 `ref`
 而言，Installation 的 `install-path` 和可选 `src-sub-dir` 必须已经是可用的实际引用源。tracked
@@ -187,18 +212,20 @@ Installation 尚未 restore 时，`ref` 不隐式恢复它，而是返回 `ref.s
 | 子命令 | 必须成立的前提 | 不满足时的错误 |
 |---|---|---|
 | `ref` | `target-dir` 不包含不相容内容，且能够建立指向已验证源的受管符号链接。 | `ref.target.unavailable`。 |
-| `unref` | `target-dir` 有对应 Ref，且目标位置仍是该 Ref 所记录的受管符号链接。 | Ref 记录不存在为 `ref.not-found`；链接不存在、不是预期符号链接或指向错误源为 `ref.target.inconsistent`。 |
-| `remove --install-id` | 指定 Installation 存在。 | `installation.not-found`。 |
+| `unref` | Ref 记录不存在时成功 no-op；存在时，目标位置仍是该 Ref 所记录的受管符号链接，且当前 doctidex 目录树没有 Markdown link 跨越该 Ref 的 `import-ref` BoundaryPoint。 | 链接不存在、不是预期符号链接或指向错误源为 `ref.target.inconsistent`；存在阻塞 link 为 `ref.remove.blocked`。 |
+| `remove --install-id` | 指定 Installation 不存在时成功 no-op。 | 无。 |
 | `remove` 选中的 tracked Installation | 不存在阻塞 link，且不存在关联 Ref。 | `installation.remove.blocked`。 |
 
-移除 tracked Installation 前，工具基于完整 `boundary-set` 视图枚举当前 doctidex 目录树有效范围内的
-Markdown 源文件，不进入任何 BoundaryPoint 后代。对每个本地 link，根据其第一个跨越的
-`import` 类型 BoundaryPoint 关联到 Installation；即使该 tracked Installation 尚未 restore，也
-依据模型中的 `install-id` 和 `install-path` 完成这项逻辑关联，不恢复仓库文件或依赖实际 link
-目标存在。指向该 Installation 的每个 link 都会阻塞移除。
+移除 tracked Installation 或任意 Ref 前，工具通过共享领域工具基于完整 `boundary-set` 视图枚举当前
+doctidex 目录树有效范围内的 Markdown 源文件，不进入任何 BoundaryPoint 后代。对每个本地 link，根据
+其第一个跨越的 BoundaryPoint 关联模型对象：`import` 类型点关联其 Installation，`import-ref` 类型点
+先关联 Ref，再关联该 Ref 的 Installation。即使 Installation 尚未 restore，也依据模型中的
+`install-id`、`install-path` 和 Ref 记录完成关联，不恢复仓库文件或依赖实际 link 目标存在。指向
+tracked Installation 的直接 link、通过其 Ref 的 link，均阻塞该 Installation 删除；指向 Ref 的 link
+阻塞该 Ref 删除。
 
-同时，任何 `Ref.install-id` 等于待移除 Installation 的 Ref 都会阻塞移除，无论其受管符号链接的
-实际工作目录是否存在。若同一命令选择多个 Installation，只要其中任一个存在阻塞项，命令不移除
+同时，任何 `Ref.install-id` 等于待移除 tracked Installation 的 Ref 都会阻塞移除，无论其受管符号链接
+的实际工作目录是否存在。若同一命令选择多个 Installation，只要其中任一个存在阻塞项，命令不移除
 任何选中 Installation，并在一次 `installation.remove.blocked` 错误中返回所有已发现的阻塞项。
 
 该错误的 `details` 使用以下信息：
@@ -223,10 +250,14 @@ Markdown 源文件，不进入任何 BoundaryPoint 后代。对每个本地 link
 ```
 
 `blocked-installations` 非空；其中每项的 `blocking-links` 和 `blocking-ref-target-dirs` 至少一个
-非空。前者中的 `path` 和后者均为仓库内部绝对路径，`line` 是 link 在源 Markdown 文件中的
-起始行号。单个 `--install-id` 选择器的 `subject` 为该 Installation；`--untracked` 或 `--auto`
-选择多个对象时，`subject.kind` 为 `installation-selection`，具体被阻塞对象全部由
-`details.blocked-installations` 表达。
+非空。`blocking-links` 同时包含直接指向 Installation 和经其 Ref 指向的 link；其中 `path` 和
+`blocking-ref-target-dirs` 均为仓库内部绝对路径，`line` 是 link 在源 Markdown 文件中的起始行号。
+单个 `--install-id` 选择器的 `subject` 为该 Installation；`--untracked` 或 `--auto` 选择多个对象时，
+`subject.kind` 为 `installation-selection`，具体被阻塞对象全部由 `details.blocked-installations` 表达。
+
+`unref` 的 `ref.remove.blocked` 使用 `subject.kind: "ref"`、`subject.target-dir` 和
+`details.blocking-links`。`blocking-links` 的每个元素同样包含仓库内部绝对 `path`、`line` 和
+`link-path`；该数组非空时命令不得删除 Ref 记录或其受管符号链接。
 
 `--untracked` 和 `--auto` 的选择语义以需求 0002-01 为准。它们选中的 tracked Installation 同样
 使用本节阻塞检查；untracked Installation 不经过该 tracked 前置校验。物理 `install-path` 已缺失
@@ -235,9 +266,9 @@ Markdown 源文件，不进入任何 BoundaryPoint 后代。对每个本地 link
 ### 6.4 完成移除和查询
 
 通过第 6.3 节校验后，`remove` 才从各自权威状态来源删除 Installation，并移除仍存在的实际安装
-文件。tracked Installation 的实际 `install-path` 已缺失时，跳过文件删除但继续删除元信息和派生
-`import` BoundaryPoint。`unref` 仅在受管符号链接与 Ref 记录一致时才删除两者，避免删除用户已
-替换的路径。
+文件。没有选中 Installation 时，`remove` 成功返回且不修改状态。tracked Installation 的实际
+`install-path` 已缺失时，跳过文件删除但继续删除元信息和派生 `import` BoundaryPoint。`unref` 仅在
+受管符号链接与 Ref 记录一致时才删除两者，避免删除用户已替换的路径。
 
 `query` 的选择器没有匹配记录时不改变 Store 或文件系统，也不构成错误。选择器、路径格式或参数
 互斥关系本身不成立时，仍按 CLI 契约返回 `argument.invalid` 或 `repository-path.invalid`。
@@ -248,8 +279,8 @@ Markdown 源文件，不进入任何 BoundaryPoint 后代。对每个本地 link
 |---|---|---|
 | `import install/restore` | CacheStore、Installation 和 install-path 交互 | 已定义；revision、缓存、tracked 状态与目标冲突的错误映射已明确 |
 | `import track` | untracked 到 tracked 的状态迁移、投影和已 tracked no-op | 已定义 |
-| `import remove` | Installation、Ref、文件和 BoundaryPoint 的移除关系 | tracked Installation 的逻辑 link/Ref 阻塞校验、错误详情和缺失路径处理已定义 |
-| `import ref/unref` | Ref、符号链接和 `import-ref` 边界点 | 来源、目标与一致性前置校验及错误映射已定义 |
+| `import remove` | Installation、Ref、文件和 BoundaryPoint 的移除关系 | Installation 直接/经 Ref 的逻辑 link、关联 Ref 阻塞校验、错误详情和缺失路径处理已定义 |
+| `import ref/unref` | Ref、符号链接和 `import-ref` 边界点 | 来源、目标与一致性前置校验、Ref link 阻塞和错误映射已定义 |
 | `import query` | RuntimeStore 重建、筛选和只读返回 | 已定义 |
 | Installation 生命周期 | 创建、tracked 转换、恢复和移除 | 已定义 |
 
@@ -267,6 +298,7 @@ Markdown 源文件，不进入任何 BoundaryPoint 后代。对每个本地 link
 - [x] tracked Installation 的 link/Ref 移除前置校验和路径冲突处理已明确。
 - [x] 各 import 子命令的 Installation、revision、来源、目标和关系校验及错误处理已展开。
 - [x] 设计与 CLI 契约、工作模型及 Architecture 的一致性已完成审阅。
+- [x] Installation 直接/经 Ref 的 link 阻塞及 Ref 自身的 link 阻塞规则已补充，并与共享领域工具要求对齐。
 
 ## 9. 实施与状态
 
