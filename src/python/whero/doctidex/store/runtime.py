@@ -22,12 +22,19 @@ from .files import (
 
 STATE_FILES = ("boundary-set.json", "imports.json", "import-refs.json", "runtime.json")
 JournalState = Literal["prepared", "publishing", "committed"]
-RecoveryOutcome = Literal["none", "committed", "rolled-back"]
 _UNCOMMITTED_SHA256 = "0" * 64
 
 
 class RecoveryRequired(StoreFailure):
     """A journal contains state that cannot be safely restored automatically."""
+
+
+class RepairRequired(RuntimeError):
+    """Signal that a normal transaction found residual RuntimeStore journals."""
+
+    def __init__(self, transaction_ids: tuple[str, ...]) -> None:
+        super().__init__("RuntimeStore repair is required before the transaction can start")
+        self.transaction_ids = transaction_ids
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,19 +114,27 @@ class RuntimeStore:
 
         return RuntimeReadOnlyTransaction(self)
 
+    def diagnostic_transaction(self) -> RuntimeDiagnosticTransaction:
+        """Return a locked read-only snapshot without journal recovery.
+
+        ``validate`` and the existing-workspace branch of ``init`` need to observe a
+        pending transaction as evidence, rather than silently recovering it.  This
+        transaction deliberately has no publication capability and never changes a
+        journal, state file, or cache record.
+        """
+
+        return RuntimeDiagnosticTransaction(self)
+
     def write_transaction(self) -> RuntimeWriteTransaction:
         """Return a write transaction that journals its existence on entry."""
 
         return RuntimeWriteTransaction(self)
 
     def read_state(self) -> RuntimeState:
-        """Read a locked state snapshot without recovering pending transactions."""
+        """Read a state snapshot through the normal residual-journal check."""
 
-        self._lock.acquire()
-        try:
-            return self._load_state()
-        finally:
-            self._lock.release()
+        with self.read_only_transaction() as transaction:
+            return transaction.state
 
     def _load_state(self) -> RuntimeState:
         documents: dict[str, object] = {}
@@ -138,70 +153,30 @@ class RuntimeStore:
     def _snapshot_hashes(self) -> dict[str, str | None]:
         return {name: file_sha256(self.workspace_path / name) for name in STATE_FILES}
 
-    def _recover_pending(self) -> RecoveryOutcome:
+    def _pending_journals(self) -> tuple[TransactionJournal, ...]:
         if not self.transactions_path.exists():
-            return "none"
+            return ()
         try:
             directories = sorted(path for path in self.transactions_path.iterdir() if path.is_dir())
         except OSError as exc:
             raise StoreFailure(store="runtime", phase="recovery", state_path=self.transactions_path) from exc
+        return tuple(_load_journal(directory / "journal.json") for directory in directories)
 
-        outcome: RecoveryOutcome = "none"
-        for directory in directories:
-            journal_path = directory / "journal.json"
-            journal = _load_journal(journal_path)
-            observed = [_observe_entry(self.workspace_path, entry) for entry in journal.entries]
-            if any(state == "unknown" for state in observed):
-                raise RecoveryRequired(
-                    store="runtime",
-                    phase="recovery",
-                    state_path=journal_path,
-                    transaction_id=journal.transaction_id,
-                )
-            if all(state == "new" for state in observed):
-                self._clean_journal(directory)
-                outcome = "committed"
-                continue
-            if all(state == "old" for state in observed):
-                self._clean_journal(directory)
-                outcome = "rolled-back"
-                continue
-            self._restore_old_state(directory, journal)
-            self._clean_journal(directory)
-            outcome = "rolled-back"
-        return outcome
+    def _inspect_pending_journals(self) -> tuple[TransactionJournal, ...]:
+        """Read pending journals without changing them for diagnostic callers."""
 
-    def _restore_old_state(self, directory: Path, journal: TransactionJournal) -> None:
-        for entry in journal.entries:
-            target = self.workspace_path / entry.target
-            if entry.old_sha256 is None:
-                try:
-                    target.unlink(missing_ok=True)
-                    fsync_directory(target.parent, store="runtime", phase="recovery")
-                except OSError as exc:
-                    raise StoreFailure(
+        journals = self._pending_journals()
+        for journal in journals:
+            if journal.state == "committed":
+                observed = tuple(_observe_entry(self.workspace_path, entry) for entry in journal.entries)
+                if not all(state == "new" for state in observed):
+                    raise RecoveryRequired(
                         store="runtime",
-                        phase="recovery",
-                        state_path=target,
+                        phase="diagnostic-read",
+                        state_path=self.transactions_path / journal.transaction_id / "journal.json",
                         transaction_id=journal.transaction_id,
-                    ) from exc
-                continue
-            backup = directory / entry.backup
-            if file_sha256(backup) != entry.old_sha256:
-                raise RecoveryRequired(
-                    store="runtime",
-                    phase="recovery",
-                    state_path=backup,
-                    transaction_id=journal.transaction_id,
-                )
-            atomic_write_bytes(
-                target,
-                read_bytes(backup, store="runtime", phase="recovery"),
-                store="runtime",
-                phase="recovery",
-            )
-        # Do not rehash targets here. The recovery lock excludes another doctidex-git writer, while
-        # one extra check cannot make arbitrary external edits safe or rule out a later race.
+                    )
+        return journals
 
     def _clean_journal(self, directory: Path, *, phase: str = "recovery") -> None:
         try:
@@ -296,7 +271,6 @@ class RuntimeTransaction:
     def __init__(self, store: RuntimeStore) -> None:
         self.store = store
         self.state = RuntimeState.empty()
-        self.recovery: RecoveryOutcome = "none"
         self._snapshot_hashes: dict[str, str | None] = {}
         self._installations_by_id: dict[str, Installation] = {}
         self._installations_by_path: dict[str, Installation] = {}
@@ -313,7 +287,9 @@ class RuntimeTransaction:
     def __enter__(self) -> Self:
         self.store._lock.acquire()
         try:
-            self.recovery = self.store._recover_pending()
+            pending = self.store._pending_journals()
+            if pending:
+                raise RepairRequired(tuple(journal.transaction_id for journal in pending))
             self._set_state(self.store._load_state())
             self._snapshot_hashes = self.store._snapshot_hashes()
             self._after_enter()
@@ -369,6 +345,33 @@ class RuntimeReadOnlyTransaction(RuntimeTransaction):
     """A RuntimeStore snapshot that never creates or publishes a transaction journal."""
 
 
+class RuntimeDiagnosticTransaction(RuntimeTransaction):
+    """A locked snapshot that reports pending journals without recovering them."""
+
+    def __init__(self, store: RuntimeStore) -> None:
+        super().__init__(store)
+        self.pending_journals: tuple[TransactionJournal, ...] = ()
+
+    def __enter__(self) -> Self:
+        self.store._lock.acquire()
+        try:
+            self.pending_journals = self.store._inspect_pending_journals()
+            # A prepared or publishing journal must short-circuit user-visible
+            # validation before a potentially inconsistent projection is read.
+            if not any(journal.state in {"prepared", "publishing"} for journal in self.pending_journals):
+                self._set_state(self.store._load_state())
+        except Exception:
+            self.store._lock.release()
+            raise
+        return self
+
+    def reload_state(self) -> None:
+        """Refresh the snapshot after repair has explicitly reconciled pending journals."""
+
+        self._set_state(self.store._load_state())
+        self._snapshot_hashes = self.store._snapshot_hashes()
+
+
 class RuntimeWriteTransaction(RuntimeTransaction):
     """A RuntimeStore transaction whose existence is journaled as soon as it opens."""
 
@@ -416,9 +419,7 @@ class RuntimeWriteTransaction(RuntimeTransaction):
         self.replace_state(
             RuntimeState(
                 custom_boundary_points=(
-                    custom_boundary_points
-                    if custom_boundary_points is not None
-                    else self.state.custom_boundary_points
+                    custom_boundary_points if custom_boundary_points is not None else self.state.custom_boundary_points
                 ),
                 installations=installations if installations is not None else self.state.installations,
                 refs=refs if refs is not None else self.state.refs,

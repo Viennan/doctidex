@@ -76,11 +76,11 @@ def test_argument_error_context_does_not_treat_an_unknown_value_as_a_subcommand(
     assert result.payload["message"]["context"]["command"] == "repair"
 
 
-def test_registered_command_has_explicit_phase_boundary() -> None:
+def test_repair_resolves_its_git_root_before_accessing_the_model() -> None:
     result = _run(["--repos-path", "/repo", "repair"])
 
     assert result.code == 2
-    assert result.payload["message"]["code"] == "command.phase-unavailable"
+    assert result.payload["message"]["code"] == "git-root.unresolved"
     assert result.payload["message"]["context"] == {"command": "repair", "repos-path": "/repo"}
 
 
@@ -94,9 +94,14 @@ def test_registered_command_has_explicit_phase_boundary() -> None:
 def test_every_command_cluster_reaches_the_dispatch_boundary(argv: list[str], command: str) -> None:
     result = _run(argv)
 
-    assert result.code == 2
-    assert result.payload["message"]["code"] == "command.phase-unavailable"
-    assert result.payload["message"]["context"]["command"] == command
+    if command == "validate":
+        assert result.code == 1
+        assert result.payload["status"] == "ok"
+        assert result.payload["valid"] is False
+    else:
+        assert result.code == 2
+        assert result.payload["message"]["code"] == "work-model.uninitialized"
+        assert result.payload["message"]["context"]["command"] == command
 
 
 def test_worktree_dispatches_to_its_implemented_workflow() -> None:

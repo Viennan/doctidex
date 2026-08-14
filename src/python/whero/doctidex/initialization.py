@@ -16,6 +16,7 @@ WORKSPACE_NAME = ".doctidex-git"
 WORKSPACE_ARTIFACTS = ("config.toml", "boundary-set.json", "imports.json", "import-refs.json", "runtime.json")
 RUNTIME_IGNORE_PATHS = (
     "/.doctidex-git/.lock",
+    "/.doctidex-git/.command.lock",
     "/.doctidex-git/runtime.json",
     "/.doctidex-git/.transactions/",
     "/.doctidex-git/imports/",

@@ -41,6 +41,50 @@ Git object 时，通过 `GitCache` 提供的只读或写事务访问缓存。`Gi
 install-path 的 Git worktree 操作都在同一个 GitCache 事务内完成；需要同时修改 RuntimeStore 时，
 在该 GitCache 事务内再打开 RuntimeStore 写事务，锁顺序固定为 `GitCache -> RuntimeStore`。
 
+`import install` 使用 branch 或 tag 时，在进入其 RuntimeStore 写操作前，将本次选择解析为一个具体
+`commit-hash`。如果该 RuntimeStore 操作报告需求 0002-08 的 `repair-required`，命令协调器在当前
+GitCache Write 事务内运行 repair 后重试该操作。若当前为 GitCache ReadOnly 事务，必须先退出后再以
+GitCache Write 事务运行 repair，随后重新取得缓存。无论哪种缓存路径，重试复用已解析的 `commit-hash`，
+不得重新同步远程或重新解析 branch/tag。`--commit` 直接提供固定 hash；`restore` 固定使用 Installation 已记录的
+`commit-hash`，两者同样不发生重新选择。
+
+### 3.1 install-path 统一准备流程
+
+`import install` 和 `import restore` 对目标 `install-path` 使用同一套准备流程。该流程在持有当前
+GitCache 事务并已确定目标 Git URL、目标 commit 后执行；它负责判断目标路径的既有物理状态和 Git
+worktree 状态，并返回“可直接复用”或“需要重新创建”的结果。两个命令不得分别实现一套路径占用和
+worktree 判断逻辑。
+
+1. 目标路径不存在时，返回“新建”结果，由调用方创建目标 commit 的 Git worktree。
+2. 目标路径存在时，先判断其是否为 Git 控制的 worktree，并读取该 worktree 对应的 Git URL。
+3. 目标路径不受 Git 控制时，按不完整或未完成的安装状态处理：删除该路径，再返回“重新创建”结果。
+   该分支包含空目录以及已留下但尚未成功建立 Git worktree 的残缺目录。
+4. 目标路径受 Git 控制但对应 Git URL 与目标 URL 不同，返回
+   `installation.target.unavailable`；不得删除或覆盖该 worktree。
+5. 目标路径受 Git 控制且对应 Git URL 相同时，继续检查 worktree 是否处于 detached 状态，以及是否
+   没有新增改动：
+   - 两项均满足时，返回“复用”结果；调用方在现有 worktree 上切换到目标 commit，继续完成本次
+     Installation 操作，不删除并重新创建目录。
+   - 任一项不满足时，删除现有 worktree，再返回“重新创建”结果。
+6. “新增改动”以 Git worktree 当前工作状态为准；存在未提交内容或其他使工作区不再干净的状态时，
+   不得复用该 worktree。
+7. 对“重新创建”结果，调用方仅在既有 worktree 已被移除后创建目标 commit 的新 worktree；对“复用”
+   结果，不重复创建同一路径的 worktree。
+
+该流程只决定既有 install-path 的物理处理方式，不改变 `install` 的 revision selector 解析、
+`restore` 对已记录 commit 的严格使用、Installation 元信息更新或 Ref 关系保留规则。
+
+### 3.2 Git worktree 目标 commit 准备
+
+`install` 创建 install-path 的 Git worktree，以及 `restore` 创建或复用 install-path 前，均遵守
+[需求 0002-08](08-store-transactions.md) 定义的目标 commit 可用性流程。`install` 的 branch、tag 或
+commit selector 解析会取得目标 object；`restore` 则必须先检查 bare repository 是否已有 Installation
+记录的 `commit-hash`，缺失时仅按该 hash 获取并复验，不重新同步或解析 Installation 的 branch/tag。
+
+目标 commit 无法取得或复验时，`install` 按 revision selector 的 `revision.unresolvable` 失败；`restore`
+使用 `installation.restore.unavailable`，并提供 Installation 的 `install-id`、`install-path` 与保存的
+`commit-hash`。不得将此情形转换为 install-path 路径占用或 worktree 创建冲突。
+
 ## 4. 命令工作流
 
 ### 4.1 `import install`
@@ -52,14 +96,17 @@ install-path 的 Git worktree 操作都在同一个 GitCache 事务内完成；�
    指定 branch，tag 安装先从远程同步指定 tag，并分别解析当前指向的 commit hash；commit 安装按给定
    hash 获取所需 Git object。
 3. 对 branch 或 tag selector，若已有同一 Git URL、同一 selector 且记录 commit hash 与当前 commit
-   相同的 Installation，直接成功返回。当前 commit 不同时，删除可能存在的旧 Installation，再按最新
-   状态创建新的 Installation。对 commit selector，若已有同一 Git URL、同一 commit hash 的
-   Installation，直接成功返回；否则继续安装。
+   相同的 Installation，保留该 Installation 元信息；当前 commit 不同时，后续以新 Installation 替换
+   旧记录。对 commit selector，若已有同一 Git URL、同一 commit hash 的 Installation，同样保留其
+   元信息；否则继续安装。上述元信息复用不跳过第 3.1 节的 install-path 准备流程。
 4. 在仍持有 GitCache 事务时打开 RuntimeStore 写事务，根据 Git URL 和 selector 派生语义化
-   `install-path`，并使用 bare Git repository 在该路径创建指定 commit 的 Git worktree。路径位于
-   `/.doctidex-git/imports/<Domain>/<Name>/<selector-value>`；branch 或 tag 值中的 `/` 保留为路径层级。
-5. 创建新的 `Installation`，填充 tracked 状态、Git URL、最终 commit hash、selector 对应的 branch 或
-   tag、`install-id`、`install-path` 和 query keys。
+   `install-path`，并调用第 3.1 节的统一 install-path 准备流程。若结果为“复用”，在现有
+   worktree 上切换到指定 commit；若结果为“新建”或“重新创建”，使用 bare Git repository 在该路径
+   创建指定 commit 的 Git worktree。路径位于 `/.doctidex-git/imports/<Domain>/<Name>/<selector-value>`；
+   branch 或 tag 值中的 `/` 保留为路径层级。
+5. 若第 3 步保留既有 Installation，则直接返回该记录；否则创建新的 Installation，填充 tracked
+   状态、Git URL、最终 commit hash、selector 对应的 branch 或 tag、`install-id`、`install-path` 和
+   query keys。统一 install-path 流程不改变 Installation 元信息的保留或替换语义。
 6. 将 tracked install 的元信息写入 `imports.json`，untracked install
    写入 `runtime.json`。
 7. 由 `install-path` 派生 `import` 类型的 `BoundaryPoint`，不在边界文件中另行记录。
@@ -71,8 +118,10 @@ install-path 的 Git worktree 操作都在同一个 GitCache 事务内完成；�
    install 不适用本命令。
 2. 按 Installation 中保存的 Git URL 选择 GitCache ReadOnly 或 Write 事务。若 ReadOnly 未命中，
    必须先退出并在 Write 事务中加载；严格使用记录的 `commit-hash`，不重新同步或解析 branch、tag。
-3. 在持有 GitCache 事务时打开 RuntimeStore 写事务，重新读取 Installation，并按已记录的
-   install-path 重新安装仓库文件；Installation 元信息保持不变。
+3. 在持有 GitCache 事务时打开 RuntimeStore 写事务，重新读取 Installation，按第 3.2 节确保其记录的
+   `commit-hash` 在 bare repository 中可用，再调用第 3.1 节的统一 install-path 准备流程。目标 commit
+   使用已记录的 `commit-hash`：若结果为“复用”，在现有 worktree 上切换到该 commit；若结果为“新建”
+   或“重新创建”，按该 commit 重新创建 install-path 对应的 worktree。Installation 元信息保持不变。
 4. 重新由 install-path 派生 `import` BoundaryPoint，并提交 RuntimeStore 事务。
 5. 返回与 `import install` 一致的安装结果。
 
@@ -192,18 +241,19 @@ branch 或 tag selector 再次安装时，当前远程 commit 与同 selector In
 | 子命令 | 必须成立的前提 | 不满足时的错误 |
 |---|---|---|
 | `install` | 必须恰好提供一种 revision selector。branch 或 tag 必须能从远程同步并解析为当前 commit；commit 必须能获取为指定 Git object。 | selector 不存在或无法解析为 `revision.unresolvable`。 |
-| `install` | CacheStore 能取得或恢复该 Git URL 对应的 bare repository；按 Git URL 和 selector 派生的安装路径可用于本次 Installation。 | 缓存不可用为 `cache.repository.unavailable`；目标路径被其他内容或不相容 Installation 占用为 `installation.target.unavailable`。 |
-| `restore` | 指定 `install-id` 存在且为 tracked Installation；恢复严格使用其保存的 `commit-hash`。 | Installation 不存在为 `installation.not-found`；状态不是 tracked 为 `installation.tracking-state.invalid`；无法取得对应 bare repository 为 `cache.repository.unavailable`；已保存 commit 无法恢复为 `installation.restore.unavailable`。 |
+| `install` | CacheStore 能取得或恢复该 Git URL 对应的 bare repository；按 Git URL 和 selector 派生的安装路径可用于本次 Installation；既有 install-path 按第 3.1 节统一流程可复用、移除重建或明确拒绝。 | 缓存不可用为 `cache.repository.unavailable`；既有路径由不同 Git URL 控制为 `installation.target.unavailable`；统一流程无法完成所选复用或重建操作时，使用对应的 Installation 目标错误。 |
+| `restore` | 指定 `install-id` 存在且为 tracked Installation；恢复严格使用其保存的 `commit-hash`，并按第 3.2 节确保 bare repository 包含该 commit；既有 install-path 按第 3.1 节统一流程可复用、移除重建或明确拒绝。 | Installation 不存在为 `installation.not-found`；状态不是 tracked 为 `installation.tracking-state.invalid`；无法取得对应 bare repository 为 `cache.repository.unavailable`；保存的 commit 无法获取或复验、不同 Git URL 控制既有路径或统一流程无法完成目标操作为 `installation.restore.unavailable`。 |
 | `track` | 指定 `install-id` 存在。untracked Installation 被提升为 tracked；已 tracked Installation 成功完成 no-op。 | Installation 不存在为 `installation.not-found`。 |
 | `ref` | 指定 `install-id` 存在。若其为 untracked，只有在后续来源与目标校验均可通过时，才在同一提交中提升为 tracked。 | Installation 不存在为 `installation.not-found`。 |
 
 对 `install` 而言，branch 或 tag selector 必须先同步远程引用，并以其当前 commit 与同一 Git URL、
-同一 selector 的 Installation 比较。commit 相同则直接返回；不同则删除可能存在的旧 Installation，
-并在该 selector 的语义化安装路径创建新的 Installation。commit selector 命中同一 Git URL、同一
-commit hash 的 Installation 时直接返回；未命中时获取 Git object 并安装。新建或替换安装时，目标路径
-属于其他内容或不相容 Installation，仍须返回 `installation.target.unavailable`。对 `restore` 而言，
-tracked Installation 缺少实际 `install-path` 是预期的恢复场景，不构成错误；
-但已存在的安装路径不能被本次恢复安全使用时，返回 `installation.target.unavailable`。对 `ref`
+同一 selector 的 Installation 比较。commit 相同时保留 Installation 元信息；不同则以新的 Installation
+替换旧记录。commit selector 命中同一 Git URL、同一 commit hash 的 Installation 时同样保留其元信息；
+未命中时获取 Git object 并安装。无论 Installation 元信息是否复用，目标路径统一按第 3.1 节判断：
+非 Git 控制路径删除后重建；不同 Git URL 控制的 worktree 返回
+`installation.target.unavailable`；同源且 detached、无新增改动的 worktree 复用并切换到目标 commit，
+其他同源 worktree 删除后重建。对 `restore` 而言，tracked Installation 缺少实际 `install-path` 是
+预期的恢复场景，不构成错误；已有路径同样按第 3.1 节处理。对 `ref`
 而言，Installation 的 `install-path` 和可选 `src-sub-dir` 必须已经是可用的实际引用源。tracked
 Installation 尚未 restore 时，`ref` 不隐式恢复它，而是返回 `ref.source.unavailable`。
 
@@ -297,6 +347,8 @@ tracked Installation 的直接 link、通过其 Ref 的 link，均阻塞该 Inst
 - [x] `restore` 对 tracked 元信息与实际安装文件的关系已记录。
 - [x] tracked Installation 的 link/Ref 移除前置校验和路径冲突处理已明确。
 - [x] 各 import 子命令的 Installation、revision、来源、目标和关系校验及错误处理已展开。
+- [x] `install` 与 `restore` 对 install-path 的 Git worktree 识别、同源复用、异源拒绝和重建规则已统一记录。
+- [x] Git worktree 创建或切换前的目标 commit 检查、按 hash 获取及命令簇错误转换规则已与共享缓存事务设计对齐。
 - [x] 设计与 CLI 契约、工作模型及 Architecture 的一致性已完成审阅。
 - [x] Installation 直接/经 Ref 的 link 阻塞及 Ref 自身的 link 阻塞规则已补充，并与共享领域工具要求对齐。
 

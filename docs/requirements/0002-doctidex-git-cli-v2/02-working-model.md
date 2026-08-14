@@ -211,6 +211,7 @@ doctidex-git 在目标 Git root 中使用 `.doctidex-git/` 作为工作空间：
 | `import-refs.json` | 记录 import refs。 |
 | `boundary-set.json` | 记录 `runtime.json` 中类型为 `custom` 的 `BoundaryPoint`。 |
 | `runtime.json` | 记录未投影到 tracked 文件的运行时状态，例如 untracked import install 和 worktree；必须被 Git ignore。 |
+| `.command.lock` | 命令级协调锁，覆盖一个 CLI 命令的残留事务检测、释放当前 RuntimeStore 锁后的 repair、RuntimeStore 操作重试及业务工作流；必须被 Git ignore。 |
 | `.transactions/` | 暂存 RuntimeStore 事务的 journal、stage 和 backup；必须被 Git ignore，按需创建。 |
 | `imports/` | 用于创建 `install-path`；必须被 Git ignore，并加入 `boundary-set`。 |
 | `worktrees/` | 默认用于创建 worktree `work-path` 的空间；必须被 Git ignore，并加入 `boundary-set`。 |
@@ -279,15 +280,20 @@ cache-path = 'cache'
 
 `RuntimeStore` 通过区分只读和写入的事务上下文访问数据：
 
-- 两类事务创建时都获取锁，读取 `runtime.json` 及各 tracked 文件，并重建完整的内存运行时数据；
+- 普通只读和写 Transaction 在 `__enter__()` 的准备阶段获取锁，并只检查是否存在残留 journal。没有
+  残留时才读取 `runtime.json` 及各 tracked 文件、重建完整内存状态；存在残留时释放 RuntimeStore 锁，
+  并报告内部 `repair-required` 信号。命令级协调器运行 repair 后重试触发信号的 RuntimeStore 操作，最多
+  三次；诊断读取 Transaction 不参与此协调流程；
 - Transaction 持有完整状态、维护 Installation、Ref、Worktree 和 BoundaryPoint 的索引，并负责锁、
-  恢复、journal 与持久化。索引是 Transaction 的内部数据结构，不直接构成命令簇查询 API；每次状态
-  变更后必须立即与当前状态一致；
+  残留 journal 检测、业务 journal 与持久化。残留 journal 的分类、JSON 恢复、物理修复和清理由 repair
+  工作流负责。索引是 Transaction 的内部数据结构，不直接构成命令簇查询 API；每次状态变更后必须
+  立即与当前状态一致；
 - `RuntimeModelView` 是依赖 Transaction 的更高层模型抽象，而不是 Transaction 的成员。命令簇在
   Transaction 上下文内显式创建 View；View 在 Transaction 索引之上提供公共领域查询与关联逻辑，命令
   簇不得为常规查询自行遍历状态集合或读取 Transaction 的内部索引；
 - 只读 Transaction 不创建事务目录；其上下文中只能使用只读 `RuntimeModelView`；
-- 写 Transaction 在进入上下文完成恢复和快照后立即创建事务目录及初始 journal。它的
+- 写 Transaction 仅在完成残留 journal 检测、必要 repair 委派和快照后立即创建事务目录及初始 journal。
+  它的
   `RuntimeWriteModelView` 在公共查询基础上提供标准领域记录的新增、更新、替换和删除，并将集合状态
   变更委托给 Transaction。调用方只表达领域记录与字段变化，不手动重建完整 `RuntimeState` 或复制未
   变化的记录字段；当一个命令的多个同类记录构成一个逻辑变更时，写 View 必须提供批量接口并一次提交

@@ -21,6 +21,10 @@ worktree 与工作模型。诊断必须描述可理解的模型状态、对象�
 本子需求落实需求 0002-01 的 `validate` 返回结构、通用错误返回和 `work-model.valid` 诊断。
 它不设计自动修复、缓存维护、网络可达性探测或新的命令。
 
+`validate` 只检查和报告问题，绝不调用或隐式执行 `repair`。普通 RuntimeStore 事务发现残留 journal 后
+释放当前锁并报告内部 `repair-required` 信号；命令级协调器运行 repair 后重试发生该信号的 RuntimeStore
+操作。具体循环和停止条件以需求 0002-08 第 5.4 节为准。
+
 ## 2. 设计依据
 
 - `validate` 的参数、返回结构、退出状态和命令错误以 [需求 0002-01](01-cli-arguments-results.md)
@@ -70,6 +74,14 @@ Worktree 的 RuntimeStore 投影、路径保护和物理登记是否有效仍属
 权限、I/O 或目录遍历问题使工具无法获得足以完成本次范围扫描的输入时，才使用
 `validation.scope.unavailable` 或 `validation.scan.unavailable`。
 
+显式 `doctidex-git validate` 使用专用诊断读取事务：只获取 RuntimeStore 锁和读取快照，不恢复、创建、
+重写或清理 journal，也不修改 CacheStore。它执行本需求的完整范围校验，并向用户返回 `valid` 与
+`diagnostics`。已有工作空间上的 `init` 可以复用其中的模型诊断规则，但不构成另一种 `validate` 执行
+形态，也不触发 repair。
+
+命令簇还可以在自己的工作流中执行解决当前操作所需的局部校验，例如 remove 前的 link 或引用
+阻塞检查；这些校验不等同于对外执行完整的 `validate`，也不得因此修改工作模型。
+
 ## 4. 校验工作流
 
 ### 4.1 建立范围和诊断快照
@@ -78,12 +90,14 @@ Worktree 的 RuntimeStore 投影、路径保护和物理登记是否有效仍属
 2. 规范化 `--subdir`。路径不在 Git root 内、为 `/.doctidex-git` 或其子目录、不是目录或不可读取时，返回
    `validation.scope.unavailable`；`details.reason` 依次使用 `outside-repository`、
    `workspace-internal`、`not-directory` 或 `unreadable`。
-3. 以只读诊断模式检查 `.doctidex-git/.transactions/`，目录不存在时视为空。该模式不得创建、修复、
-   重写或删除任何文件，也不得修改 CacheStore。若发现一个或多个状态为 `prepared` 或 `publishing`
+3. 以专用诊断读取事务检查 `.doctidex-git/.transactions/`，目录不存在时视为空。该事务只获取锁和
+   读取快照，不得恢复、创建、修复、重写或删除任何文件，也不得修改 CacheStore；不得改用会自动
+   恢复 journal 的普通 `read_only_transaction()`。若发现一个或多个状态为 `prepared` 或 `publishing`
    且可读取的 RuntimeStore journal，则只返回 `transaction.recovery.required` 违规，设置
    `work-model.valid.details.content-scan: "skipped"`、`valid: false`，并立即结束本次校验；不得继续
-   执行后续模型、根入口、Markdown 或 link 检查。状态为 `committed` 的 journal 仅待后续事务清理，
-   不单独构成该违规。journal 无法读取或无法判定状态时，返回 `store.transaction.unavailable`。
+   执行后续模型、根入口、Markdown 或 link 检查。仅状态为 `committed` 且所有目标均为 `new-sha256`
+   的 journal 已代表完成的业务提交，可由后续 repair 清理，不单独构成该违规。journal 无法读取或无法判定状态时，返回
+   `store.transaction.unavailable`。
 4. 未发现未完成事务时，读取 tracked 投影和 `runtime.json`，对可读取的状态数据逐项完成结构和
    一致性检查，并从有效记录重建可用的 Installation、Ref、Worktree 和 BoundaryPoint 视图。状态
    文件缺失或格式不合法时记录模型违规，而不是暴露原始解析器信息。
@@ -97,7 +111,7 @@ Worktree 的 RuntimeStore 投影、路径保护和物理登记是否有效仍属
 ### 4.2 检查目录树内容
 
 无论 BoundaryPoint 视图是否完整，均检查 Git root 的 `/index.md` 是否满足 doctidex 根入口要求。
-在完整 BoundaryPoint 视图可用时，继续执行以下步骤：
+在完整 BoundaryPoint 视图可用时，显式校验继续执行以下步骤：
 
 1. 使用父需求定义的共享领域工具从 `scope.subdir` 枚举 Markdown 文件；遇到 BoundaryPoint 时不进入
    该节点的后代目录。
@@ -138,7 +152,7 @@ Architecture 没有要求验证 Markdown anchor 是否存在，也没有要求�
 `details.violations` 中聚合多个模型违规。
 
 `validate` 不提交 RuntimeStore 或 CacheStore 事务，不改变 Git worktree、受管理引用、
-`.gitignore`、状态文件或目录树内容。
+`.gitignore`、状态文件或目录树内容。repair 是独立的写入步骤，不属于 validate 的行为。
 
 ## 5. `work-model.valid` 违规结构
 
@@ -177,8 +191,8 @@ Architecture 没有要求验证 Markdown anchor 是否存在，也没有要求�
 |---|---|---|
 | `workspace.uninitialized` | `.doctidex-git/` 不存在，因而没有仓库级工作模型。 | `required-command: "init"` |
 | `workspace.artifact.missing` | 工作空间存在，但 `config.toml`、任一 tracked 状态文件或 `runtime.json` 缺失。 | `required-artifact` |
-| `workspace.runtime-protection.invalid` | `runtime.json`、`.transactions/`、`imports/` 或 `worktrees/` 未受 Git ignore 保护。 | `artifact-path`、`required-protection: "git-ignore"` |
-| `transaction.recovery.required` | `.transactions/` 中存在状态为 `prepared` 或 `publishing` 且可读取的 RuntimeStore journal。`validate` 仅报告该事务并立即结束，不执行恢复或其他校验。 | `transaction-id`、`journal-path`、`state` |
+| `workspace.runtime-protection.invalid` | `.command.lock`、`runtime.json`、`.transactions/`、`imports/` 或 `worktrees/` 未受 Git ignore 保护。 | `artifact-path`、`required-protection: "git-ignore"` |
+| `transaction.recovery.required` | `.transactions/` 中存在状态为 `prepared` 或 `publishing` 且可读取的 RuntimeStore journal。显式 `validate` 仅报告该事务并立即结束，不执行恢复或其他校验。 | `transaction-id`、`journal-path`、`state` |
 | `state-file.malformed` | 某个状态文件不是其定义的 JSON 结构，或无法转换为该文件负责的集合。 | `state-file`、`expected-shape` |
 | `state-record.invalid` | 状态文件中的记录缺少必需字段、字段类型错误，或路径/ID 不符合对应领域模型。 | `state-file`、`record-kind`、`record-index`、`invalid-fields` |
 | `installation.projection.misplaced` | tracked Installation 出现在 `runtime.json`，或 untracked Installation 出现在 `imports.json`。 | `install-id`、`actual-state-file`、`expected-state-file` |
@@ -239,13 +253,13 @@ Ref 指向该安装产物，缺失的安装目录也不产生 `ref.source.unavai
 
 | 调用方或模型 | 与本命令的关系 |
 |---|---|
-| `init` | 已有工作空间时内部采用本需求的工作模型检查。模型无效时，`init` 返回 `work-model.invalid`，其 `details.violations` 与本需求第 5 节完全一致；不会以 `validate` 的 `valid` 返回替代 `init` 的命令结果。 |
-| 非 `validate` 命令 | 在不能安全重建模型时，使用 `work-model.invalid` 返回相同违规数组；工作模型无效时不继续变更 Installation、Ref、BoundaryPoint 或 Worktree。 |
+| `init` | 已有工作空间时以专用诊断读取事务采用本需求的工作模型检查。模型无效时，`init` 返回 `work-model.invalid`，其 `details.violations` 与本需求第 5 节完全一致；不会以 `validate` 的 `valid` 返回替代 `init` 的命令结果，也不触发 repair。 |
+| 非 `validate` 命令 | 可以执行各自所需的局部校验。在不能安全重建模型时，使用 `work-model.invalid` 返回相同违规数组；工作模型无效时不继续变更 Installation、Ref、BoundaryPoint 或 Worktree。若普通 RuntimeStore 事务检测到残留 journal，按需求 0002-08 第 5.4 节释放锁并报告 `repair-required`，由命令协调器运行 repair 后重试对应的 RuntimeStore 操作；只有重试能建立无残留事务的状态快照时才进入该操作的业务工作流。 |
 | `import remove` | 仍按需求 0002-05 在修改前检查实际阻塞它的 Markdown link 和 Ref，并以 `installation.remove.blocked` 返回；该动作前置检查不依赖用户先执行 `validate`。 |
 | `import unref` | 与 `import remove` 使用同一 BoundaryPoint/link 关联语义；Markdown link 跨越待移除 Ref 的 `import-ref` BoundaryPoint 时，以 `ref.remove.blocked` 返回。 |
 | tracked Installation | `validate` 允许安装文件不存在，也不会执行 `import restore`。link 首次跨越 import 或 import-ref BoundaryPoint 时，若其 Installation 正处于待恢复状态，仅校验关联 `install-id` 的模型有效性和既有 tracked 约束，不检查物理 link 目标。 |
 | CacheStore | CacheStore 的状态与 bare repository 不一致由其既有恢复规则处理，不作为当前 Git root 的 `work-model.valid` 违规。缓存不可用时由执行该操作的命令报告 `cache.repository.unavailable`。 |
-| `repair` | 负责按照 JSON 描述修复物理安装、受管理引用、Worktree、派生 BoundaryPoint 和 Git ignore；`validate` 在发现待恢复事务时不调用 `repair`，而是仅报告事务并退出。 |
+| `repair` | 负责按照 JSON 描述修复物理安装、受管理引用、Worktree、派生 BoundaryPoint 和 Git ignore，并处理残留 RuntimeStore journal；它不处理 Markdown link。`validate` 在发现待恢复事务时仅报告事务并退出；普通事务仅检测残留事务并报告 `repair-required`，由命令协调器运行 repair，不先执行或消费 `validate` 的诊断。 |
 
 `validate` 只报告问题，不修复状态。因此诊断不会自行改变 Installation 生命周期、Ref 生命周期、
 BoundaryPoint 派生结果或 Worktree 生命周期。

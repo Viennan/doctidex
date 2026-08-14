@@ -52,15 +52,15 @@
 `imports/` 与 `worktrees/` 是按需创建的路径空间，不在初始化阶段产生任何 `Installation`、
 `Ref` 或 `Worktree`，也不因此产生派生 `BoundaryPoint`。
 
-初始化还必须为 `runtime.json`、`.transactions/`、`imports/` 和 `worktrees/` 保持
+初始化还必须为 `.command.lock`、`runtime.json`、`.transactions/`、`imports/` 和 `worktrees/` 保持
 [需求 0002-02](02-working-model.md) 规定的 Git ignore 约束。
 
 ## 4. 初始化工作流
 
 1. 按通用 `--repos-path` 确定 Git root；无法确定 Git root 时命令不进入工作模型初始化。
 2. 检查 `.doctidex-git/` 工作空间及其状态文件。
-3. 若 `.doctidex-git/` 已存在，内部转入 `validate` 流程，检查已有工作模型；不覆盖或修复
-   已有状态文件、仓库配置或 Git ignore 规则。
+3. 若 `.doctidex-git/` 已存在，以 `validate` 的专用诊断读取事务检查已有工作模型；不覆盖、修复
+   或恢复已有状态文件、仓库配置、Git ignore 规则或残留 RuntimeStore journal。
 4. 若工作空间不存在，创建工作空间目录、配置文件和空状态文件，并建立运行时目录的 Git ignore
    约束。
 5. 对新建工作空间，通过 `RuntimeStore` 读取并重建初始状态，确认后续命令可以访问模型。
@@ -82,8 +82,8 @@
 | 已使用 | `import`、`worktree` 或 `boundary-set` 修改状态 | 状态由 RuntimeStore 及其 tracked 投影共同维护 |
 | 已失效 | 状态文件、tracked 投影或 Git ignore 约束不满足模型不变量 | 由 `validate` 的 `work-model.valid` 规则报告；由 `repair` 按需求 0002-09 对齐物理状态 |
 
-重复执行 `init` 不得覆盖已有模型数据，而是转入内部 validate 流程。已有状态文件、非法 JSON、
-仓库配置和 Git ignore 规则的有效性由该流程判断。
+重复执行 `init` 不得覆盖已有模型数据，而是转入内部 validate 流程。该流程只读取并报告已有状态文件、
+非法 JSON、仓库配置和 Git ignore 规则的有效性；它不触发 repair。
 
 ## 6. 已确认的通用处理规则
 

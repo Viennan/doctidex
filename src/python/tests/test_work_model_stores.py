@@ -10,7 +10,9 @@ from pathlib import Path
 
 import pytest
 
+from whero.doctidex import repair as repair_workflow
 from whero.doctidex.cli.main import main
+from whero.doctidex.git_cache import GitCache
 from whero.doctidex.initialization import RUNTIME_IGNORE_PATHS
 from whero.doctidex.model import (
     BoundaryPoint,
@@ -27,6 +29,7 @@ from whero.doctidex.store.files import atomic_write_bytes
 from whero.doctidex.store.runtime import (
     JournalEntry,
     RecoveryRequired,
+    RepairRequired,
     RuntimeStore,
     TransactionJournal,
     _encode_json,
@@ -57,7 +60,7 @@ def test_init_creates_a_complete_ignored_workspace(tmp_path: Path) -> None:
         assert ignored.returncode == 0
 
 
-def test_init_is_idempotent_and_keeps_existing_model_state(tmp_path: Path) -> None:
+def test_init_reports_invalid_existing_model_and_keeps_its_state(tmp_path: Path) -> None:
     root = _git_repository(tmp_path)
     assert _run(["--repos-path", str(root), "init"]).code == 0
     store = RuntimeStore(root)
@@ -79,7 +82,8 @@ def test_init_is_idempotent_and_keeps_existing_model_state(tmp_path: Path) -> No
 
     result = _run(["--repos-path", str(root), "init"])
 
-    assert result.code == 0
+    assert result.code == 2
+    assert result.payload["message"]["code"] == "work-model.invalid"
     assert store.read_state() == state
 
 
@@ -91,7 +95,7 @@ def test_init_reports_an_unresolved_explicit_git_root(tmp_path: Path) -> None:
     assert result.payload["message"]["details"]["requested-repos-path"] == str(tmp_path)
 
 
-def test_init_leaves_existing_workspace_validation_to_validate(tmp_path: Path) -> None:
+def test_init_diagnoses_an_incomplete_existing_workspace_without_modifying_it(tmp_path: Path) -> None:
     root = _git_repository(tmp_path)
     workspace = root / ".doctidex-git"
     workspace.mkdir()
@@ -99,12 +103,12 @@ def test_init_leaves_existing_workspace_validation_to_validate(tmp_path: Path) -
 
     result = _run(["--repos-path", str(root), "init"])
 
-    assert result.code == 0
-    assert result.payload == {"status": "ok", "message": {}}
+    assert result.code == 2
+    assert result.payload["message"]["code"] == "work-model.invalid"
     assert not (workspace / "runtime.json").exists()
 
 
-def test_init_does_not_interpret_pending_transactions_before_validate(tmp_path: Path) -> None:
+def test_init_reports_pending_transactions_without_recovering_them(tmp_path: Path) -> None:
     root = _initialized_repository(tmp_path)
     store = RuntimeStore(root)
     changed = RuntimeState(
@@ -117,8 +121,9 @@ def test_init_does_not_interpret_pending_transactions_before_validate(tmp_path: 
 
     result = _run(["--repos-path", str(root), "init"])
 
-    assert result.code == 0
-    assert result.payload == {"status": "ok", "message": {}}
+    assert result.code == 2
+    assert result.payload["message"]["code"] == "work-model.invalid"
+    assert result.payload["message"]["details"]["violations"][0]["code"] == "transaction.recovery.required"
     assert directory.exists()
 
 
@@ -167,6 +172,17 @@ def test_runtime_read_only_transaction_does_not_create_a_journal(tmp_path: Path)
     with store.read_only_transaction() as transaction:
         assert transaction.state == RuntimeState.empty()
         assert not hasattr(transaction, "replace_state")
+        assert not store.transactions_path.exists()
+
+    assert not store.transactions_path.exists()
+
+
+def test_runtime_diagnostic_transaction_does_not_create_a_journal(tmp_path: Path) -> None:
+    root = _initialized_repository(tmp_path)
+    store = RuntimeStore(root)
+
+    with store.diagnostic_transaction() as transaction:
+        assert transaction.pending_journals == ()
         assert not store.transactions_path.exists()
 
     assert not store.transactions_path.exists()
@@ -238,10 +254,9 @@ def test_runtime_write_transaction_marks_open_context_before_returning(tmp_path:
     assert (directory / "backup").is_dir()
 
     # Model an abrupt process termination: __exit__ is not called, but the lock is released by
-    # the operating system.  A later transaction must observe and resolve the open marker.
+    # the operating system.  Repair owns recovery and removes the marker only after it succeeds.
     store._lock.release()
-    with RuntimeStore(root).read_only_transaction() as recovered:
-        assert recovered.recovery == "rolled-back"
+    repair_workflow.repair(store, GitCache(tmp_path / "cache"))
     assert not directory.exists()
 
 
@@ -268,12 +283,69 @@ def test_runtime_transaction_restores_old_state_from_a_mixed_publication(tmp_pat
     first_entry = journal.entries[0]
     os.replace(directory / first_entry.stage, store.workspace_path / first_entry.target)
 
-    with store.read_only_transaction() as transaction:
-        assert transaction.recovery == "rolled-back"
-        assert transaction.state == RuntimeState.empty()
+    repair_workflow.repair(store, GitCache(tmp_path / "cache"))
 
     assert not directory.exists()
     assert store.read_state() == RuntimeState.empty()
+
+
+def test_runtime_repair_keeps_residual_journal_when_repair_fails(tmp_path: Path, monkeypatch) -> None:
+    root = _initialized_repository(tmp_path)
+    store = RuntimeStore(root)
+    transaction = store.write_transaction()
+    transaction.__enter__()
+    directory = next(store.transactions_path.iterdir())
+    store._lock.release()
+
+    def fail(_git_root: Path) -> None:
+        raise RuntimeError("physical repair failed")
+
+    monkeypatch.setattr(repair_workflow, "_ensure_runtime_ignores", fail)
+    with pytest.raises(RuntimeError):
+        repair_workflow.repair(store, GitCache(tmp_path / "cache"))
+
+    assert directory.exists()
+
+
+def test_runtime_transaction_reports_residual_journal_to_the_command_coordinator(tmp_path: Path) -> None:
+    root = _initialized_repository(tmp_path)
+    store = RuntimeStore(root)
+    transaction = store.write_transaction()
+    transaction.__enter__()
+    directory = next(store.transactions_path.iterdir())
+    store._lock.release()
+
+    with pytest.raises(RepairRequired) as failure:
+        with store.read_only_transaction():
+            pass
+
+    assert failure.value.transaction_ids == (directory.name,)
+    assert directory.exists()
+
+
+def test_committed_residual_journal_is_cleaned_without_physical_repair(tmp_path: Path, monkeypatch) -> None:
+    root = _initialized_repository(tmp_path)
+    store = RuntimeStore(root)
+    changed = RuntimeState(
+        custom_boundary_points=(BoundaryPoint(type="custom", path="/external"),),
+        installations=(),
+        refs=(),
+        worktrees=(),
+    )
+    journal, directory = _prepared_journal(store, changed, transaction_id="committed-publication")
+    for entry in journal.entries:
+        os.replace(directory / entry.stage, store.workspace_path / entry.target)
+    committed = journal.with_state("committed")
+    atomic_write_bytes(directory / "journal.json", _encode_json(committed.to_json()), store="runtime", phase="test")
+
+    def unexpected_physical_repair(_git_root: Path) -> None:
+        raise AssertionError("committed journal must not trigger physical repair")
+
+    monkeypatch.setattr(repair_workflow, "_ensure_runtime_ignores", unexpected_physical_repair)
+    repair_workflow.repair(store, GitCache(tmp_path / "cache"))
+
+    assert not directory.exists()
+    assert store.read_state() == changed
 
 
 def test_runtime_transaction_refuses_unknown_recovery_state(tmp_path: Path) -> None:
@@ -290,8 +362,7 @@ def test_runtime_transaction_refuses_unknown_recovery_state(tmp_path: Path) -> N
     atomic_write_bytes(target, b'[\n  {"type": "custom", "path": "/other"}\n]\n', store="runtime", phase="test")
 
     with pytest.raises(RecoveryRequired):
-        with store.read_only_transaction():
-            pass
+        repair_workflow.repair(store, GitCache(tmp_path / "cache"))
 
     assert (directory / "journal.json").exists()
 

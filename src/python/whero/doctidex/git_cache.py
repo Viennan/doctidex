@@ -6,7 +6,6 @@ import os
 import re
 import shutil
 import subprocess
-from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 from typing import Self
@@ -40,17 +39,6 @@ class GitCache:
         """Open cache access that can load a missing bare repository."""
 
         return GitCacheWriteTransaction(self, self.store.write_transaction())
-
-    def with_repository[T](self, git_url: str, operation: Callable[[Path], T]) -> T:
-        """Run repository-dependent work in the transaction that supplied the cache."""
-
-        with self.read_only_transaction() as transaction:
-            repository = transaction.find(git_url)
-            if repository is not None:
-                return operation(repository)
-        with self.write_transaction() as transaction:
-            repository = transaction.load(git_url)
-            return operation(repository)
 
 
 class GitCacheTransaction:

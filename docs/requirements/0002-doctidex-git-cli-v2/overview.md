@@ -31,8 +31,8 @@
   `valid`、`diagnostics` 和结构化命令错误的分离结果。
 - 工作模型由 `CacheStore`、`RuntimeStore`、Installation、Ref、Worktree 和 BoundaryPoint
   组成；tracked 投影、事务恢复及派生边界规则分别由子需求定义。
-- `repair` 以 JSON 描述为基准，使物理安装、引用、worktree、派生边界和 Git ignore 与模型相容；
-  它不从历史或事务备份恢复旧版本。
+- `repair` 以 JSON 描述为基准，使物理安装、引用、worktree、派生边界和 Git ignore 与模型相容；常规
+  repair 不从历史恢复旧版本，但处理残留 RuntimeStore journal 时可使用其 backup 收敛混合发布的 JSON。
 - 本次需求包含代码库开发；代码开发完成后还必须完成配套 Architecture 文档的撰写。
 - 本次需求暂不撰写 user 文档；人类维护者、agent 和自动化程序的差异仅在后续 user 文档中用于
   调整内容组织。
@@ -40,7 +40,8 @@
 ### 并发与外部修改边界
 
 - 并发与 race 设计只覆盖遵守本架构的 `doctidex-git` CLI 命令之间对同一 Store 或工作模型的
-  操作；这些命令通过既定锁顺序和事务协议协调。
+  操作；仅同时持有两个 Store 的命令按 `GitCache -> RuntimeStore` 的既定锁顺序协调。普通 RuntimeStore
+  事务发现残留 journal 后释放自身锁并报告 `repair-required`，由命令协调器按需运行 repair 后重试对应操作。
 - 不对用户、编辑器或其他非 `doctidex-git` 程序直接修改状态文件或物理目录所形成的 race 提供
   防御性保证，也不以提交前 snapshot hash 对比等局部检查伪装为能够解决此类问题。
 - 最终交付的 Architecture 文档必须将这一并发保证边界作为设计约束明确说明。
@@ -139,8 +140,11 @@ doctidex-git 工作模型的共同概念，不能由单个命令簇各自解释�
 - CacheStore 使用带 `preparing`/`published` 状态恢复的单文件原子更新，RuntimeStore 使用带
   journal 的多文件可恢复事务；两者都不是数据库事务。
 - 并发控制只处理遵守协议的 `doctidex-git` CLI 命令；不为外部直接修改提供不完整的 race 防御。
-- 除 `validate`、`init` 外，任何非 `committed` 残留事务被成功处理后，命令在继续业务流程前执行
-  一次内部 `repair`；只有已确认 `committed` 的残留事务可直接清理并跳过修复。
+- 除 `validate`、`init` 外，普通 RuntimeStore 事务在准备阶段只检测残留 journal，释放锁并报告内部
+  `repair-required` 信号。命令协调器在 RuntimeStore 外部运行 repair，再重试触发该信号的 RuntimeStore
+  操作，最多三次。repair 在与 validate 相同的诊断锁定访问内负责 journal 的分类、必要 JSON 收敛、物理修复
+  和最终清理；仅已确认 `committed` 的残留可跳过物理修复，但所有残留 journal 统一在本次 repair 的全部修复
+  完成后清理。
 - 工作模型关系、boundary-scoped 目录扫描和本地 link 的跨界关联由共享领域工具统一解释；命令簇仅在
   此基础上定义各自的修改、校验或修复策略。
 - 删除命令对不存在的可删除模型记录保持幂等；对仍受其他模型管理的对象保留明确的禁止删除语义。
@@ -216,12 +220,56 @@ Architecture 或 Skills。实施前仍需取得明确的实现授权。
 | 阶段 | 状态 | 范围与具体输出 | 验证与审阅检查点 |
 |---|---|---|---|
 | 1. Python 工程与 CLI 基础 | `completed` | 在 `src/python/whero/doctidex/` 建立 Python 包，在 `src/python/pyproject.toml` 建立项目配置；实现 CLI 入口、通用 `--repos-path`、六个命令簇的分发和基础参数错误/返回结构。依据 [需求 0002-01](01-cli-arguments-results.md) 固化公共 CLI 契约。 | 已验证项目可编辑安装、`whero.doctidex` 可导入和 `doctidex-git` 入口；已为命令分发、通用参数、JSON 成功/错误结构建立自动化检查，并完成与 01 的一致性审阅。 |
-| 2. 工作模型、RuntimeStore 与初始化 | `completed` | 实现已确定的领域记录、tracked/runtime 投影、RuntimeStore 锁、journal、恢复和并发保护。RuntimeStore 明确区分只读事务和写事务：只读事务不创建 journal，写事务在进入上下文后立即登记 journal。`init` 仅在工作空间不存在时创建完整初始状态、Git ignore 规则并重建该空状态；工作空间已存在时保持不修改。CacheStore/GitCache 不属于本阶段的有效实现范围；阶段 2 中遗留的旧 CacheStore 事务实现由新的 phase 3 取代。 | 已通过 24 个自动化测试验证状态文件重建、tracked/untracked 投影、RuntimeStore 事务提交/回滚/遗留恢复、读写事务边界、全新工作空间初始化、已有工作空间不被修改和可见占位；Ruff、`pip check` 和 CLI 入口检查通过。CacheStore/GitCache 协议、既有工作空间的完整 validate、待恢复事务诊断、跨 Store 协调和物理目录补偿按后续阶段实施。 |
-| 3. CacheStore 与 GitCache | `completed` | 已依据 [需求 0002-08](08-store-transactions.md) 重新实现 CacheStore 与 GitCache：CacheItem 的 `preparing`/`published` 状态、CacheStore 的 ReadOnly/Write 事务和立即生效的 `replace_records`、事务进入时的 `preparing` 清理，以及 GitCache 对外的 ReadOnly/Write 事务和 Write `load`。所有缓存访问改经 GitCache 事务；本阶段不实现 revision 选择、fetch 或 Git worktree 操作，也未恢复 boundary-set 或 import 命令工作流。 | 已验证同 URL 的唯一记录、可用 published cache 的复用、load 的 preparing 到 published 转换、clone 失败后的下一次事务清理、ReadOnly 接口限制、立即状态发布、路径清理范围和 bare Git object 残留边界；30 个自动化测试、Ruff、`pip check` 和 `git diff --check` 通过。GitCache/RuntimeStore 的命令级嵌套锁顺序留待 phase 4 的实际命令协调验证。 |
-| 4. boundary-set 与 import | `completed` | 已实现 custom/派生边界点、路径解析、`boundary-set add/remove/parse`、完整 import 工作流和共享领域工具。`import install` 以 branch、tag、commit 三选一的 revision selector 执行：branch/tag 同步远程后，当前 commit 不变时 no-op，变化时替换 Installation；commit 命中同一 Git URL 与 commit hash 时 no-op，未命中时获取并安装。`restore` 严格使用记录的 commit hash；Installation 不再持久化 `is-auto-resolved-hash`；install-path 由 Git URL 和 selector 值语义化派生。revision 更新保留既有受管理 Ref 关系并维持其 Installation 的 tracked 约束。revision 操作、RuntimeStore 写事务和依赖 cache repository 的 worktree 操作均在同一 GitCache 事务中完成，嵌套锁顺序为 `GitCache -> RuntimeStore`。 | 已验证 custom/派生边界、批量 boundary 查询、tracked/untracked 投影、track、受管 ref/unref、query、安装移除阻塞、Markdown link 行号、View 与共享领域工具；另验证互斥 selector 参数、branch/tag 最新 commit 的 no-op 与替换、commit 命中复用、仅按记录 commit restore、语义化 install-path（包含 branch `/` 层级）、`is-auto-resolved-hash` 移除及 revision 更新后的 Ref 关系。55 个自动化测试、Ruff、`pip check` 和 `git diff --check` 通过。 |
-| 5. worktree | `completed` | 已按 [需求 0002-06](06-worktree.md) 重新实现 `worktree create/remove/query`。URL 来源使用 branch、tag、commit 三选一，在 GitCache 事务内解析创建时的 base commit；Worktree 在 `runtime.json` 持久化 `base-commit-hash`，不跟踪后续 `HEAD`。默认 work-path 使用 `/.doctidex-git/worktrees/<domain>/<repository-path-without-.git>/<tree-name>`，支持仅用于默认路径的 `--tree-name` 和短随机末级名称；随机名称发生模型或物理路径冲突时重试。Installation 来源、BoundaryPoint、Git ignore、移除和 `GitCache -> RuntimeStore` 事务协调保持有效。 | 已验证 URL 三种 selector、base commit 持久化及 worktree 后续提交不改变它、URL 层级默认路径、嵌套 tree-name 和短随机名称及其冲突重试，以及 Installation 来源、移除、边界、ignore、路径占用、缺失清理和事务顺序。70 个自动化测试、Ruff、`pip check` 和 `git diff --check` 通过。 |
-| 6. repair 与 validate | `pending` | 实现 [需求 0002-09](09-repair.md) 的 JSON 基准物理对齐和事务回滚后的内部 repair；实现 [需求 0002-07](07-validate.md) 的范围限制、工作模型校验、Markdown/link 诊断、待恢复事务短路和退出状态，并复用 [需求 0002-01](01-cli-arguments-results.md) 的结构化错误和阶段 4 建立的共享领域工具。 | 建立有效、失效、待恢复和可 repair 场景矩阵；验证 `validate` 只读、`repair` 幂等、错误信息具备模型诊断意义、各命令的 BoundaryPoint/link 关联结果一致，以及非 `validate`/`init` 命令的内部 repair 行为。 |
+| 2. 工作模型、RuntimeStore 与初始化 | `completed` | 实现已确定的领域记录、tracked/runtime 投影、RuntimeStore 锁、journal、恢复骨架和并发保护。RuntimeStore 明确区分只读事务和写事务：只读事务不创建 journal，写事务在进入上下文后立即登记 journal。`init` 仅在工作空间不存在时创建完整初始状态、Git ignore 规则并重建该空状态；工作空间已存在时保持不修改。CacheStore/GitCache 不属于本阶段的有效实现范围；阶段 2 中遗留的旧 CacheStore 事务实现由新的 phase 3 取代。 | 已通过 24 个自动化测试验证状态文件重建、tracked/untracked 投影、RuntimeStore 事务提交/回滚/遗留恢复、读写事务边界、全新工作空间初始化、已有工作空间不被修改和可见占位；Ruff、`pip check` 和 CLI 入口检查通过。CacheStore/GitCache 协议、既有工作空间的完整 validate、按 journal 状态与目标 hash 区分恢复结果、待恢复事务诊断、残留事务后的内部 repair、跨 Store 协调和物理目录补偿按后续阶段实施。 |
+| 3. CacheStore 与 GitCache | `completed` | 已依据 [需求 0002-08](08-store-transactions.md) 重新实现 CacheStore 与 GitCache：CacheItem 的 `preparing`/`published` 状态、CacheStore 的 ReadOnly/Write 事务和立即生效的 `replace_records`、事务进入时的 `preparing` 清理，以及 GitCache 对外的 ReadOnly/Write 事务和 Write `load`。所有缓存访问改经 GitCache 事务；本阶段不实现 revision 选择、fetch 或 Git worktree 操作，也未恢复 boundary-set 或 import 命令工作流。 | 已验证同 URL 的唯一记录、可用 published cache 的复用、load 的 preparing 到 published 转换、clone 失败后的下一次事务清理、ReadOnly 接口限制、立即状态发布、路径清理范围和 bare Git object 残留边界；30 个自动化测试、Ruff、`pip check` 和 `git diff --check` 通过。跨 Store 的命令级协调和 repair 工作流由 phase 6 统一实施。 |
+| 4. boundary-set 与 import | `completed` | 已实现 custom/派生边界点、路径解析、`boundary-set add/remove/parse`、完整 import 工作流和共享领域工具。`import install` 以 branch、tag、commit 三选一的 revision selector 执行：branch/tag 同步远程后，当前 commit 不变时 no-op，变化时替换 Installation；commit 命中同一 Git URL 与 commit hash 时 no-op，未命中时获取并安装。`restore` 严格使用记录的 commit hash；Installation 不再持久化 `is-auto-resolved-hash`；install-path 由 Git URL 和 selector 值语义化派生。revision 更新保留既有受管理 Ref 关系并维持其 Installation 的 tracked 约束。跨 Store 协调遵守 `GitCache -> RuntimeStore`，残留恢复由后续 phase 6 的 repair 工作流统一处理。 | 已验证 custom/派生边界、批量 boundary 查询、tracked/untracked 投影、track、受管 ref/unref、query、安装移除阻塞、Markdown link 行号、View 与共享领域工具；另验证互斥 selector 参数、branch/tag 最新 commit 的 no-op 与替换、commit 命中复用、仅按记录 commit restore、语义化 install-path（包含 branch `/` 层级）、`is-auto-resolved-hash` 移除及 revision 更新后的 Ref 关系。55 个自动化测试、Ruff、`pip check` 和 `git diff --check` 通过。 |
+| 5. worktree | `completed` | 已按 [需求 0002-06](06-worktree.md) 重新实现 `worktree create/remove/query`。URL 来源使用 branch、tag、commit 三选一，在 GitCache 事务内解析创建时的 base commit；Worktree 在 `runtime.json` 持久化 `base-commit-hash`，不跟踪后续 `HEAD`。默认 work-path 使用 `/.doctidex-git/worktrees/<domain>/<repository-path-without-.git>/<tree-name>`，支持仅用于默认路径的 `--tree-name` 和短随机末级名称；随机名称发生模型或物理路径冲突时重试。Installation 来源、BoundaryPoint、Git ignore、移除和 `GitCache -> RuntimeStore` 协调保持有效。 | 已验证 URL 三种 selector、base commit 持久化及 worktree 后续提交不改变它、URL 层级默认路径、嵌套 tree-name 和短随机名称及其冲突重试，以及 Installation 来源、移除、边界、ignore、路径占用、缺失清理和事务顺序。70 个自动化测试、Ruff、`pip check` 和 `git diff --check` 通过。 |
+| 5.1 Git worktree 目标 commit 可用性补充 | `completed` | 已在共享 Git repository 操作中实现目标 commit 的 `cat-file` 检查、按 hash fetch 和复验；`import install`、`import restore` 与 `worktree create` 的 URL/Installation 两类来源均在创建或切换 Git worktree 前接入该流程。GitCache 继续只负责 transaction 与 bare repository 获取，不接管 revision fetch。 | 已验证已发布 bare repository 缺少目标 commit 时的 restore、Installation 来源 Worktree 创建和 URL 来源创建；验证命中时不重复 fetch、已记录 commit 不重新解析 selector、远程无法提供 commit 时使用命令簇既有来源/恢复诊断，以及所有 Git 操作保持在 GitCache transaction 内。81 个自动化测试、Ruff、`pip check` 和 `git diff --check` 通过。 |
+| 6. repair、validate 与跨 Store 协调 | `completed` | 已按更新后的 [需求 0002-07](07-validate.md)、[需求 0002-08](08-store-transactions.md) 和 [需求 0002-09](09-repair.md) 重新实现恢复协调：RuntimeStore 仅报告 `repair-required`；`StoreCoordinator` 在 RuntimeStore 外部执行 repair 并重试实际操作，最多三次。repair 核心复用调用方已有的 GitCache Write 事务；ReadOnly 事务退出后才打开 Write。工作流通过独立的 `WorkflowCoordinator` 协议依赖协调能力，避免与 repair 的依赖环；显式 `validate` 保持只读诊断。 | 已验证 RuntimeStore 不含跨 Store 回调或空预检、已有 GitCache Write 事务的 repair 复用、GitCache ReadOnly 退出后再以 Write repair、纯 RuntimeStore 命令不预先打开 GitCache、三次重试与最终 transaction ID、import/worktree 重试中的 revision 固定，以及 validate/repair 物理修复场景。 |
 | 7. 集成验收与 Architecture 交付 | `pending` | 完成各命令簇端到端集成、回归验证和需求验收证据；在代码库开发完成后，依据 Architecture 文档自身的组织要求重新撰写并整合 Architecture 文档。此阶段不撰写 user 文档。 | 运行完整自动化测试和跨阶段场景检查，校验需求、Architecture 与实现的链接及术语一致性；完成 Architecture 文档审阅后，才可将父需求转为 `implemented`。 |
+
+阶段 4 的 install-path 补充实施记录：
+
+- `import install` 和 `import restore` 以同一个内部流程检查 install-path 是否为该路径自身的 Git
+  worktree，避免将仓库内普通目录误识别为 Git 控制路径。该流程只处理物理安装目录；Installation 的
+  selector、tracked 状态、install-id 和 Ref 关系仍按原有工作流决定。
+- 同源、干净且 detached 的既有 worktree 在原目录中 checkout 到目标 commit。非 Git 残留目录以及不满足
+  复用条件的同源 worktree 均删除后重新创建；Git URL 不同的 worktree 保留原状并终止命令。`restore`
+  将无法完成该路径准备的 Installation 目标错误转换为其既有的 `installation.restore.unavailable` 诊断。
+- 本次补充新增非 Git 残留、同源复用、dirty 重建和异源拒绝的自动化测试。完整回归 `pytest` 为
+  76 passed，`ruff check .`、`pip check` 和 `git diff --check` 通过。
+
+阶段 5.1 的目标 commit 可用性实施记录：
+
+- `repository.py` 在不重新选择 revision 的前提下，先以 `git cat-file -e <hash>^{commit}` 检查 bare
+  repository；仅缺失时执行按 hash 的 `git fetch origin <hash>`，并在 fetch 后复验。该操作在调用方
+  已持有的 GitCache transaction 内执行，未将 revision fetch 纳入 GitCache 的公开接口。
+- `import restore` 使用 Installation 当前记录的 commit；`worktree create --install-id` 同样严格使用
+  Installation commit。两者缺失时均可补齐 bare repository object，但远程无法提供时分别返回
+  `installation.restore.unavailable` 和 `worktree.source.unavailable`。`import install` 与 URL 来源
+  Worktree 创建在 selector 解析后复验目标 commit，保留其 `revision.unresolvable` 语义。
+- 新增缺失 commit 的 restore/Worktree 创建、远程不可用错误转换及已命中 commit 不重复 fetch 覆盖。
+  完整回归 `pytest` 为 81 passed，`ruff check .`、`pip check` 和 `git diff --check` 通过。
+
+阶段 6 的重新实施记录：
+
+- 显式 `validate` 使用只获取 RuntimeStore 锁的诊断读取事务；不恢复、修复、创建或清理 journal，
+  发现 `prepared`/`publishing` 残留时只返回 `transaction.recovery.required` 并跳过后续内容扫描。
+- 普通 RuntimeStore 事务只检测残留 journal。检测到后释放锁并报告内部 `repair-required`；它不持有
+  recovery handler，不获取 GitCache，也不在 `__enter__()` 中运行 repair 或重试。
+- `StoreCoordinator` 围绕实际 RuntimeStore 操作闭包处理该信号：已有 GitCache Write 事务时直接复用，当前
+  为 GitCache ReadOnly 事务时先退出再新开 Write，尚未访问缓存时仅在需要 repair 时新开 GitCache Write
+  事务；repair 成功后重试闭包，最多 3 次。未使用空的普通 RuntimeStore 事务预检。
+- repair 核心在调用方提供的 GitCache Write 事务及 RuntimeStore 诊断锁内完成 journal 分类、必要的 backup
+  JSON 收敛、Installation/Ref/Worktree/BoundaryPoint/Git ignore 物理修复和最终清理；显式 `repair` 自行打开
+  GitCache Write 事务。repair 不调用或消费 `validate` 诊断，Markdown link 不属于 repair 范围。
+- `import install` 和 URL 来源 `worktree create` 在当前 GitCache 事务内只解析一次 branch/tag 的目标 commit
+  hash；repair 后的闭包重试复用该 hash。`.command.lock` 覆盖检测、repair 和重试全过程；外部修改 race 仍不在
+  设计防御范围内。
+- `WorkflowCoordinator` 协议承载 import/worktree 所需的重试和缓存访问能力；具体 `StoreCoordinator` 依赖
+  repair 核心。该接口边界消除了协调器、repair 与命令工作流之间的导入环，而不将 repair 责任下沉到命令簇。
+- 87 项自动化测试、`ruff check .`、`pip check` 和 `git diff --check` 已通过。Architecture 和 user 文档仍由
+  phase 7 负责。
 
 阶段 5 的重新实施记录：
 
@@ -248,10 +296,13 @@ Architecture 或 Skills。实施前仍需取得明确的实现授权。
   install/worktree 物理目录的补偿属于阶段 3 及之后命令工作流的责任。阶段 2 仅保证 RuntimeStore
   状态 JSON 的事务语义；旧 CacheStore 实现不作为新阶段的设计或验收依据。
 - RuntimeStore 按需求 0002-08 使用工作空间内的 `.lock` 文件；该内部锁文件随其他运行时工件
-  加入 Git ignore，不作为工作模型记录。只读事务仅在锁内读取快照，不创建事务目录；写事务在
-  `__enter__()` 完成恢复后立即创建 `.transactions/<transaction-id>/` 及初始 journal，使进程
-  中断时下一次命令可以感知遗留事务。后续阶段若统一工作空间保护规则，需复核其 ignore 表达，
-  但不改变锁路径契约。
+  加入 Git ignore，不作为工作模型记录。普通只读/写事务在 `__enter__()` 仅检查残留 journal；发现残留
+  时释放锁并报告 `repair-required`。阶段 6 的命令协调器负责 repair 与操作重试；无残留后，写事务才创建
+  `.transactions/<transaction-id>/` 及初始 journal，使其自身中断时下一次命令能够感知遗留事务。后续阶段
+  若统一工作空间保护规则，需复核其 ignore 表达，但不改变锁路径契约。
+- 阶段 2 仅建立 journal 的持久化、目标 hash 观察和基础状态文件事务骨架；残留 journal 的状态分类、
+  backup JSON 收敛、物理 repair、最终清理和普通事务报告 `repair-required` 后的协调重试明确留待阶段 6 实现。
+  该留白不改变阶段 2 已验证的事务目录、暂存、备份和基础事务机制。
 - Store 的并发控制只处理遵守锁和事务协议的 doctidex-git CLI 命令；不对外部直接修改增加
   snapshot hash 对比等不完整的 race 防御。该保证边界将在最终 Architecture 文档中继续保留。
 - `init` 的新工作空间文件先在系统临时目录直接写入，完成后一次性同步到 Git root；不在 Git root

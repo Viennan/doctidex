@@ -9,6 +9,7 @@ import pytest
 from whero.doctidex.errors import CommandFailure
 from whero.doctidex.git_cache import GitCache, _cache_repository_path
 from whero.doctidex.model import CacheItem, CacheItemStatus
+from whero.doctidex.repository import ensure_commit_available
 
 
 def test_git_cache_write_load_publishes_and_reuses_one_repository(tmp_path: Path) -> None:
@@ -33,23 +34,6 @@ def test_git_cache_write_load_publishes_and_reuses_one_repository(tmp_path: Path
         assert transaction.find(str(source)) == first
         assert transaction.repository(str(source)) == first
         assert not hasattr(transaction, "load")
-
-
-def test_git_cache_with_repository_keeps_the_selected_transaction_open(tmp_path: Path, monkeypatch) -> None:
-    source = _source_repository(tmp_path)
-    cache = GitCache(tmp_path / "cache")
-    active: list[str] = []
-    events: list[str] = []
-    _record_transactions(cache, active, events, monkeypatch)
-
-    first = cache.with_repository(str(source), lambda repository: (active[:], repository))
-    assert first[0] == ["write"]
-    assert events == ["read-only:open", "read-only:close", "write:open", "write:close"]
-
-    events.clear()
-    second = cache.with_repository(str(source), lambda repository: (active[:], repository))
-    assert second == (["read-only"], first[1])
-    assert events == ["read-only:open", "read-only:close"]
 
 
 def test_git_cache_load_failure_leaves_preparing_record_for_next_transaction(tmp_path: Path) -> None:
@@ -96,6 +80,23 @@ def test_git_cache_write_load_replaces_an_unusable_published_repository(tmp_path
     ).stdout.strip() == str(source)
 
 
+def test_ensure_commit_available_fetches_only_a_missing_commit(tmp_path: Path) -> None:
+    source = _source_repository(tmp_path)
+    cache = GitCache(tmp_path / "cache")
+    with cache.write_transaction() as transaction:
+        repository = transaction.load(str(source))
+
+    commit = _commit(source, "later.md", "later\n")
+    ensure_commit_available(repository, str(source), commit)
+    source.rename(tmp_path / "source-unavailable")
+
+    ensure_commit_available(repository, str(source), commit)
+    assert subprocess.run(
+        ["git", "-C", str(repository), "cat-file", "-e", f"{commit}^{{commit}}"],
+        check=True,
+    ).returncode == 0
+
+
 @pytest.mark.parametrize(
     ("git_url", "path"),
     [
@@ -114,30 +115,14 @@ def _source_repository(tmp_path: Path) -> Path:
     subprocess.run(["git", "init", "--quiet", "--initial-branch", "main", str(source)], check=True)
     subprocess.run(["git", "-C", str(source), "config", "user.email", "tests@example.test"], check=True)
     subprocess.run(["git", "-C", str(source), "config", "user.name", "Tests"], check=True)
-    (source / "readme.md").write_text("source\n")
-    subprocess.run(["git", "-C", str(source), "add", "readme.md"], check=True)
-    subprocess.run(["git", "-C", str(source), "commit", "--quiet", "-m", "initial"], check=True)
+    _commit(source, "readme.md", "source\n")
     return source
 
 
-def _record_transactions(cache: GitCache, active: list[str], events: list[str], monkeypatch) -> None:
-    for name, kind in (("read_only_transaction", "read-only"), ("write_transaction", "write")):
-        original = getattr(cache, name)
-
-        def transaction(*, original=original, kind=kind):
-            class RecordedTransaction:
-                def __enter__(self):
-                    events.append(f"{kind}:open")
-                    self.value = original().__enter__()
-                    active.append(kind)
-                    return self.value
-
-                def __exit__(self, exc_type, exc, traceback):
-                    active.pop()
-                    result = self.value.__exit__(exc_type, exc, traceback)
-                    events.append(f"{kind}:close")
-                    return result
-
-            return RecordedTransaction()
-
-        monkeypatch.setattr(cache, name, transaction)
+def _commit(repository: Path, name: str, content: str) -> str:
+    (repository / name).write_text(content)
+    subprocess.run(["git", "-C", str(repository), "add", name], check=True)
+    subprocess.run(["git", "-C", str(repository), "commit", "--quiet", "-m", name], check=True)
+    return subprocess.run(
+        ["git", "-C", str(repository), "rev-parse", "HEAD"], check=True, capture_output=True, text=True
+    ).stdout.strip()

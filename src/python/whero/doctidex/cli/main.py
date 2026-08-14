@@ -12,7 +12,9 @@ from typing import NoReturn
 
 from whero.doctidex import boundary as boundary_workflow
 from whero.doctidex import imports as import_workflow
+from whero.doctidex import validate as validate_workflow
 from whero.doctidex import worktree as worktree_workflow
+from whero.doctidex.coordination import StoreCoordinator
 from whero.doctidex.errors import CommandFailure
 from whero.doctidex.git_cache import GitCache
 from whero.doctidex.initialization import (
@@ -141,30 +143,28 @@ def main(argv: list[str] | None = None) -> int:
         return _run_import(invocation, args)
     if args.command == "worktree":
         return _run_worktree(invocation, args)
-    payload = error(
-        command=invocation.command,
-        code="command.phase-unavailable",
-        summary="The command is registered, but its workflow is implemented in a later phase.",
-        details={"implementation-phase": _implementation_phase(args.command)},
-        repos_path=invocation.repos_path,
-    )
-    print(_json(payload))
-    return 2
+    if args.command == "validate":
+        return _run_validate(invocation, args)
+    return _run_repair(invocation)
 
 
 def _run_boundary(invocation: ParsedInvocation, args: argparse.Namespace) -> int:
     try:
         root = resolve_git_root(invocation.repos_path)
         operation = ParsedInvocation(invocation.command, str(root))
-        store = _runtime_store(root)
-        if args.boundary_command == "add":
-            boundary_workflow.add(store, args.path)
-            payload = success(command=operation.command)
-        elif args.boundary_command == "remove":
-            boundary_workflow.remove(store, args.path)
-            payload = success(command=operation.command)
-        else:
-            payload = success(command=operation.command, results=boundary_workflow.parse(store, args.path))
+        with StoreCoordinator(_runtime_store(root), GitCache.from_environment()) as coordinator:
+            store = coordinator.store
+
+            def execute() -> dict[str, object]:
+                if args.boundary_command == "add":
+                    boundary_workflow.add(store, args.path)
+                    return success(command=operation.command)
+                if args.boundary_command == "remove":
+                    boundary_workflow.remove(store, args.path)
+                    return success(command=operation.command)
+                return success(command=operation.command, results=boundary_workflow.parse(store, args.path))
+
+            payload = coordinator.run(execute)
     except CommandFailure as exc:
         payload = _command_failure(locals().get("operation", invocation), exc)
     except GitRootUnresolved as exc:
@@ -188,54 +188,60 @@ def _run_import(invocation: ParsedInvocation, args: argparse.Namespace) -> int:
     try:
         root = resolve_git_root(invocation.repos_path)
         operation = ParsedInvocation(invocation.command, str(root))
-        store = _runtime_store(root)
-        cache = GitCache.from_environment()
-        name = args.import_command
-        if name == "install":
-            item = import_workflow.install(
-                store,
-                cache,
-                tracked=args.tracked,
-                git_url=args.url,
-                branch=args.branch or "",
-                tag=args.tag or "",
-                commit=args.commit or "",
-                keys=args.key,
-            )
-            payload = success(
-                command=operation.command, **{"install-id": item.install_id, "install-path": item.install_path}
-            )
-        elif name == "restore":
-            item = import_workflow.restore(store, cache, args.install_id)
-            payload = success(
-                command=operation.command, **{"install-id": item.install_id, "install-path": item.install_path}
-            )
-        elif name == "track":
-            item = import_workflow.track(store, args.install_id)
-            payload = success(
-                command=operation.command, **{"install-id": item.install_id, "install-path": item.install_path}
-            )
-        elif name == "remove":
-            import_workflow.remove(store, args.install_id, untracked=args.untracked, auto=args.auto)
-            payload = success(command=operation.command)
-        elif name == "ref":
-            import_workflow.ref(store, args.install_id, args.src_sub_dir or "", args.target_dir)
-            payload = success(command=operation.command)
-        elif name == "unref":
-            import_workflow.unref(store, args.target_dir)
-            payload = success(command=operation.command)
-        else:
-            install_path = _normalize_optional_path(args.install_path, "--install-path")
-            ref_path = _normalize_optional_path(args.ref_path, "--ref-path")
-            with store.read_only_transaction() as transaction:
-                candidates = import_workflow.query(
-                    RuntimeModelView(transaction),
-                    install_id=args.install_id,
-                    install_path=install_path,
-                    ref_path=ref_path,
-                    keys=args.key,
-                )
-            payload = success(command=operation.command, candidates=candidates)
+        with StoreCoordinator(_runtime_store(root), GitCache.from_environment()) as coordinator:
+            store = coordinator.store
+
+            def execute() -> dict[str, object]:
+                name = args.import_command
+                if name == "install":
+                    item = import_workflow.install(
+                        store,
+                        coordinator,
+                        tracked=args.tracked,
+                        git_url=args.url,
+                        branch=args.branch or "",
+                        tag=args.tag or "",
+                        commit=args.commit or "",
+                        keys=args.key,
+                    )
+                    return success(
+                        command=operation.command,
+                        **{"install-id": item.install_id, "install-path": item.install_path},
+                    )
+                if name == "restore":
+                    item = import_workflow.restore(store, coordinator, args.install_id)
+                    return success(
+                        command=operation.command,
+                        **{"install-id": item.install_id, "install-path": item.install_path},
+                    )
+                if name == "track":
+                    item = import_workflow.track(store, args.install_id)
+                    return success(
+                        command=operation.command,
+                        **{"install-id": item.install_id, "install-path": item.install_path},
+                    )
+                if name == "remove":
+                    import_workflow.remove(store, args.install_id, untracked=args.untracked, auto=args.auto)
+                    return success(command=operation.command)
+                if name == "ref":
+                    import_workflow.ref(store, args.install_id, args.src_sub_dir or "", args.target_dir)
+                    return success(command=operation.command)
+                if name == "unref":
+                    import_workflow.unref(store, args.target_dir)
+                    return success(command=operation.command)
+                install_path = _normalize_optional_path(args.install_path, "--install-path")
+                ref_path = _normalize_optional_path(args.ref_path, "--ref-path")
+                with store.read_only_transaction() as transaction:
+                    candidates = import_workflow.query(
+                        RuntimeModelView(transaction),
+                        install_id=args.install_id,
+                        install_path=install_path,
+                        ref_path=ref_path,
+                        keys=args.key,
+                    )
+                return success(command=operation.command, candidates=candidates)
+
+            payload = coordinator.run(execute)
     except CommandFailure as exc:
         payload = _command_failure(locals().get("operation", invocation), exc)
     except GitRootUnresolved as exc:
@@ -259,35 +265,97 @@ def _run_worktree(invocation: ParsedInvocation, args: argparse.Namespace) -> int
     try:
         root = resolve_git_root(invocation.repos_path)
         operation = ParsedInvocation(invocation.command, str(root))
-        store = _runtime_store(root)
-        name = args.worktree_command
-        if name == "create":
-            record = worktree_workflow.create(
-                store,
-                GitCache.from_environment(),
-                install_id=args.install_id,
-                git_url=args.url,
-                work_path=args.work_path,
-                branch=args.branch or "",
-                tag=args.tag or "",
-                commit=args.commit or "",
-                tree_name=args.tree_name,
-            )
-            payload = success(command=operation.command, **{"work-path": record.work_path})
-        elif name == "remove":
-            worktree_workflow.remove(
-                store,
-                GitCache.from_environment(),
-                work_path=args.work_path,
-                force=args.force,
-            )
-            payload = success(command=operation.command)
-        else:
-            record = worktree_workflow.query(store, work_path=args.work_path)
-            fields: dict[str, object] = {}
-            if record.install_id is not None:
-                fields["install-id"] = record.install_id
-            payload = success(command=operation.command, **fields)
+        with StoreCoordinator(_runtime_store(root), GitCache.from_environment()) as coordinator:
+            store = coordinator.store
+
+            def execute() -> dict[str, object]:
+                name = args.worktree_command
+                if name == "create":
+                    record = worktree_workflow.create(
+                        store,
+                        coordinator,
+                        install_id=args.install_id,
+                        git_url=args.url,
+                        work_path=args.work_path,
+                        branch=args.branch or "",
+                        tag=args.tag or "",
+                        commit=args.commit or "",
+                        tree_name=args.tree_name,
+                    )
+                    return success(command=operation.command, **{"work-path": record.work_path})
+                if name == "remove":
+                    worktree_workflow.remove(
+                        store,
+                        coordinator,
+                        work_path=args.work_path,
+                        force=args.force,
+                    )
+                    return success(command=operation.command)
+                record = worktree_workflow.query(store, work_path=args.work_path)
+                fields: dict[str, object] = {}
+                if record.install_id is not None:
+                    fields["install-id"] = record.install_id
+                return success(command=operation.command, **fields)
+
+            payload = coordinator.run(execute)
+    except CommandFailure as exc:
+        payload = _command_failure(locals().get("operation", invocation), exc)
+    except GitRootUnresolved as exc:
+        payload = error(
+            command=invocation.command,
+            code="git-root.unresolved",
+            summary="The command could not resolve the requested Git root.",
+            details={
+                "requested-repos-path": exc.requested_repos_path,
+                "discovery-start-path": str(exc.discovery_start_path),
+            },
+            repos_path=invocation.repos_path,
+        )
+    except (StoreFailure, ModelFormatError) as exc:
+        payload = _store_or_model_failure(locals().get("operation", invocation), exc)
+    print(_json(payload))
+    return 0 if payload["status"] == "ok" else 2
+
+
+def _run_validate(invocation: ParsedInvocation, args: argparse.Namespace) -> int:
+    try:
+        root = resolve_git_root(invocation.repos_path)
+        operation = ParsedInvocation(invocation.command, str(root))
+        result = validate_workflow.validate(RuntimeStore(root), subdir=args.subdir)
+        payload = success(
+            command=operation.command,
+            valid=result.valid,
+            scope={"repos-path": str(root), "subdir": result.scope},
+            diagnostics=list(result.diagnostics),
+        )
+    except CommandFailure as exc:
+        payload = _command_failure(locals().get("operation", invocation), exc)
+    except GitRootUnresolved as exc:
+        payload = error(
+            command=invocation.command,
+            code="git-root.unresolved",
+            summary="The command could not resolve the requested Git root.",
+            details={
+                "requested-repos-path": exc.requested_repos_path,
+                "discovery-start-path": str(exc.discovery_start_path),
+            },
+            repos_path=invocation.repos_path,
+        )
+    except (StoreFailure, ModelFormatError) as exc:
+        payload = _store_or_model_failure(locals().get("operation", invocation), exc)
+    print(_json(payload))
+    if payload["status"] != "ok":
+        return 2
+    return 0 if payload["valid"] else 1
+
+
+def _run_repair(invocation: ParsedInvocation) -> int:
+    try:
+        root = resolve_git_root(invocation.repos_path)
+        operation = ParsedInvocation(invocation.command, str(root))
+        with StoreCoordinator(_runtime_store(root), GitCache.from_environment()) as coordinator:
+            coordinator.repair()
+        payload = success(command=operation.command)
     except CommandFailure as exc:
         payload = _command_failure(locals().get("operation", invocation), exc)
     except GitRootUnresolved as exc:
@@ -323,10 +391,16 @@ def _store_or_model_failure(invocation: ParsedInvocation, exc: Exception) -> dic
         details: dict[str, object] = {"store": exc.store, "phase": exc.phase, "state-path": str(exc.state_path)}
         if exc.transaction_id is not None:
             details["transaction-id"] = exc.transaction_id
+        details.update(exc.details)
+        summary = "The doctidex-git state store could not complete the requested operation."
+        if exc.phase == "recovery-repair":
+            summary = (
+                "The doctidex-git state store could not finish recovery repair; inspect the environment and retry."
+            )
         return error(
             command=invocation.command,
             code="store.transaction.unavailable",
-            summary="The doctidex-git state store could not complete the requested operation.",
+            summary=summary,
             details=details,
             repos_path=invocation.repos_path,
         )
@@ -357,7 +431,36 @@ def _normalize_optional_path(value: str | None, parameter: str) -> str | None:
 
 def _run_init(invocation: ParsedInvocation) -> int:
     try:
-        initialize(invocation.repos_path)
+        result = initialize(invocation.repos_path)
+        if not result.created:
+            validation = validate_workflow.validate(RuntimeStore(result.git_root), internal=True)
+            if not validation.valid:
+                violations: list[dict[str, object]] = []
+                for diagnostic in validation.diagnostics:
+                    details = diagnostic.get("details")
+                    if diagnostic.get("rule") == "work-model.valid" and isinstance(details, dict):
+                        nested = details.get("violations")
+                        if isinstance(nested, list):
+                            violations.extend(item for item in nested if isinstance(item, dict))
+                    else:
+                        violations.append(
+                            {
+                                "code": str(diagnostic.get("rule")),
+                                "path": diagnostic.get("path"),
+                                "message": diagnostic.get("message"),
+                                "details": details if isinstance(details, dict) else {},
+                            }
+                        )
+                payload = error(
+                    command="init",
+                    code="work-model.invalid",
+                    summary="The existing doctidex-git work model is not valid.",
+                    subject={"kind": "workspace", "path": "/.doctidex-git"},
+                    details={"violations": violations},
+                    repos_path=str(result.git_root),
+                )
+                print(_json(payload))
+                return 2
     except GitRootUnresolved as exc:
         payload = error(
             command="init",
@@ -503,16 +606,6 @@ def _validate_revision_arguments(args: argparse.Namespace) -> None:
         )
     if args.work_path is not None and args.tree_name is not None:
         raise UsageError("--tree-name requires the default work-path", parameter="--tree-name")
-
-
-def _implementation_phase(command: str) -> int:
-    return {
-        "boundary-set": 4,
-        "import": 4,
-        "worktree": 5,
-        "validate": 6,
-        "repair": 6,
-    }[command]
 
 
 def _command_path(args: argparse.Namespace) -> str:

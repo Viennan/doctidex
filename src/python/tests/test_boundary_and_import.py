@@ -6,11 +6,13 @@ import json
 import os
 import shutil
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 from whero.doctidex import imports as import_workflow
 from whero.doctidex import worktree as worktree_workflow
 from whero.doctidex.cli.main import main
+from whero.doctidex.coordination import StoreCoordinator
 from whero.doctidex.git_cache import GitCache
 from whero.doctidex.model import BoundaryPoint, Installation, RuntimeState
 from whero.doctidex.model_view import RuntimeModelView, scan_markdown_links
@@ -282,6 +284,170 @@ def test_import_restore_uses_the_recorded_commit(tmp_path: Path, monkeypatch) ->
     assert _head(install_directory) == commit
 
 
+def test_import_restore_reuses_a_clean_detached_install_path(tmp_path: Path, monkeypatch) -> None:
+    root, source, commit = _repositories(tmp_path)
+    monkeypatch.setenv("DOCTIDEX-GIT-HOME", str(tmp_path / "home"))
+    _run(root, "init")
+    installed = _run(root, "import", "install", "--tracked", "--url", str(source), "--branch", "main")
+    install_directory = root / installed["install-path"].lstrip("/")
+
+    newer_commit = _commit(source, "newer.md", "newer\n")
+    subprocess.run(["git", "-C", str(install_directory), "fetch", "origin", "main"], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(install_directory), "checkout", "--quiet", "--detach", newer_commit], check=True
+    )
+
+    def unexpected_create(*args, **kwargs) -> None:
+        raise AssertionError("a clean detached install-path must be reused")
+
+    monkeypatch.setattr(import_workflow, "_create_worktree", unexpected_create)
+    restored = _run(root, "import", "restore", "--install-id", installed["install-id"])
+
+    assert restored == installed
+    assert _head(install_directory) == commit
+
+
+def test_import_restore_fetches_a_recorded_commit_missing_from_cache(tmp_path: Path, monkeypatch) -> None:
+    root, source, _ = _repositories(tmp_path)
+    monkeypatch.setenv("DOCTIDEX-GIT-HOME", str(tmp_path / "home"))
+    _run(root, "init")
+    installed = _run(root, "import", "install", "--tracked", "--url", str(source), "--branch", "main")
+    install_directory = root / installed["install-path"].lstrip("/")
+    subprocess.run(
+        ["git", "-C", str(install_directory), "worktree", "remove", "--force", str(install_directory)],
+        check=True,
+        capture_output=True,
+    )
+    next_commit = _commit(source, "next.md", "next\n")
+    _set_installation_commit(root, installed["install-id"], next_commit)
+
+    _run(root, "import", "restore", "--install-id", installed["install-id"])
+
+    assert _head(install_directory) == next_commit
+    assert _cache_contains_commit(GitCache.from_environment(), str(source), next_commit)
+
+
+def test_import_restore_reports_an_unavailable_recorded_commit(tmp_path: Path, monkeypatch) -> None:
+    root, source, original_commit = _repositories(tmp_path)
+    monkeypatch.setenv("DOCTIDEX-GIT-HOME", str(tmp_path / "home"))
+    _run(root, "init")
+    installed = _run(root, "import", "install", "--tracked", "--url", str(source), "--branch", "main")
+    install_directory = root / installed["install-path"].lstrip("/")
+    next_commit = _commit(source, "next.md", "next\n")
+    _set_installation_commit(root, installed["install-id"], next_commit)
+    source.rename(tmp_path / "source-unavailable")
+
+    failure = _run_error(root, "import", "restore", "--install-id", installed["install-id"])
+
+    assert failure["message"]["code"] == "installation.restore.unavailable"
+    assert failure["message"]["details"] == {"commit-hash": next_commit}
+    assert _head(install_directory) == original_commit
+
+
+def test_import_install_rebuilds_a_non_git_install_path(tmp_path: Path, monkeypatch) -> None:
+    root, source, commit = _repositories(tmp_path)
+    monkeypatch.setenv("DOCTIDEX-GIT-HOME", str(tmp_path / "home"))
+    _run(root, "init")
+    install_path = import_workflow._install_path(str(source), "main")
+    install_directory = root / install_path.lstrip("/")
+    install_directory.mkdir(parents=True)
+    (install_directory / "incomplete.txt").write_text("incomplete\n")
+
+    installed = _run(root, "import", "install", "--untracked", "--url", str(source), "--branch", "main")
+
+    assert installed["install-path"] == install_path
+    assert _head(install_directory) == commit
+    assert not (install_directory / "incomplete.txt").exists()
+
+
+def test_import_install_reuses_a_clean_detached_same_source_worktree(tmp_path: Path, monkeypatch) -> None:
+    root, source, commit = _repositories(tmp_path)
+    monkeypatch.setenv("DOCTIDEX-GIT-HOME", str(tmp_path / "home"))
+    _run(root, "init")
+    install_path = import_workflow._install_path(str(source), "main")
+    install_directory = root / install_path.lstrip("/")
+    install_directory.parent.mkdir(parents=True)
+    subprocess.run(["git", "clone", "--quiet", str(source), str(install_directory)], check=True)
+    subprocess.run(
+        ["git", "-C", str(install_directory), "checkout", "--quiet", "--detach", commit], check=True
+    )
+
+    installed = _run(root, "import", "install", "--untracked", "--url", str(source), "--branch", "main")
+
+    assert installed["install-path"] == install_path
+    assert _head(install_directory) == commit
+    assert (install_directory / ".git").is_dir()
+
+
+def test_import_install_rebuilds_a_dirty_same_source_worktree(tmp_path: Path, monkeypatch) -> None:
+    root, source, _ = _repositories(tmp_path)
+    monkeypatch.setenv("DOCTIDEX-GIT-HOME", str(tmp_path / "home"))
+    _run(root, "init")
+    installed = _run(root, "import", "install", "--tracked", "--url", str(source), "--branch", "main")
+    install_directory = root / installed["install-path"].lstrip("/")
+    (install_directory / "readme.md").write_text("local edit\n")
+
+    repeated = _run(root, "import", "install", "--untracked", "--url", str(source), "--branch", "main")
+
+    assert repeated == installed
+    assert (install_directory / "readme.md").read_text() == "source\n"
+    assert subprocess.run(
+        ["git", "-C", str(install_directory), "status", "--porcelain"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout == ""
+
+
+def test_import_install_preserves_a_different_source_worktree(tmp_path: Path, monkeypatch) -> None:
+    root, source, _ = _repositories(tmp_path)
+    monkeypatch.setenv("DOCTIDEX-GIT-HOME", str(tmp_path / "home"))
+    _run(root, "init")
+    install_path = import_workflow._install_path(str(source), "main")
+    install_directory = root / install_path.lstrip("/")
+    install_directory.parent.mkdir(parents=True)
+    subprocess.run(["git", "clone", "--quiet", str(source), str(install_directory)], check=True)
+    subprocess.run(
+        ["git", "-C", str(install_directory), "remote", "set-url", "origin", "https://example.test/other.git"],
+        check=True,
+    )
+
+    failure = _run_error(root, "import", "install", "--untracked", "--url", str(source), "--branch", "main")
+
+    assert failure["message"]["code"] == "installation.target.unavailable"
+    assert failure["message"]["details"] == {"operation": "install", "occupant": "different-git-url"}
+    assert subprocess.run(
+        ["git", "-C", str(install_directory), "remote", "get-url", "origin"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip() == "https://example.test/other.git"
+
+
+def test_import_restore_rejects_a_different_source_worktree(tmp_path: Path, monkeypatch) -> None:
+    root, source, commit = _repositories(tmp_path)
+    monkeypatch.setenv("DOCTIDEX-GIT-HOME", str(tmp_path / "home"))
+    _run(root, "init")
+    installed = _run(root, "import", "install", "--tracked", "--url", str(source), "--branch", "main")
+    install_directory = root / installed["install-path"].lstrip("/")
+    subprocess.run(
+        ["git", "-C", str(install_directory), "worktree", "remove", "--force", str(install_directory)],
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(["git", "clone", "--quiet", str(source), str(install_directory)], check=True)
+    subprocess.run(
+        ["git", "-C", str(install_directory), "remote", "set-url", "origin", "https://example.test/other.git"],
+        check=True,
+    )
+
+    failure = _run_error(root, "import", "restore", "--install-id", installed["install-id"])
+
+    assert failure["message"]["code"] == "installation.restore.unavailable"
+    assert failure["message"]["details"] == {"commit-hash": commit}
+    assert install_directory.is_dir()
+
+
 def test_import_branch_install_reuses_current_revision_then_replaces_on_update(tmp_path: Path, monkeypatch) -> None:
     root, source, first_commit = _repositories(tmp_path)
     monkeypatch.setenv("DOCTIDEX-GIT-HOME", str(tmp_path / "home"))
@@ -413,16 +579,17 @@ def test_import_cache_transaction_covers_revision_and_worktree_operations(tmp_pa
     monkeypatch.setattr(import_workflow, "_resolve_revision", resolve_revision)
     monkeypatch.setattr(import_workflow, "_create_worktree", create_worktree)
 
-    installation = import_workflow.install(
-        store,
-        cache,
-        tracked=True,
-        git_url=str(source),
-        branch="main",
-        tag="",
-        commit="",
-        keys=[],
-    )
+    with StoreCoordinator(store, cache) as coordinator:
+        installation = import_workflow.install(
+            store,
+            coordinator,
+            tracked=True,
+            git_url=str(source),
+            branch="main",
+            tag="",
+            commit="",
+            keys=[],
+        )
     assert events == [
         "cache:read-only:open",
         "cache:read-only:close",
@@ -441,7 +608,8 @@ def test_import_cache_transaction_covers_revision_and_worktree_operations(tmp_pa
     events.clear()
     expected_cache_transaction = "read-only"
 
-    restored = import_workflow.restore(store, cache, installation.install_id)
+    with StoreCoordinator(store, cache) as coordinator:
+        restored = import_workflow.restore(store, coordinator, installation.install_id)
     assert restored == installation
     assert events == [
         "cache:read-only:open",
@@ -634,6 +802,55 @@ def test_worktree_default_path_uses_git_url_hierarchy_and_nested_tree_name(tmp_p
     assert _head(root / expected_path.lstrip("/")) == commit
 
 
+def test_worktree_create_from_installation_fetches_a_recorded_commit_missing_from_cache(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root, source, _ = _repositories(tmp_path)
+    monkeypatch.setenv("DOCTIDEX-GIT-HOME", str(tmp_path / "home"))
+    _run(root, "init")
+    installed = _run(root, "import", "install", "--tracked", "--url", str(source), "--branch", "main")
+    next_commit = _commit(source, "next.md", "next\n")
+    _set_installation_commit(root, installed["install-id"], next_commit)
+
+    created = _run(
+        root,
+        "worktree",
+        "create",
+        "--install-id",
+        installed["install-id"],
+        "--work-path",
+        "/from-installation",
+    )
+
+    assert _head(root / created["work-path"].lstrip("/")) == next_commit
+    assert _cache_contains_commit(GitCache.from_environment(), str(source), next_commit)
+
+
+def test_worktree_create_from_installation_reports_an_unavailable_recorded_commit(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root, source, _ = _repositories(tmp_path)
+    monkeypatch.setenv("DOCTIDEX-GIT-HOME", str(tmp_path / "home"))
+    _run(root, "init")
+    installed = _run(root, "import", "install", "--tracked", "--url", str(source), "--branch", "main")
+    next_commit = _commit(source, "next.md", "next\n")
+    _set_installation_commit(root, installed["install-id"], next_commit)
+    source.rename(tmp_path / "source-unavailable")
+
+    failure = _run_error(
+        root,
+        "worktree",
+        "create",
+        "--install-id",
+        installed["install-id"],
+        "--work-path",
+        "/from-installation",
+    )
+
+    assert failure["message"]["code"] == "worktree.source.unavailable"
+    assert failure["message"]["details"] == {"operation": "create", "install-id": installed["install-id"]}
+
+
 def test_worktree_remove_missing_and_dirty_paths(tmp_path: Path, monkeypatch) -> None:
     root, source, _ = _repositories(tmp_path)
     monkeypatch.setenv("DOCTIDEX-GIT-HOME", str(tmp_path / "home"))
@@ -729,14 +946,15 @@ def test_worktree_create_keeps_gitcache_open_until_runtime_publication(tmp_path:
 
     monkeypatch.setattr(store, "write_transaction", write_transaction)
 
-    record = worktree_workflow.create(
-        store,
-        cache,
-        install_id=None,
-        git_url=str(source),
-        work_path="/work",
-        branch="main",
-    )
+    with StoreCoordinator(store, cache) as coordinator:
+        record = worktree_workflow.create(
+            store,
+            coordinator,
+            install_id=None,
+            git_url=str(source),
+            work_path="/work",
+            branch="main",
+        )
 
     assert record.work_path == "/work"
     assert events == [
@@ -798,6 +1016,27 @@ def _head(repository: Path) -> str:
     return subprocess.run(
         ["git", "-C", str(repository), "rev-parse", "HEAD"], check=True, capture_output=True, text=True
     ).stdout.strip()
+
+
+def _set_installation_commit(git_root: Path, install_id: str, commit_hash: str) -> None:
+    store = RuntimeStore(git_root)
+    with store.write_transaction() as transaction:
+        state = transaction.state
+        updated = tuple(
+            replace(item, commit_hash=commit_hash) if item.install_id == install_id else item
+            for item in state.installations
+        )
+        assert updated != state.installations
+        transaction.replace_state(replace(state, installations=updated))
+
+
+def _cache_contains_commit(cache: GitCache, git_url: str, commit_hash: str) -> bool:
+    with cache.read_only_transaction() as transaction:
+        repository = transaction.repository(git_url)
+    return subprocess.run(
+        ["git", "-C", str(repository), "cat-file", "-e", f"{commit_hash}^{{commit}}"],
+        check=False,
+    ).returncode == 0
 
 
 def _query_installation(install_id: str, keys: tuple[str, ...]) -> Installation:

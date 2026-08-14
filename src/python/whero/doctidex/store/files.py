@@ -12,12 +12,21 @@ from pathlib import Path
 class StoreFailure(RuntimeError):
     """A store operation failed without exposing an underlying system error to callers."""
 
-    def __init__(self, *, store: str, phase: str, state_path: Path, transaction_id: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        store: str,
+        phase: str,
+        state_path: Path,
+        transaction_id: str | None = None,
+        details: dict[str, object] | None = None,
+    ) -> None:
         super().__init__(f"{store} store operation failed during {phase}")
         self.store = store
         self.phase = phase
         self.state_path = state_path
         self.transaction_id = transaction_id
+        self.details = details or {}
 
 
 class FileLock:

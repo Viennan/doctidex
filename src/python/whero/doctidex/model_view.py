@@ -159,9 +159,7 @@ class RuntimeWriteModelView(RuntimeModelView):
         replacements = {point.path: point for point in points}
         if not replacements:
             return
-        updated = tuple(
-            replacements.pop(current.path, current) for current in self.state.custom_boundary_points
-        )
+        updated = tuple(replacements.pop(current.path, current) for current in self.state.custom_boundary_points)
         updated = (*updated, *replacements.values())
         if updated != self.state.custom_boundary_points:
             self._write_transaction._replace_collections(custom_boundary_points=updated)
@@ -256,6 +254,80 @@ class MarkdownLink:
         return {"path": self.path, "line": self.line, "link-path": self.link_path}
 
 
+@dataclass(frozen=True, slots=True)
+class ManagedSymlink:
+    """A repository symlink whose resolved target lies in an Installation."""
+
+    path: str
+    target_path: str
+    installation: Installation
+    ref: Ref | None
+
+
+def scan_managed_symlinks(
+    git_root: Path,
+    model: RuntimeModelView,
+    *,
+    scope: str = "/",
+) -> tuple[ManagedSymlink, ...]:
+    """Find symlinks into managed installation trees without entering boundaries."""
+
+    scope = normalize_repo_path(scope, parameter="scope")
+    root = repo_path_to_fs(git_root, scope)
+    installation_roots = tuple((repo_path_to_fs(git_root, item.install_path), item) for item in model.installations)
+    boundaries = {point.path for point in model.boundary_points}
+    result: list[ManagedSymlink] = []
+    for directory, child_directories, files in os.walk(root, followlinks=False):
+        current = fs_path_to_repo_path(git_root, Path(directory))
+        retained_directories: list[str] = []
+        for name in child_directories:
+            candidate = Path(directory) / name
+            candidate_repo = _join_repo_path(current, name)
+            if name == ".doctidex-git" or candidate_repo in boundaries:
+                continue
+            if candidate.is_symlink():
+                _append_managed_symlink(result, candidate, candidate_repo, installation_roots, model, git_root)
+                continue
+            retained_directories.append(name)
+        child_directories[:] = retained_directories
+        for name in files:
+            candidate = Path(directory) / name
+            if candidate.is_symlink():
+                _append_managed_symlink(
+                    result, candidate, _join_repo_path(current, name), installation_roots, model, git_root
+                )
+    return tuple(result)
+
+
+def _append_managed_symlink(
+    result: list[ManagedSymlink],
+    candidate: Path,
+    candidate_repo: str,
+    installation_roots: tuple[tuple[Path, Installation], ...],
+    model: RuntimeModelView,
+    git_root: Path,
+) -> None:
+    try:
+        resolved = candidate.resolve(strict=False)
+    except OSError:
+        return
+    for install_root, installation in installation_roots:
+        try:
+            resolved.relative_to(install_root)
+        except ValueError:
+            continue
+        target_repo = fs_path_to_repo_path(git_root, resolved)
+        result.append(
+            ManagedSymlink(
+                path=candidate_repo,
+                target_path=target_repo,
+                installation=installation,
+                ref=model.ref(candidate_repo),
+            )
+        )
+        return
+
+
 def scan_markdown_links(
     git_root: Path,
     model: RuntimeModelView,
@@ -311,9 +383,10 @@ def resolve_local_link(document_path: str, link_path: str) -> str | None:
     """Resolve a local Markdown link lexically to a repository-internal path."""
 
     parsed = urlsplit(link_path)
-    if not parsed.path or parsed.scheme or parsed.netloc:
+    if parsed.scheme or parsed.netloc:
         return None
-    path = unquote(parsed.path)
+    # A fragment-only link targets the source document itself.
+    path = unquote(parsed.path) if parsed.path else document_path
     candidate = path if path.startswith("/") else _join_repo_path(_parent_path(document_path), path)
     try:
         return normalize_repo_path(candidate, parameter="link-path")

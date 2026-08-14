@@ -45,10 +45,12 @@ commit；直接使用 `--url` 创建时不创建 Installation，`install-id` 省
 1. 根据通用 `--repos-path` 恢复当前 Git root 的 RuntimeStore。
 2. `--install-id` 与 `--url` 必须且只能选择一个：
    - 使用 `--install-id` 时，从 RuntimeStore 查找 Installation，并以其 Git URL 和已记录的
-     `commit-hash` 创建 Worktree，写入同值的 `base-commit-hash`；
+     `commit-hash` 创建 Worktree，写入同值的 `base-commit-hash`；在创建前按
+     [需求 0002-08](08-store-transactions.md) 确保该 commit 在 bare repository 中可用，缺失时仅按
+     该 hash 获取并复验；
    - 使用 `--url` 时，`--branch`、`--tag` 与 `--commit` 必须且只能选择一个。通过 CacheStore
      获取或恢复该 Git URL 的 bare repository；branch 或 tag 先与远程同步并解析为 commit，commit
-     则获取并确认所指定的 Git object。
+     则获取并确认所指定的 Git object。创建前仍按需求 0002-08 的目标 commit 流程复验。
 3. 确定 `work-path`：显式 `--work-path` 直接作为工作路径；否则以来源 Git URL 派生默认根目录
    `/.doctidex-git/worktrees/<domain>/<repository-path-without-.git>/`，再追加 `--tree-name`。未提供
    `--tree-name` 时，以长度近似 GitHub 展示 commit hash 的短随机标识作为末级目录名；仅在此未提供
@@ -59,7 +61,7 @@ commit；直接使用 `--url` 创建时不创建 Installation，`install-id` 省
    命令直接报错，不自动重命名。
 5. 如果 `work-path` 不位于 `.doctidex-git/worktrees/` 下，将该 `work-path` 加入当前 Git root 的
    `.gitignore`。
-6. 以最终 commit 创建 detached Git worktree 工作区。
+6. 在仍持有 GitCache transaction 时，以已确认可用的最终 commit 创建 detached Git worktree 工作区。
 7. 创建并写入 `Worktree`，保存 Git URL、基准 commit、可选 install-id 及 work-path；由 work-path
    派生 `worktree` 类型 BoundaryPoint，该边界点不单独写入文件。
 8. 提交 RuntimeStore 事务并返回需求 0002-01 定义的成功结果。
@@ -103,7 +105,8 @@ Installation。
 ## 6. 与其他模型的交互
 
 - 使用 `--install-id` 创建时，Worktree 读取 Installation 的 `git-url` 和 install-id，但不复制或
-  移动 Installation 的 install-path，并以其已记录的 commit 创建 Worktree。
+  移动 Installation 的 install-path，并以其已记录的 commit 创建 Worktree。bare repository 缺少该
+  commit 时，按共享目标 commit 流程仅以该 hash 获取；不重新解释 Installation 的 branch/tag。
 - 使用 `--url` 创建时，Worktree 通过 CacheStore 使用缓存对象，将选定的 branch、tag 或 commit
   解析为最终 commit 后创建；缓存记录不因 Worktree 的创建或移除自动删除。
 - `work-path` 创建成功后自动形成 `worktree` 类型 BoundaryPoint；移除 Worktree 后该派生点消失。
@@ -119,7 +122,17 @@ URL 来源的 `worktree create` 必须提供且只能提供一种 revision selec
 base commit 供后续 repair 使用，而不保存会随远程变化的 selector，也不跟踪 worktree 后续提交。仅未指定
 `--tree-name` 和 `--work-path` 的随机默认路径可在冲突时重试；用户指定的 `--tree-name` 或 `--work-path`
 发生路径冲突或无法创建时，`worktree create` 直接报错。`worktree remove` 的未记录路径或工作目录缺失不构成错误；未提交修改
-或 Git worktree 状态异常时，只有指定 `--force` 才可以强制移除。
+或 Git worktree 状态异常时，只有指定 `--force` 才可以强制移除。所有 `worktree create` 来源均在创建
+Git worktree 前遵守需求 0002-08 的目标 commit 可用性流程；`--install-id` 已记录的 commit 无法获取或
+复验时，返回 `worktree.source.unavailable`；`--url` 的 selector 无法取得目标 commit 时仍返回
+`revision.unresolvable`。实现中，`--install-id` 也作为 `install-id` 类型的来源 selector 传递到该检查和
+诊断构建流程，因此两类来源均不会出现空 selector。两者均不误报为 work-path 冲突。
+
+URL 来源的 branch/tag 在当前 GitCache 事务中只解析一次，得到本次 `base-commit-hash` 后才进入可重试的
+RuntimeStore 创建操作。该操作报告 `repair-required` 时，协调器复用当前 GitCache Write 事务运行 repair，随后以
+同一个 `base-commit-hash` 重试。若当前为 GitCache ReadOnly 事务，必须先退出后再以 GitCache Write 事务运行
+repair，并在重试时重新取得缓存；不得重新同步远程或重新解析 selector。Installation 来源本就以记录的
+`commit-hash` 作为固定的 `base-commit-hash`。
 
 ## 8. 受影响的产品表面
 
@@ -144,6 +157,7 @@ base commit 供后续 repair 使用，而不保存会随远程变化的 selector
 - [x] 默认及自定义 `work-path` 的 Git ignore 创建、移除规则已记录。
 - [x] URL 层级默认 work-path 和 `--tree-name` 的派生规则已记录。
 - [x] 工作区冲突、缺失清理和异常移除规则已明确。
+- [x] URL 与 Installation 两类创建来源的目标 commit 检查、按 hash 获取和错误转换规则已统一记录。
 - [x] 设计与 CLI 契约、工作模型及 Architecture 的一致性已完成审阅。
 
 ## 10. 实施与状态

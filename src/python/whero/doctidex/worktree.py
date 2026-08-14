@@ -7,11 +7,16 @@ import uuid
 from pathlib import Path
 
 from whero.doctidex.errors import CommandFailure
-from whero.doctidex.git_cache import GitCache
 from whero.doctidex.model import Worktree
 from whero.doctidex.model_view import RuntimeModelView, RuntimeWriteModelView
 from whero.doctidex.paths import normalize_repo_path, repo_path_to_fs
-from whero.doctidex.repository import repository_location, resolve_revision
+from whero.doctidex.repository import (
+    GitCommitUnavailable,
+    ensure_commit_available,
+    repository_location,
+    resolve_revision,
+)
+from whero.doctidex.store.coordination import WorkflowCoordinator
 from whero.doctidex.store.files import StoreFailure, atomic_write_bytes
 from whero.doctidex.store.runtime import RuntimeStore
 
@@ -22,7 +27,7 @@ _RANDOM_TREE_NAME_LENGTH = 7
 
 def create(
     store: RuntimeStore,
-    cache: GitCache,
+    coordinator: WorkflowCoordinator,
     *,
     install_id: str | None,
     git_url: str | None,
@@ -37,12 +42,12 @@ def create(
     explicit_work_path = _explicit_work_path(work_path)
 
     if install_id is not None:
-        with store.read_only_transaction() as transaction:
-            installation = RuntimeModelView(transaction).installation(install_id)
+        installation = coordinator.run(lambda: _read_installation(store, install_id))
         if installation is None:
             raise _source_failure(_failure_work_path(explicit_work_path), install_id=install_id)
         source_url = installation.git_url
         base_commit_hash = installation.commit_hash
+        selector_kind, selector_value = "install-id", install_id
 
         def create_from_repository(repository: Path) -> Worktree:
             return _create_from_repository(
@@ -53,27 +58,34 @@ def create(
                 base_commit_hash=base_commit_hash,
                 explicit_work_path=explicit_work_path,
                 tree_name=tree_name,
+                selector_kind=selector_kind,
+                selector_value=selector_value,
             )
 
     else:
         assert git_url is not None
         source_url = git_url
         selector_kind, selector_value = _revision_selector(branch=branch, tag=tag, commit=commit)
+        resolved_commit: str | None = None
 
         def create_from_repository(repository: Path) -> Worktree:
-            base_commit_hash = _resolve_revision(repository, source_url, selector_kind, selector_value)
+            nonlocal resolved_commit
+            if resolved_commit is None:
+                resolved_commit = _resolve_revision(repository, source_url, selector_kind, selector_value)
             return _create_from_repository(
                 store,
                 repository,
                 install_id=None,
                 source_url=source_url,
-                base_commit_hash=base_commit_hash,
+                base_commit_hash=resolved_commit,
                 explicit_work_path=explicit_work_path,
                 tree_name=tree_name,
+                selector_kind=selector_kind,
+                selector_value=selector_value,
             )
 
     try:
-        return cache.with_repository(source_url, create_from_repository)
+        return coordinator.with_repository(source_url, create_from_repository)
     except CommandFailure as exc:
         if exc.code == "cache.repository.unavailable":
             raise _source_failure(
@@ -82,24 +94,39 @@ def create(
         raise
 
 
-def remove(store: RuntimeStore, cache: GitCache, *, work_path: str, force: bool) -> None:
+def remove(
+    store: RuntimeStore,
+    coordinator: WorkflowCoordinator,
+    *,
+    work_path: str,
+    force: bool,
+) -> None:
     """Remove a recorded worktree and its custom Git ignore protection."""
 
     selected_path = normalize_repo_path(work_path, parameter="--work-path")
-    with store.read_only_transaction() as transaction:
-        record = RuntimeModelView(transaction).worktree(selected_path)
+    record = coordinator.run(lambda: _read_worktree(store, selected_path))
     if record is None:
         return
 
     target = repo_path_to_fs(store.git_root, selected_path)
     if not target.exists() and not target.is_symlink():
-        _remove_missing_worktree_record(store, selected_path)
+        coordinator.run(lambda: _remove_missing_worktree_record(store, selected_path))
         return
 
-    cache.with_repository(
+    coordinator.with_repository(
         record.url,
         lambda repository: _remove_from_repository(store, repository, work_path=selected_path, force=force),
     )
+
+
+def _read_installation(store: RuntimeStore, install_id: str):
+    with store.read_only_transaction() as transaction:
+        return RuntimeModelView(transaction).installation(install_id)
+
+
+def _read_worktree(store: RuntimeStore, work_path: str) -> Worktree | None:
+    with store.read_only_transaction() as transaction:
+        return RuntimeModelView(transaction).worktree(work_path)
 
 
 def query(store: RuntimeStore, *, work_path: str) -> Worktree:
@@ -122,12 +149,22 @@ def _create_from_repository(
     base_commit_hash: str,
     explicit_work_path: str | None,
     tree_name: str | None,
+    selector_kind: str,
+    selector_value: str,
 ) -> Worktree:
     with store.write_transaction() as transaction:
         view = RuntimeWriteModelView(transaction)
         work_path = _select_work_path(view, store.git_root, source_url, explicit_work_path, tree_name)
         target = repo_path_to_fs(store.git_root, work_path)
         _ensure_available_target(view, target, work_path)
+        _ensure_worktree_commit(
+            repository,
+            source_url,
+            base_commit_hash,
+            work_path=work_path,
+            selector_kind=selector_kind,
+            selector_value=selector_value,
+        )
 
         ignored = False
         if not _is_default_work_path(work_path):
@@ -242,16 +279,37 @@ def _resolve_revision(repository: Path, git_url: str, selector_kind: str, select
     except CommandFailure as exc:
         if exc.code != "revision.unresolvable":
             raise
-        raise CommandFailure(
-            code=exc.code,
-            summary=exc.summary,
-            subject=exc.subject,
-            details={
-                "operation": "worktree create",
-                "selector-kind": selector_kind,
-                "selector-value": selector_value,
-            },
-        ) from exc
+        raise _revision_failure(git_url, selector_kind, selector_value) from exc
+
+
+def _ensure_worktree_commit(
+    repository: Path,
+    git_url: str,
+    commit_hash: str,
+    *,
+    work_path: str,
+    selector_kind: str,
+    selector_value: str,
+) -> None:
+    try:
+        ensure_commit_available(repository, git_url, commit_hash)
+    except GitCommitUnavailable as exc:
+        if selector_kind == "install-id":
+            raise _source_failure(work_path, install_id=selector_value) from exc
+        raise _revision_failure(git_url, selector_kind, selector_value) from exc
+
+
+def _revision_failure(git_url: str, selector_kind: str, selector_value: str) -> CommandFailure:
+    return CommandFailure(
+        code="revision.unresolvable",
+        summary="The requested Git revision could not be resolved.",
+        subject={"kind": "git-source", "git-url": git_url},
+        details={
+            "operation": "worktree create",
+            "selector-kind": selector_kind,
+            "selector-value": selector_value,
+        },
+    )
 
 
 def _is_default_work_path(work_path: str) -> bool:
@@ -360,6 +418,43 @@ def _remove_custom_ignore(git_root: Path, work_path: str) -> None:
             )
     except (OSError, StoreFailure) as exc:
         raise _ignore_failure(work_path, operation="remove", gitignore=gitignore) from exc
+
+
+def _align_custom_ignores(git_root: Path, work_paths: tuple[str, ...]) -> None:
+    """Keep only tool-marked ignore pairs required by the current Worktree records."""
+
+    desired = set(work_paths)
+    gitignore = git_root / ".gitignore"
+    try:
+        content = gitignore.read_text() if gitignore.exists() else ""
+        lines = content.splitlines()
+        updated: list[str] = []
+        retained: set[str] = set()
+        index = 0
+        while index < len(lines):
+            marker = lines[index]
+            if marker.startswith(_IGNORE_MARKER_PREFIX) and index + 1 < len(lines):
+                candidate = marker.removeprefix(_IGNORE_MARKER_PREFIX)
+                expected_marker, expected_rule = _ignore_entry(candidate)
+                if marker == expected_marker and lines[index + 1] == expected_rule:
+                    if candidate in desired:
+                        updated.extend((marker, lines[index + 1]))
+                        retained.add(candidate)
+                    index += 2
+                    continue
+            updated.append(marker)
+            index += 1
+        for work_path in sorted(desired - retained):
+            updated.extend(_ignore_entry(work_path))
+        if updated != lines:
+            atomic_write_bytes(
+                gitignore,
+                ("\n".join(updated) + ("\n" if updated else "")).encode(),
+                store="runtime",
+                phase="worktree-ignore",
+            )
+    except (OSError, StoreFailure) as exc:
+        raise _ignore_failure("/.gitignore", operation="repair", gitignore=gitignore) from exc
 
 
 def _ignore_entry(work_path: str) -> tuple[str, str]:

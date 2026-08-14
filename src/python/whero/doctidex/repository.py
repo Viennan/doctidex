@@ -19,6 +19,14 @@ class GitRootUnresolved(RuntimeError):
     discovery_start_path: Path
 
 
+@dataclass(frozen=True, slots=True)
+class GitCommitUnavailable(RuntimeError):
+    """The selected bare repository cannot provide one required commit."""
+
+    git_url: str
+    commit_hash: str
+
+
 def resolve_git_root(repos_path: str | None, *, cwd: Path | None = None) -> Path:
     """Resolve the explicit root or discover the enclosing Git worktree root."""
 
@@ -112,6 +120,37 @@ def resolve_revision(repository: Path, git_url: str, *, kind: str, value: str) -
         )
     _git_revision(repository, git_url, kind, value, "fetch", "origin", value)
     return _git_revision(repository, git_url, kind, value, "rev-parse", "--verify", f"{value}^{{commit}}")
+
+
+def ensure_commit_available(repository: Path, git_url: str, commit_hash: str) -> None:
+    """Ensure a bare repository contains one commit without reselecting a revision."""
+
+    if _contains_commit(repository, git_url, commit_hash):
+        return
+    try:
+        subprocess.run(
+            ["git", "-C", str(repository), "fetch", "origin", commit_hash],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise GitCommitUnavailable(git_url, commit_hash) from exc
+    if not _contains_commit(repository, git_url, commit_hash):
+        raise GitCommitUnavailable(git_url, commit_hash)
+
+
+def _contains_commit(repository: Path, git_url: str, commit_hash: str) -> bool:
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(repository), "cat-file", "-e", f"{commit_hash}^{{commit}}"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError as exc:
+        raise GitCommitUnavailable(git_url, commit_hash) from exc
+    return completed.returncode == 0
 
 
 def _git_revision(
