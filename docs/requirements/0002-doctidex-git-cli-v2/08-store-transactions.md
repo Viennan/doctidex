@@ -213,6 +213,8 @@ transaction 覆盖的命令簇操作，而不是 GitCache 的公开能力：
 
 GitCache 的事务不提供 `remove` 缓存接口。`import remove`、worktree remove 或其他外部模块的
 移除操作只删除其自身创建的安装目录、worktree 或引用，不删除 CacheStore 中的 published cache。
+其中 `worktree remove` 的正常删除流程不访问 bare repository，因此不打开 GitCache transaction；其直接删除后留下的
+stale Git worktree registration 由后续创建前的 `git worktree prune` 清理。
 缓存清理不属于本需求范围。
 
 ### 4.4 事务语义与保证边界

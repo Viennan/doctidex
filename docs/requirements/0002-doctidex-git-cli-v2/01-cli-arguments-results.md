@@ -715,8 +715,9 @@ doctidex-git [--repos-path <REPOSITORY-ROOT-PATH>] repair
 | `worktree.source.unavailable` | `--install-id` 没有可用 Installation，或 `--url` 对应 Git source 无法用于创建工作区。 | `subject.kind: "worktree"`、`subject.work-path`、`details.install-id` 或 `details.git-url`、`details.operation: "create"`。 |
 | `worktree.target.unavailable` | work-path 已存在、发生路径冲突或无法创建工作区。 | `subject.kind: "worktree"`、`subject.work-path`、`details.operation: "create"`、`details.occupant`。 |
 | `worktree.ignore.protection.failed` | 自定义 work-path 无法加入或移出 Git ignore，导致工作区无法满足模型约束。 | `subject.kind: "worktree"`、`subject.work-path`、`details.operation`、`details.gitignore-path`。 |
-| `worktree.not-found` | `remove` 或 `query` 指定的 work-path 没有 Worktree 记录。 | `subject.kind: "worktree"`、`subject.work-path`、`details.operation`。 |
-| `worktree.remove.blocked` | worktree 存在未提交修改或 Git worktree 状态异常，且未指定 `--force`。 | `subject.kind: "worktree"`、`subject.work-path`、`details.reason`、`details.required-option: "--force"`。 |
+| `worktree.not-found` | `query` 指定的 work-path 没有 Worktree 记录。 | `subject.kind: "worktree"`、`subject.work-path`、`details.operation: "query"`。 |
+| `worktree.remove.blocked` | worktree 存在未提交修改或无法读取 Git worktree 状态，且未指定 `--force`。 | `subject.kind: "worktree"`、`subject.work-path`、`details.reason`、`details.required-option: "--force"`。 |
+| `worktree.remove.unavailable` | `worktree remove` 无法直接删除已记录的 work-path。 | `subject.kind: "worktree"`、`subject.work-path`、`details.operation: "remove"`、`details.reason: "worktree-path-unavailable"`。 |
 
 工作目录缺失但 Worktree 记录仍存在时，`worktree remove` 清理模型状态并成功完成，不产生错误。
 

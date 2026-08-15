@@ -61,7 +61,8 @@ commit；直接使用 `--url` 创建时不创建 Installation，`install-id` 省
    命令直接报错，不自动重命名。
 5. 如果 `work-path` 不位于 `.doctidex-git/worktrees/` 下，将该 `work-path` 加入当前 Git root 的
    `.gitignore`。
-6. 在仍持有 GitCache transaction 时，以已确认可用的最终 commit 创建 detached Git worktree 工作区。
+6. 在仍持有 GitCache transaction 时，先执行 `git worktree prune`，再以已确认可用的最终 commit
+   创建 detached Git worktree 工作区。
 7. 创建并写入 `Worktree`，保存 Git URL、基准 commit、可选 install-id 及 work-path；由 work-path
    派生 `worktree` 类型 BoundaryPoint，该边界点不单独写入文件。
 8. 提交 RuntimeStore 事务并返回需求 0002-01 定义的成功结果。
@@ -72,15 +73,18 @@ commit；直接使用 `--url` 创建时不创建 Installation，`install-id` 省
 ### 4.2 `worktree remove`
 
 1. 根据 `--work-path` 在 RuntimeStore 中查找 Worktree；没有对应记录时不报错，直接返回成功。
-2. 若已有记录的 worktree 工作目录已缺失，不报错，继续清理对应的模型状态；否则尝试移除 Git
-   worktree 工作区。
-3. worktree 存在未提交修改或 Git worktree 状态异常时，未提供 `--force` 则报错；提供 `--force`
-   时强制移除。
+2. 若已有记录的 worktree 工作目录已缺失，不报错，继续清理对应的模型状态；否则直接删除该目录，
+   不执行 `git worktree remove`。正常删除流程不访问 bare repository 或 GitCache。
+3. worktree 存在未提交修改或无法读取 Git worktree 状态时，未提供 `--force` 则报错；提供 `--force`
+   时直接删除。
 4. 如果该 `work-path` 不位于 `.doctidex-git/worktrees/` 下，从当前 Git root 的 `.gitignore` 中
    删除由本命令加入的 `work-path` 规则。
 5. 从 `runtime.json` 的 Worktree 集合移除该记录。
 6. `worktree` 类型 BoundaryPoint 随状态重建消失。
 7. 提交事务并返回通用成功结果。
+
+直接删除可能留下 bare repository 中的 stale Git worktree registration。该注册不属于 `remove` 的
+处理范围；下一次 `worktree create` 已在创建前执行 `git worktree prune`，并在该步骤清理它。
 
 ### 4.3 `worktree query`
 
@@ -96,7 +100,7 @@ commit；直接使用 `--url` 创建时不创建 Installation，`install-id` 省
 | 不存在 | 尚未创建或已移除 | 无 | `worktree create` 创建 |
 | 已创建 | `create` 成功建立工作区并提交记录 | `runtime.json` 和 work-path | `query` 读取；`remove` 移除 |
 | 工作目录缺失 | Worktree 记录存在但 work-path 已不存在 | `runtime.json` 仍是记录来源 | `remove` 可无错误清理记录、边界点和自定义 ignore 规则 |
-| 脏工作区或状态异常 | worktree 存在未提交修改或 Git worktree 状态异常 | `runtime.json` 和 Git worktree 状态 | `remove` 默认报错；`remove --force` 强制移除 |
+| 脏工作区或状态异常 | worktree 存在未提交修改或无法读取其 Git worktree 状态 | `runtime.json` 和 work-path 目录 | `remove` 默认报错；`remove --force` 直接删除目录 |
 | 已移除 | `remove` 成功提交 | 无 Worktree 记录 | 不再派生 BoundaryPoint |
 
 Worktree 的生命周期不改变其关联 Installation 的生命周期；移除 Worktree 不移除或修改关联的
@@ -108,7 +112,8 @@ Installation。
   移动 Installation 的 install-path，并以其已记录的 commit 创建 Worktree。bare repository 缺少该
   commit 时，按共享目标 commit 流程仅以该 hash 获取；不重新解释 Installation 的 branch/tag。
 - 使用 `--url` 创建时，Worktree 通过 CacheStore 使用缓存对象，将选定的 branch、tag 或 commit
-  解析为最终 commit 后创建；缓存记录不因 Worktree 的创建或移除自动删除。
+  解析为最终 commit 后创建；缓存记录不因 Worktree 的创建或移除自动删除。`worktree remove`
+  的正常删除流程不打开 GitCache transaction。
 - `work-path` 创建成功后自动形成 `worktree` 类型 BoundaryPoint；移除 Worktree 后该派生点消失。
 - 默认 `work-path` 位于 `/.doctidex-git/worktrees/<domain>/<repository-path-without-.git>/<tree-name>`；
   该目录按工作模型规定被 Git ignore。每一层保留 Git URL 的 repository path，避免不同仓库路径产生
@@ -122,7 +127,8 @@ URL 来源的 `worktree create` 必须提供且只能提供一种 revision selec
 base commit 供后续 repair 使用，而不保存会随远程变化的 selector，也不跟踪 worktree 后续提交。仅未指定
 `--tree-name` 和 `--work-path` 的随机默认路径可在冲突时重试；用户指定的 `--tree-name` 或 `--work-path`
 发生路径冲突或无法创建时，`worktree create` 直接报错。`worktree remove` 的未记录路径或工作目录缺失不构成错误；未提交修改
-或 Git worktree 状态异常时，只有指定 `--force` 才可以强制移除。所有 `worktree create` 来源均在创建
+或无法读取 Git worktree 状态时，只有指定 `--force` 才可以直接删除工作目录。正常删除不调用 GitCache 或
+`git worktree remove`，留下的 stale Git worktree registration 由下一次创建前的 `git worktree prune` 清理。所有 `worktree create` 来源均在创建
 Git worktree 前遵守需求 0002-08 的目标 commit 可用性流程；`--install-id` 已记录的 commit 无法获取或
 复验时，返回 `worktree.source.unavailable`；`--url` 的 selector 无法取得目标 commit 时仍返回
 `revision.unresolvable`。实现中，`--install-id` 也作为 `install-id` 类型的来源 selector 传递到该检查和
@@ -139,7 +145,7 @@ repair，并在重试时重新取得缓存；不得重新同步远程或重新�
 | 表面 | 需要定义的内容 | 当前状态 |
 |---|---|---|
 | `worktree create` | Installation/CacheStore 来源选择、revision 解析、默认路径派生、工作区创建和 BoundaryPoint 派生 | 已定义；冲突或无法创建时报错 |
-| `worktree remove` | 工作区删除、RuntimeStore 更新和边界点移除 | 已定义；缺失清理与 `--force` 规则已明确 |
+| `worktree remove` | 直接目录删除、RuntimeStore 更新和边界点移除 | 已定义；正常删除不访问 GitCache，缺失清理与 `--force` 规则已明确 |
 | `worktree query` | RuntimeStore 查询和可选 install-id 返回 | 已定义 |
 | Worktree 生命周期 | 创建、运行、失效和移除 | 已定义 |
 
@@ -157,6 +163,7 @@ repair，并在重试时重新取得缓存；不得重新同步远程或重新�
 - [x] 默认及自定义 `work-path` 的 Git ignore 创建、移除规则已记录。
 - [x] URL 层级默认 work-path 和 `--tree-name` 的派生规则已记录。
 - [x] 工作区冲突、缺失清理和异常移除规则已明确。
+- [x] `remove` 的直接目录删除、GitCache 非访问及后续 `create` 的 stale registration 清理责任已明确。
 - [x] URL 与 Installation 两类创建来源的目标 commit 检查、按 hash 获取和错误转换规则已统一记录。
 - [x] 设计与 CLI 契约、工作模型及 Architecture 的一致性已完成审阅。
 

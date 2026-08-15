@@ -888,6 +888,38 @@ def test_worktree_remove_missing_and_dirty_paths(tmp_path: Path, monkeypatch) ->
     }
 
 
+def test_worktree_remove_directly_deletes_without_git_cache_or_git_remove(tmp_path: Path, monkeypatch) -> None:
+    root, source, _ = _repositories(tmp_path)
+    monkeypatch.setenv("DOCTIDEX-GIT-HOME", str(tmp_path / "home"))
+    _run(root, "init")
+    created = _run(
+        root, "worktree", "create", "--url", str(source), "--branch", "main", "--work-path", "/work"
+    )
+    target = root / created["work-path"].lstrip("/")
+    cache_calls: list[str] = []
+    git_calls: list[object] = []
+
+    def unexpected_cache_transaction(*args: object, **kwargs: object) -> object:
+        cache_calls.append("transaction")
+        raise AssertionError("worktree remove must not open a GitCache transaction")
+
+    original_run = subprocess.run
+
+    def record_git_call(arguments: object, *args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        git_calls.append(arguments)
+        return original_run(arguments, *args, **kwargs)
+
+    monkeypatch.setattr(GitCache, "read_only_transaction", unexpected_cache_transaction)
+    monkeypatch.setattr(GitCache, "write_transaction", unexpected_cache_transaction)
+    monkeypatch.setattr(worktree_workflow.subprocess, "run", record_git_call)
+
+    _run(root, "worktree", "remove", "--work-path", "/work", "--force")
+
+    assert not target.exists()
+    assert cache_calls == []
+    assert all(arguments[3:5] != ["worktree", "remove"] for arguments in git_calls)
+
+
 def test_worktree_create_rejects_user_selected_occupied_paths_and_unknown_installation(
     tmp_path: Path, monkeypatch
 ) -> None:

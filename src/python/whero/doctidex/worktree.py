@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import uuid
 from pathlib import Path
@@ -96,7 +97,6 @@ def create(
 
 def remove(
     store: RuntimeStore,
-    coordinator: WorkflowCoordinator,
     *,
     work_path: str,
     force: bool,
@@ -104,29 +104,26 @@ def remove(
     """Remove a recorded worktree and its custom Git ignore protection."""
 
     selected_path = normalize_repo_path(work_path, parameter="--work-path")
-    record = coordinator.run(lambda: _read_worktree(store, selected_path))
-    if record is None:
-        return
+    with store.write_transaction() as transaction:
+        view = RuntimeWriteModelView(transaction)
+        if view.worktree(selected_path) is None:
+            return
 
-    target = repo_path_to_fs(store.git_root, selected_path)
-    if not target.exists() and not target.is_symlink():
-        coordinator.run(lambda: _remove_missing_worktree_record(store, selected_path))
-        return
-
-    coordinator.with_repository(
-        record.url,
-        lambda repository: _remove_from_repository(store, repository, work_path=selected_path, force=force),
-    )
+        target = repo_path_to_fs(store.git_root, selected_path)
+        if target.exists() or target.is_symlink():
+            if not force:
+                reason = _remove_block_reason(target)
+                if reason is not None:
+                    raise _remove_blocked_failure(selected_path, reason)
+            _remove_worktree_path(target, selected_path)
+        if not _is_default_work_path(selected_path):
+            _remove_custom_ignore(store.git_root, selected_path)
+        view.remove_worktrees((selected_path,))
 
 
 def _read_installation(store: RuntimeStore, install_id: str):
     with store.read_only_transaction() as transaction:
         return RuntimeModelView(transaction).installation(install_id)
-
-
-def _read_worktree(store: RuntimeStore, work_path: str) -> Worktree | None:
-    with store.read_only_transaction() as transaction:
-        return RuntimeModelView(transaction).worktree(work_path)
 
 
 def query(store: RuntimeStore, *, work_path: str) -> Worktree:
@@ -184,41 +181,6 @@ def _create_from_repository(
         )
         view.upsert_worktree(record)
         return record
-
-
-def _remove_missing_worktree_record(store: RuntimeStore, work_path: str) -> None:
-    with store.write_transaction() as transaction:
-        view = RuntimeWriteModelView(transaction)
-        record = view.worktree(work_path)
-        if record is None:
-            return
-        _finalize_removal(store, view, work_path)
-
-
-def _remove_from_repository(store: RuntimeStore, repository: Path, *, work_path: str, force: bool) -> None:
-    with store.write_transaction() as transaction:
-        view = RuntimeWriteModelView(transaction)
-        record = view.worktree(work_path)
-        if record is None:
-            return
-        target = repo_path_to_fs(store.git_root, work_path)
-        if not target.exists() and not target.is_symlink():
-            _finalize_removal(store, view, work_path)
-            return
-        if not force:
-            reason = _remove_block_reason(target)
-            if reason is not None:
-                raise _remove_blocked_failure(work_path, reason)
-        _remove_git_worktree(repository, target, work_path, force=force)
-        _finalize_removal(store, view, work_path)
-
-
-def _finalize_removal(store: RuntimeStore, view: RuntimeWriteModelView, work_path: str) -> None:
-    """Remove the managed ignore rule and Worktree record after physical removal."""
-
-    if not _is_default_work_path(work_path):
-        _remove_custom_ignore(store.git_root, work_path)
-    view.remove_worktrees((work_path,))
 
 
 def _explicit_work_path(work_path: str | None) -> str | None:
@@ -365,15 +327,16 @@ def _remove_block_reason(target: Path) -> str | None:
     return "uncommitted-changes" if result.stdout else None
 
 
-def _remove_git_worktree(repository: Path, target: Path, work_path: str, *, force: bool) -> None:
-    arguments = ["git", "-C", str(repository), "worktree", "remove"]
-    if force:
-        arguments.append("--force")
-    arguments.append(str(target))
+def _remove_worktree_path(target: Path, work_path: str) -> None:
+    """Remove only the managed worktree directory, leaving stale Git registration to create-prune."""
+
     try:
-        subprocess.run(arguments, check=True, capture_output=True, text=True)
-    except (OSError, subprocess.CalledProcessError) as exc:
-        raise _remove_blocked_failure(work_path, "git-worktree-unavailable") from exc
+        if target.is_symlink() or target.is_file():
+            target.unlink()
+        elif target.exists():
+            shutil.rmtree(target)
+    except OSError as exc:
+        raise _remove_unavailable_failure(work_path) from exc
 
 
 def _add_custom_ignore(git_root: Path, work_path: str) -> bool:
@@ -526,4 +489,13 @@ def _remove_blocked_failure(work_path: str, reason: str) -> CommandFailure:
         summary="The managed worktree cannot be removed without force.",
         subject={"kind": "worktree", "work-path": work_path},
         details={"reason": reason, "required-option": "--force"},
+    )
+
+
+def _remove_unavailable_failure(work_path: str) -> CommandFailure:
+    return CommandFailure(
+        code="worktree.remove.unavailable",
+        summary="The managed worktree directory could not be removed.",
+        subject={"kind": "worktree", "work-path": work_path},
+        details={"operation": "remove", "reason": "worktree-path-unavailable"},
     )

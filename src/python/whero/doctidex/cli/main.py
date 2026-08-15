@@ -307,7 +307,6 @@ def _run_worktree(operation: ParsedInvocation, root: Path, args: argparse.Namesp
             if name == "remove":
                 worktree_workflow.remove(
                     store,
-                    coordinator,
                     work_path=args.work_path,
                     force=args.force,
                 )
