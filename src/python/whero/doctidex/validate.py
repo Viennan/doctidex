@@ -9,13 +9,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
 
-import yaml
-
 from whero.doctidex.errors import CommandFailure
 from whero.doctidex.initialization import RUNTIME_IGNORE_PATHS, WORKSPACE_ARTIFACTS
-from whero.doctidex.model import Installation, ModelFormatError, RuntimeState
-from whero.doctidex.model_view import MarkdownLink, RuntimeModelView, scan_markdown_links
+from whero.doctidex.model import InlineAnnotation, Installation, ModelFormatError, RuntimeState
+from whero.doctidex.model_view import (
+    MarkdownLink,
+    RuntimeModelView,
+    parse_inline_annotation,
+    resolve_inline_annotation_boundary,
+    scan_markdown_links,
+)
 from whero.doctidex.paths import normalize_repo_path, repo_path_to_fs
+from whero.doctidex.root_index import ROOT_INDEX_FRONTMATTER, root_index_frontmatter, root_index_matches
 from whero.doctidex.store.files import StoreFailure
 from whero.doctidex.store.runtime import RecoveryRequired, RuntimeStore
 
@@ -29,22 +34,50 @@ class ValidationResult:
     diagnostics: tuple[dict[str, object], ...]
 
 
+@dataclass(frozen=True, slots=True)
+class _ModelCheck:
+    """The model snapshot and diagnostics shared by validation entry points."""
+
+    model: RuntimeModelView | None
+    diagnostics: tuple[dict[str, object], ...]
+    requires_recovery: bool = False
+
+
 def validate(
     store: RuntimeStore,
     *,
     subdir: str | None = None,
-    internal: bool = False,
+    model_structure: bool = False,
 ) -> ValidationResult:
-    """Validate one workspace without changing any state.
+    """Validate one workspace without changing state.
 
-    ``internal`` is used during transaction recovery.  It deliberately omits the
-    Markdown/link pass, because repair only owns physical work-model objects.
+    ``model_structure`` retains only the root identity and repository-level
+    work-model checks.
     """
 
-    scope = _scope(store.git_root, subdir)
+    scope = _scope(store.git_root, None if model_structure else subdir)
+    check = _check_model(store, scope)
+    diagnostics = list(check.diagnostics)
+    if model_structure:
+        if not check.requires_recovery:
+            diagnostics.extend(_index_diagnostics(store.git_root))
+        diagnostics.sort(key=lambda item: (str(item.get("path", "")), int(item.get("line", 0)), str(item["rule"])))
+        return ValidationResult(not diagnostics, scope, tuple(diagnostics))
+    if check.model is None:
+        diagnostics.sort(key=lambda item: (str(item.get("path", "")), int(item.get("line", 0)), str(item["rule"])))
+        return ValidationResult(not diagnostics, scope, tuple(diagnostics))
+    diagnostics.extend(_index_diagnostics(store.git_root))
+    # Content scanning relies on complete, valid work-model files. Any model
+    # diagnostic means those files are not trustworthy, so skip the scan.
+    if not check.diagnostics:
+        diagnostics.extend(_content_diagnostics(store.git_root, check.model, scope))
+    diagnostics.sort(key=lambda item: (str(item.get("path", "")), int(item.get("line", 0)), str(item["rule"])))
+    return ValidationResult(not diagnostics, scope, tuple(diagnostics))
+
+
+def _check_model(store: RuntimeStore, scope: str) -> _ModelCheck:
     diagnostics: list[dict[str, object]] = []
-    workspace = store.workspace_path
-    if not workspace.is_dir():
+    if not store.workspace_path.is_dir():
         diagnostics.append(
             _model_diagnostic(
                 [
@@ -58,7 +91,7 @@ def validate(
                 content_scan="skipped",
             )
         )
-        return ValidationResult(False, scope, tuple(diagnostics))
+        return _ModelCheck(None, tuple(diagnostics))
 
     try:
         with store.diagnostic_transaction() as transaction:
@@ -87,7 +120,7 @@ def validate(
                         content_scan="skipped",
                     )
                 )
-                return ValidationResult(False, scope, tuple(diagnostics))
+                return _ModelCheck(None, tuple(diagnostics), requires_recovery=True)
             state = transaction.state
             model = RuntimeModelView(transaction)
             if scope != "/" and model.first_boundary(scope) is not None:
@@ -114,22 +147,13 @@ def validate(
                 },
             }
         violation = _specific_model_violation(store.workspace_path, violation)
-        diagnostics.append(
-            _model_diagnostic(
-                [violation],
-                content_scan="skipped",
-            )
-        )
-        return ValidationResult(False, scope, tuple(diagnostics))
+        diagnostics.append(_model_diagnostic([violation], content_scan="skipped"))
+        return _ModelCheck(None, tuple(diagnostics))
 
     violations = [*_model_violations(store.git_root, state), *_gitignore_violations(store.git_root, state)]
     if violations:
         diagnostics.append(_model_diagnostic(violations, content_scan="skipped"))
-    diagnostics.extend(_index_diagnostics(store.git_root))
-    if not internal and not violations:
-        diagnostics.extend(_content_diagnostics(store.git_root, model, scope))
-    diagnostics.sort(key=lambda item: (str(item.get("path", "")), int(item.get("line", 0)), str(item["rule"])))
-    return ValidationResult(not diagnostics, scope, tuple(diagnostics))
+    return _ModelCheck(model, tuple(diagnostics))
 
 
 def _specific_model_violation(workspace: Path, fallback: dict[str, object]) -> dict[str, object]:
@@ -436,39 +460,17 @@ def _index_diagnostics(git_root: Path) -> list[dict[str, object]]:
                 {"expected": "readable file", "actual": "unreadable"},
             )
         ]
-    frontmatter = _frontmatter(content)
-    expected = {"type": "index", "doctidex": {"type": "index", "root": True}}
-    valid_frontmatter = (
-        isinstance(frontmatter, dict)
-        and frontmatter.get("type") == "index"
-        and isinstance(frontmatter.get("doctidex"), dict)
-        and frontmatter["doctidex"].get("type") == "index"
-        and frontmatter["doctidex"].get("root") is True
-    )
-    if not valid_frontmatter:
+    frontmatter = root_index_frontmatter(content)
+    if not root_index_matches(frontmatter):
         return [
             _diagnostic(
                 "index.conforms",
                 "/index.md",
                 "The root index.md does not declare a doctidex root.",
-                {"expected": expected, "actual": frontmatter},
+                {"expected": ROOT_INDEX_FRONTMATTER, "actual": frontmatter},
             )
         ]
     return []
-
-
-def _frontmatter(content: str) -> object:
-    lines = content.splitlines()
-    if not lines or lines[0].strip() != "---":
-        return None
-    try:
-        end = next(index for index in range(1, len(lines)) if lines[index].strip() == "---")
-    except StopIteration:
-        return None
-    try:
-        return yaml.safe_load("\n".join(lines[1:end]))
-    except yaml.YAMLError:
-        return None
 
 
 def _gitignore_violations(git_root: Path, state: RuntimeState) -> list[dict[str, object]]:
@@ -530,16 +532,21 @@ def _content_diagnostics(git_root: Path, model: RuntimeModelView, scope: str) ->
                 )
             )
         if link.boundary_point is not None:
-            annotation = _cross_boundary_annotation(git_root / link.path.lstrip("/"), link.line)
+            annotation = _annotation_for_link(git_root / link.path.lstrip("/"), link.source_end)
             expected = link.boundary_point.path
-            if annotation != expected:
+            annotated_boundary = (
+                resolve_inline_annotation_boundary(link.path, link.link_path, annotation)
+                if annotation is not None
+                else None
+            )
+            if annotated_boundary != expected:
                 details: dict[str, object] = {
                     "link-path": link.link_path,
                     "expected-cross-boundary-point": expected,
                     "reason": "missing-or-mismatched",
                 }
                 if annotation is not None:
-                    details["actual-cross-boundary-point"] = annotation
+                    details["actual-cross-boundary-point"] = annotation.cross_boundary_point
                 diagnostics.append(
                     _link_diagnostic(
                         "link.annotation.required",
@@ -598,44 +605,14 @@ def _is_external(value: str) -> bool:
     return bool(parsed.scheme or parsed.netloc)
 
 
-def _cross_boundary_annotation(path: Path, line: int) -> str | None:
+def _annotation_for_link(path: Path, source_end: int | None) -> InlineAnnotation | None:
+    if source_end is None:
+        return None
     try:
-        lines = path.read_text().splitlines()
+        content = path.read_text()
     except OSError:
         return None
-    # The annotation belongs to the contiguous HTML-comment sequence following
-    # the link, including an annotation placed later on the same source line.
-    current_line = lines[line - 1]
-    inline_comment = current_line.find("<!--")
-    if inline_comment >= 0:
-        lines = [current_line[inline_comment:], *lines[line:]]
-        index = 0
-    else:
-        index = line
-    while index < len(lines):
-        current = lines[index].strip()
-        if not current:
-            index += 1
-            continue
-        if not current.startswith("<!--"):
-            break
-        end = index
-        while "-->" not in lines[end] and end + 1 < len(lines):
-            end += 1
-        block = "\n".join(lines[index : end + 1])
-        if "doctidex:" in block:
-            payload = block.split("doctidex:", 1)[1].split("-->", 1)[0]
-            try:
-                value = yaml.safe_load(payload)
-            except yaml.YAMLError:
-                return None
-            return (
-                value.get("cross-boundary-point")
-                if isinstance(value, dict) and isinstance(value.get("cross-boundary-point"), str)
-                else None
-            )
-        index = end + 1
-    return None
+    return parse_inline_annotation(content, source_end)
 
 
 def _model_diagnostic(violations: list[dict[str, object]], *, content_scan: str) -> dict[str, object]:

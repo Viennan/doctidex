@@ -9,6 +9,7 @@ from pathlib import Path
 
 from whero.doctidex.model import ModelFormatError, RuntimeState
 from whero.doctidex.repository import GitRootUnresolved, resolve_git_root
+from whero.doctidex.root_index import prepare_root_index
 from whero.doctidex.store.files import StoreFailure, atomic_write_bytes, fsync_directory
 from whero.doctidex.store.runtime import RuntimeStore, _encode_state
 
@@ -41,12 +42,11 @@ class InitResult:
 
 
 def initialize(repos_path: str | None, *, cwd: Path | None = None) -> InitResult:
-    """Create a complete workspace, or safely validate an existing one without changing it."""
+    """Create a complete workspace, or report that a non-empty one already exists."""
 
     git_root = resolve_git_root(repos_path, cwd=cwd)
     workspace = git_root / WORKSPACE_NAME
-    if workspace.exists():
-        _existing_workspace_violations(git_root)
+    if workspace.exists() and (not workspace.is_dir() or any(workspace.iterdir())):
         return InitResult(git_root=git_root, created=False)
 
     _create_workspace(git_root)
@@ -64,14 +64,15 @@ def _create_workspace(git_root: Path) -> None:
         with tempfile.TemporaryDirectory(prefix="doctidex-git-init-") as temporary_directory:
             temporary = Path(temporary_directory) / WORKSPACE_NAME
             temporary.mkdir()
+            _ensure_root_index(git_root)
             (temporary / "config.toml").write_bytes(b"")
             for name, content in _encode_state(RuntimeState.empty()).items():
                 (temporary / name).write_bytes(content)
             _ensure_runtime_ignores(git_root)
-            if workspace.exists():
+            if workspace.exists() and (not workspace.is_dir() or any(workspace.iterdir())):
                 raise FileExistsError(workspace)
             workspace_sync_started = True
-            shutil.copytree(temporary, workspace)
+            shutil.copytree(temporary, workspace, dirs_exist_ok=True)
             fsync_directory(git_root, store="runtime", phase="initialize")
     except (OSError, StoreFailure) as exc:
         if workspace_sync_started and workspace.exists():
@@ -87,10 +88,15 @@ def _remove_partial_workspace(workspace: Path) -> None:
         pass
 
 
-def _existing_workspace_violations(git_root: Path) -> None:
-    # Placeholder: requirement 0002-07 (phase 5) must determine the complete validate workflow and
-    # its result/error contract before this existing-workspace branch performs any checks.
-    pass
+def _ensure_root_index(git_root: Path) -> None:
+    path = git_root / "index.md"
+    try:
+        content = path.read_text() if path.exists() else None
+        updated = prepare_root_index(content)
+    except OSError as exc:
+        raise StoreFailure(store="runtime", phase="initialize", state_path=path) from exc
+    if updated != content:
+        atomic_write_bytes(path, updated.encode(), store="runtime", phase="initialize")
 
 
 def _ensure_runtime_ignores(git_root: Path) -> None:

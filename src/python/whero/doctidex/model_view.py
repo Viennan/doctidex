@@ -9,15 +9,20 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 from urllib.parse import unquote, urlsplit
 
+import yaml
 from markdown_it import MarkdownIt
 from markdown_it.rules_inline.link import link as _markdown_link_rule
 from markdown_it.rules_inline.state_inline import StateInline
 
-from whero.doctidex.model import BoundaryPoint, Installation, Ref, RuntimeState, Worktree
+from whero.doctidex.model import BoundaryPoint, InlineAnnotation, Installation, Ref, RuntimeState, Worktree
 from whero.doctidex.paths import normalize_repo_path, repo_path_to_fs
 
 if TYPE_CHECKING:
-    from whero.doctidex.store.runtime import RuntimeTransaction, RuntimeWriteTransaction
+    from whero.doctidex.store.runtime import (
+        RuntimeDiagnosticTransaction,
+        RuntimeTransaction,
+        RuntimeWriteTransaction,
+    )
 
 
 class RuntimeModelView:
@@ -236,6 +241,24 @@ class RuntimeWriteModelView(RuntimeModelView):
         )
 
 
+class RuntimeRepairModelView(RuntimeModelView):
+    """Expose the narrowly-scoped model correction permitted to repair."""
+
+    @property
+    def _diagnostic_transaction(self) -> RuntimeDiagnosticTransaction:
+        return cast("RuntimeDiagnosticTransaction", self._transaction)
+
+    def remove_refs(self, target_dirs: Iterable[str]) -> None:
+        """Remove invalid Ref records through one maintenance publication."""
+
+        selected_paths = set(target_dirs)
+        if not selected_paths:
+            return
+        self._diagnostic_transaction._replace_refs_for_repair(
+            tuple(reference for reference in self.state.refs if reference.target_dir not in selected_paths)
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class MarkdownLink:
     """One local Markdown link and its work-model association."""
@@ -243,6 +266,7 @@ class MarkdownLink:
     path: str
     line: int
     link_path: str
+    source_end: int | None
     target_path: str | None
     boundary_point: BoundaryPoint | None
     installation: Installation | None
@@ -338,7 +362,7 @@ def scan_markdown_links(
 
     scope = normalize_repo_path(scope, parameter="scope")
     root = repo_path_to_fs(git_root, scope)
-    candidates: list[tuple[str, int, str, str | None]] = []
+    candidates: list[tuple[str, _LocalLink, str | None]] = []
     boundaries = {point.path for point in model.boundary_points}
 
     for directory, child_directories, files in os.walk(root):
@@ -357,19 +381,20 @@ def scan_markdown_links(
             except OSError:
                 continue
             document_path = fs_path_to_repo_path(git_root, document)
-            for line, link_path in _local_link_paths(content):
-                target_path = resolve_local_link(document_path, link_path)
-                candidates.append((document_path, line, link_path, target_path))
+            for link in _local_link_paths(content):
+                target_path = resolve_local_link(document_path, link.link_path)
+                candidates.append((document_path, link, target_path))
 
-    boundaries = iter(model.first_boundaries(item[3] for item in candidates if item[3] is not None))
+    boundaries = iter(model.first_boundaries(item[2] for item in candidates if item[2] is not None))
     links: list[MarkdownLink] = []
-    for document_path, line, link_path, target_path in candidates:
+    for document_path, local_link, target_path in candidates:
         boundary = next(boundaries) if target_path is not None else None
         links.append(
             MarkdownLink(
                 path=document_path,
-                line=line,
-                link_path=link_path,
+                line=local_link.line,
+                link_path=local_link.link_path,
+                source_end=local_link.source_end,
                 target_path=target_path,
                 boundary_point=boundary,
                 installation=model.installation_for_boundary(boundary),
@@ -419,11 +444,29 @@ def _parent_path(path: str) -> str:
     return parent or "/"
 
 
-def _local_link_paths(content: str) -> tuple[tuple[int, str], ...]:
-    matches: list[tuple[int, str]] = []
+@dataclass(frozen=True, slots=True)
+class _LocalLink:
+    line: int
+    link_path: str
+    source_end: int | None
+
+
+def _local_link_paths(content: str) -> tuple[_LocalLink, ...]:
+    matches: list[_LocalLink] = []
+    line_offsets = [0, *(index + 1 for index, character in enumerate(content) if character == "\n")]
+    matched_inline_starts: set[int] = set()
     for token in _MARKDOWN.parse(content):
         if token.type != "inline" or token.map is None:
             continue
+        source_start = _inline_source_start(
+            content,
+            token.content,
+            token.map,
+            line_offsets,
+            matched_starts=matched_inline_starts,
+        )
+        if source_start is not None:
+            matched_inline_starts.add(source_start)
         for child in token.children or ():
             if child.type != "link_open":
                 continue
@@ -431,9 +474,95 @@ def _local_link_paths(content: str) -> tuple[tuple[int, str], ...]:
             if link_path is None:
                 continue
             offset = child.meta.get("source-offset", 0)
+            end = child.meta.get("source-end")
             line = token.map[0] + token.content[:offset].count("\n") + 1
-            matches.append((line, link_path))
+            source_end = source_start + end if source_start is not None and isinstance(end, int) else None
+            matches.append(_LocalLink(line=line, link_path=link_path, source_end=source_end))
     return tuple(matches)
+
+
+def _inline_source_start(
+    content: str,
+    inline_content: str,
+    source_map: list[int],
+    line_offsets: list[int],
+    *,
+    matched_starts: set[int],
+) -> int | None:
+    if not inline_content:
+        return None
+    start_line, end_line = source_map
+    block_start = line_offsets[start_line]
+    block_end = line_offsets[end_line] if end_line < len(line_offsets) else len(content)
+    search_start = block_start
+    while True:
+        source_start = content.find(inline_content, search_start, block_end)
+        if source_start < 0:
+            return None
+        if source_start not in matched_starts:
+            return source_start
+        search_start = source_start + 1
+
+
+def parse_inline_annotation(content: str, position: int) -> InlineAnnotation | None:
+    """Parse the first valid doctidex annotation following one source position."""
+
+    index = position
+    while True:
+        while index < len(content) and content[index].isspace():
+            index += 1
+        if not content.startswith("<!--", index):
+            return None
+        end = content.find("-->", index + len("<!--"))
+        if end < 0:
+            return None
+        annotation = _parse_annotation_block(content[index + len("<!--") : end])
+        if annotation is not None:
+            return annotation
+        index = end + len("-->")
+
+
+def _parse_annotation_block(block: str) -> InlineAnnotation | None:
+    payload = block.lstrip()
+    prefix = "doctidex:"
+    if not payload.startswith(prefix):
+        return None
+    try:
+        value = yaml.safe_load(payload.removeprefix(prefix))
+    except yaml.YAMLError:
+        return None
+    cross_boundary_point = value.get("cross-boundary-point") if isinstance(value, dict) else None
+    if not isinstance(cross_boundary_point, str):
+        return None
+    return InlineAnnotation(cross_boundary_point=cross_boundary_point)
+
+
+def resolve_inline_annotation_boundary(
+    document_path: str,
+    link_path: str,
+    annotation: InlineAnnotation,
+) -> str | None:
+    """Resolve an annotation prefix to its repository-internal BoundaryPoint path."""
+
+    link = urlsplit(link_path)
+    annotation_path = urlsplit(annotation.cross_boundary_point)
+    if (
+        link.scheme
+        or link.netloc
+        or annotation_path.scheme
+        or annotation_path.netloc
+        or annotation_path.query
+        or annotation_path.fragment
+        or not _path_prefix(annotation_path.path, link.path)
+    ):
+        return None
+    return resolve_local_link(document_path, annotation.cross_boundary_point)
+
+
+def _path_prefix(prefix: str, path: str) -> bool:
+    if not prefix or not path.startswith(prefix):
+        return False
+    return len(path) == len(prefix) or prefix.endswith("/") or path[len(prefix)] == "/"
 
 
 def _link_with_source_offset(state: StateInline, silent: bool) -> bool:
@@ -446,6 +575,7 @@ def _link_with_source_offset(state: StateInline, silent: bool) -> bool:
         for token in state.tokens[token_count:]:
             if token.type == "link_open":
                 token.meta["source-offset"] = start
+                token.meta["source-end"] = state.pos
     return matched
 
 

@@ -157,15 +157,16 @@ flow mapping 和 block mapping：
 -->
 ```
 
-注释位于 link 后的连续 HTML 注释序列中；link 与首个注释、相邻注释之间可以只有空白，
-遇到其他内容时关联结束。`doctidex` 后的 YAML 必须是无重复键的映射。一个 link 的关联序列最多包含一个 `doctidex` 注释；其他注释
-可以与它共存。为支持渐进式读取，`doctidex` 注释应放在序列首位。
+注释位于 link 后首个紧邻的连续 HTML 注释序列中；link 与首个注释、相邻注释之间可以只有空白，
+注释块内部也可以包含空白和换行，遇到其他内容时关联结束。`doctidex` 注释不要求位于该序列的首位；
+其他注释可以与它共存。读取方按源码顺序检查序列中的每个完整注释块，并采用首个包含合规 `doctidex`
+YAML 映射的注释。该映射必须无重复键。
 
 `cross-boundary-point` 字段定义如下：
 
 | 字段 | 要求与语义 |
 |---|---|
-| `cross-boundary-point` | 路径字符串，形式为 link path 中包含该 `boundary-set` 节点的路径前缀；该节点属于包含 link 所在文档的 doctidex 目录树。 |
+| `cross-boundary-point` | 路径字符串，必须是 link 目标 path 部分按完整路径段划分的前缀，并包含该 `boundary-set` 节点。该值保留与 link 相同的绝对或相对路径形式；相对值按 link 所在文档解释并规范化后，必须等于 link 实际跨越的第一个 BoundaryPoint 的仓库内部路径。query 和 fragment 不是该字段的一部分；该节点属于包含 link 所在文档的 doctidex 目录树。 |
 
 ## 3. 识别、读取与创建流程
 

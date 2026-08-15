@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 
 from whero.doctidex import imports as import_workflow
@@ -10,7 +11,7 @@ from whero.doctidex import worktree as worktree_workflow
 from whero.doctidex.errors import CommandFailure
 from whero.doctidex.git_cache import GitCache, GitCacheWriteTransaction
 from whero.doctidex.initialization import _ensure_runtime_ignores
-from whero.doctidex.model_view import RuntimeModelView, scan_managed_symlinks
+from whero.doctidex.model_view import RuntimeRepairModelView, scan_managed_symlinks
 from whero.doctidex.paths import repo_path_to_fs
 from whero.doctidex.store.files import StoreFailure, atomic_write_bytes, file_sha256, fsync_directory, read_bytes
 from whero.doctidex.store.runtime import RecoveryRequired, RuntimeStore, TransactionJournal, _observe_entry
@@ -38,7 +39,7 @@ def repair_core(
         journals = transaction.pending_journals
         requires_physical_repair = _recover_pending_journals(store, journals)
         transaction.reload_state()
-        model = RuntimeModelView(transaction)
+        model = RuntimeRepairModelView(transaction)
         if requires_physical_repair:
             _ensure_runtime_ignores(store.git_root)
             worktree_workflow._align_custom_ignores(
@@ -170,28 +171,45 @@ def _align_installation(store: RuntimeStore, repository: Path, installation) -> 
         )
 
 
-def _align_refs(store: RuntimeStore, model: RuntimeModelView) -> None:
-    by_id = {item.install_id: item for item in model.installations}
+def _align_refs(store: RuntimeStore, model: RuntimeRepairModelView) -> None:
+    missing_installation_refs: list[str] = []
     for reference in model.refs:
-        installation = by_id.get(reference.install_id)
+        installation = model.installation(reference.install_id)
         if installation is None:
+            _remove_ref_target(store, reference.target_dir, reference.install_id)
+            missing_installation_refs.append(reference.target_dir)
             continue
         install_path = repo_path_to_fs(store.git_root, installation.install_path)
         source = install_path / reference.src_sub_dir.lstrip("/")
         target = repo_path_to_fs(store.git_root, reference.target_dir)
-        expected = source.resolve(strict=False)
-        if target.is_symlink() and target.resolve(strict=False) == expected:
+        if target.is_symlink() and target.resolve(strict=False) == source.resolve(strict=False):
             continue
-        if target.exists() or target.is_symlink():
-            raise _ref_target_failure(reference.target_dir, installation.install_id, "align")
-        try:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            os.symlink(os.path.relpath(source, start=target.parent), target, target_is_directory=source.is_dir())
-        except OSError as exc:
-            raise _ref_target_failure(reference.target_dir, installation.install_id, "create") from exc
+        _remove_ref_target(store, reference.target_dir, installation.install_id)
+        _create_ref_target(store, reference.target_dir, installation.install_id, source)
+    model.remove_refs(missing_installation_refs)
 
 
-def _remove_unregistered_refs(store: RuntimeStore, model: RuntimeModelView) -> None:
+def _remove_ref_target(store: RuntimeStore, target_dir: str, install_id: str) -> None:
+    target = repo_path_to_fs(store.git_root, target_dir)
+    try:
+        if target.is_symlink() or target.is_file():
+            target.unlink()
+        elif target.exists():
+            shutil.rmtree(target)
+    except OSError as exc:
+        raise _ref_target_failure(target_dir, install_id, "remove") from exc
+
+
+def _create_ref_target(store: RuntimeStore, target_dir: str, install_id: str, source: Path) -> None:
+    target = repo_path_to_fs(store.git_root, target_dir)
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        os.symlink(os.path.relpath(source, start=target.parent), target, target_is_directory=source.is_dir())
+    except OSError as exc:
+        raise _ref_target_failure(target_dir, install_id, "create") from exc
+
+
+def _remove_unregistered_refs(store: RuntimeStore, model: RuntimeRepairModelView) -> None:
     for candidate in scan_managed_symlinks(store.git_root, model):
         if candidate.ref is not None:
             continue

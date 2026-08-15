@@ -142,7 +142,22 @@ Git URL 中仓库的 Domain、Name 和 revision selector 值。Git URL
 repair 依据 `base-commit-hash` 重建 URL 来源 Worktree，避免远程引用变化改变已记录工作区的 revision。
 该字段不跟踪 worktree 工作区后续的提交变化，也不会因其当前 `HEAD` 改变而更新。
 
-### 3.4 全局缓存
+### 3.4 Markdown link
+
+#### `InlineAnnotation`
+
+`InlineAnnotation` 表示附着于单个 Markdown link 的有效结构化注释。它是从 Markdown 源码读取的瞬态
+领域模型，不持久化到 RuntimeStore，也不作为 CLI 输出模型。
+
+```python
+InlineAnnotation(cross_boundary_point: str)
+```
+
+| 字段 | 当前含义 |
+|---|---|
+| `cross_boundary_point` | 结构化注释 `cross-boundary-point` 字段的原始路径字符串。共享领域工具先确认该值是 link 目标 path 部分的完整路径段前缀，再按 link 所在文档将其规范化为仓库内部路径；`validate` 将该结果与实际第一个跨越 BoundaryPoint 比较。 |
+
+### 3.5 全局缓存
 
 #### `CacheItem`
 
@@ -291,7 +306,10 @@ cache-path = 'cache'
 - `RuntimeModelView` 是依赖 Transaction 的更高层模型抽象，而不是 Transaction 的成员。命令簇在
   Transaction 上下文内显式创建 View；View 在 Transaction 索引之上提供公共领域查询与关联逻辑，命令
   簇不得为常规查询自行遍历状态集合或读取 Transaction 的内部索引；
-- 只读 Transaction 不创建事务目录；其上下文中只能使用只读 `RuntimeModelView`；
+- 只读 Transaction 不创建事务目录；其上下文中只能使用只读 `RuntimeModelView`。`validate` 只读取
+  该视图；repair 使用同一种只加锁访问，但仅可通过专用的 repair ModelView 批量移除其
+  `install-id` 已不存在的 Ref。该维护性状态修复只原子发布 `import-refs.json`，不创建业务
+  journal，也不改变 Installation、Worktree 或 custom BoundaryPoint；
 - 写 Transaction 仅在完成残留 journal 检测、必要 repair 委派和快照后立即创建事务目录及初始 journal。
   它的
   `RuntimeWriteModelView` 在公共查询基础上提供标准领域记录的新增、更新、替换和删除，并将集合状态

@@ -54,7 +54,7 @@ doctidex-git [--repos-path <REPOSITORY-ROOT-PATH>] <command> [command-options]
 
 ### 2.3 通用成功返回
 
-除 `validate` 外，未定义额外返回字段的子命令在成功时使用以下返回结构：
+除 `validate` 外，未定义额外返回字段的子命令在正常完成时使用以下返回结构：
 
 ```jsonc
 {
@@ -63,8 +63,9 @@ doctidex-git [--repos-path <REPOSITORY-ROOT-PATH>] <command> [command-options]
 }
 ```
 
-`status: "ok"` 表示命令成功完成。正常完成时 `message` 固定为空对象。命令无法完成时的
-`message` 结构、`status: "error"` 和退出状态由第 2.4 节定义。`validate` 的校验结果、诊断和
+`status: "ok"` 表示命令成功完成。除 `init` 检测到非空工作空间这一信息性场景外，正常完成时
+`message` 固定为空对象。该场景的成功信息在第 3.1 节说明；命令无法完成时的 `message` 结构、
+`status: "error"` 和退出状态由第 2.4 节定义。`validate` 的校验结果、诊断和
 退出状态由第 7.4 节单独定义。
 
 ### 2.4 通用错误返回
@@ -115,6 +116,23 @@ doctidex-git [--repos-path <REPOSITORY-ROOT-PATH>] init
 
 该命令仅接受通用的 `--repos-path` 参数；初始化对象、幂等行为和返回结果由 [需求 0002-02：设计
 doctidex-git 工作模型](02-working-model.md) 逐步定义。
+
+当 `.doctidex-git/` 已存在且非空时，命令不执行工作模型校验或修改，返回成功信息：
+
+```jsonc
+{
+  "status": "ok",
+  "message": {
+    "code": "workspace.already-initialized",
+    "summary": "Initialization has already been run; use validate --model-structure to check the work model.",
+    "details": {"next-command": "validate --model-structure"}
+  }
+}
+```
+
+`.doctidex-git/` 不存在或已存在但为空时，命令继续创建完整初始化工作空间，并创建或补齐根 `index.md`
+的必需 frontmatter 后返回通用成功结构。`root-index.frontmatter.conflict` 与
+`root-index.frontmatter.invalid` 的错误结构见第 9.2 节。
 
 ## 4. `boundary-set` 命令簇
 
@@ -514,16 +532,17 @@ doctidex-git [--repos-path <REPOSITORY-ROOT-PATH>] worktree query \
 
 ```bash
 doctidex-git [--repos-path <REPOSITORY-ROOT-PATH>] validate \
-  [--subdir <REPOSITORY-INTERNAL-ABSOLUTE-PATH>]
+  [--subdir <REPOSITORY-INTERNAL-ABSOLUTE-PATH> | --model-structure]
 ```
 
 | 参数 | 要求 |
 |---|---|
 | `--subdir <REPOSITORY-INTERNAL-ABSOLUTE-PATH>` | 可选，限定仓库内容的校验范围；不得指定 `/.doctidex-git` 或其子目录。 |
+| `--model-structure` | 可选，仅校验当前 Git root 的工作模型结构；与 `--subdir` 互斥。启用时校验根 `index.md` 及其必需 frontmatter，但不扫描其正文或其他 Markdown/link、跨界结构化注释或 worktree 未提交修改。 |
 
 ### 7.3 统一校验项
 
-`validate` 在指定范围内执行以下校验：
+未提供 `--model-structure` 时，`validate` 在指定范围内执行以下校验：
 
 - 校验 `index.md` 是否符合 doctidex 标准。
 - 校验位于 `boundary-set` 内的 Markdown 文档：其 Markdown link 路径是否符合 doctidex 标准、其
@@ -534,6 +553,9 @@ doctidex-git [--repos-path <REPOSITORY-ROOT-PATH>] validate \
 - 仅校验指定范围可能包含的 worktree `work-path` 下是否存在未提交修改；未提供 `--subdir` 时，
   指定范围为 `/`，因此校验全部 worktree。
 - 校验当前 Git root 的 doctidex-git 工作模型是否有效。
+
+提供 `--model-structure` 时，`validate` 执行根 `index.md` 的根身份和基础 frontmatter 校验，以及最后一项
+仓库级工作模型校验。它仍使用本节的 `valid`、`diagnostics` 和退出状态结构；`scope.subdir` 固定为 `/`。
 
 具体校验工作流和 `work-model.valid` 的违规项由 [需求 0002-07：`validate` 命令簇工作流与校验设计](07-validate.md) 定义。
 
@@ -660,6 +682,8 @@ doctidex-git [--repos-path <REPOSITORY-ROOT-PATH>] repair
 | `message.code` | 触发条件 | `subject` / `details` 必填信息 |
 |---|---|---|
 | `workspace.initialize.failed` | 新建工作模型时，无法建立所需的状态文件或 Git ignore 保护。 | `subject.kind: "workspace"`、`subject.path: "/.doctidex-git"`、`details.required-artifacts`、`details.unavailable-artifacts`。 |
+| `root-index.frontmatter.conflict` | 初始化时，根 `index.md` 的必需 frontmatter 字段已存在但类型或值不符合固定根身份。 | `subject.kind: "root-index"`、`subject.path: "/index.md"`、`details.field`、`details.expected`、`details.actual`。 |
+| `root-index.frontmatter.invalid` | 初始化时，已有根 `index.md` 的 frontmatter 不是可安全补充字段的 YAML 映射。 | `subject.kind: "root-index"`、`subject.path: "/index.md"`、`details.reason`。 |
 | `boundary-point.not-found` | `boundary-set remove` 指定的路径没有 custom BoundaryPoint。 | `subject.kind: "boundary-point"`、`subject.path`、`details.required-type: "custom"`。 |
 | `boundary-point.remove.prohibited` | 试图通过 `boundary-set remove` 移除 import、import-ref 或 worktree 派生点。 | `subject.kind: "boundary-point"`、`subject.path`、`details.boundary-type`、`details.managed-by`。 |
 

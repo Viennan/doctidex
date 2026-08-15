@@ -69,6 +69,13 @@ def test_missing_required_argument_is_structured_json() -> None:
     assert result.payload["message"]["details"]["parameter"] == "--path"
 
 
+def test_validate_model_structure_is_mutually_exclusive_with_subdir() -> None:
+    result = _run(["validate", "--subdir", "/docs", "--model-structure"])
+
+    assert result.code == 2
+    assert result.payload["message"]["code"] == "argument.invalid"
+
+
 def test_argument_error_context_does_not_treat_an_unknown_value_as_a_subcommand() -> None:
     result = _run(["repair", "unexpected"])
 

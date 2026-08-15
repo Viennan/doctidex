@@ -24,6 +24,7 @@ from whero.doctidex.model import (
     Worktree,
 )
 from whero.doctidex.model_view import RuntimeModelView, RuntimeWriteModelView
+from whero.doctidex.root_index import ROOT_INDEX_FRONTMATTER, root_index_frontmatter
 from whero.doctidex.store.cache import CacheStore
 from whero.doctidex.store.files import atomic_write_bytes
 from whero.doctidex.store.runtime import (
@@ -50,6 +51,7 @@ def test_init_creates_a_complete_ignored_workspace(tmp_path: Path) -> None:
     assert json.loads((workspace / "import-refs.json").read_text()) == []
     assert json.loads((workspace / "runtime.json").read_text()) == {"imports": [], "worktrees": []}
     assert (workspace / "config.toml").read_text() == ""
+    assert root_index_frontmatter((root / "index.md").read_text()) == ROOT_INDEX_FRONTMATTER
     assert not list(root.glob(".*doctidex-git.initializing-*"))
 
     for path in RUNTIME_IGNORE_PATHS:
@@ -60,7 +62,7 @@ def test_init_creates_a_complete_ignored_workspace(tmp_path: Path) -> None:
         assert ignored.returncode == 0
 
 
-def test_init_reports_invalid_existing_model_and_keeps_its_state(tmp_path: Path) -> None:
+def test_init_reports_existing_workspace_and_keeps_its_state(tmp_path: Path) -> None:
     root = _git_repository(tmp_path)
     assert _run(["--repos-path", str(root), "init"]).code == 0
     store = RuntimeStore(root)
@@ -82,9 +84,67 @@ def test_init_reports_invalid_existing_model_and_keeps_its_state(tmp_path: Path)
 
     result = _run(["--repos-path", str(root), "init"])
 
-    assert result.code == 2
-    assert result.payload["message"]["code"] == "work-model.invalid"
+    assert result.code == 0
+    assert result.payload["message"]["code"] == "workspace.already-initialized"
+    assert result.payload["message"]["details"]["next-command"] == "validate --model-structure"
     assert store.read_state() == state
+
+
+def test_init_does_not_validate_existing_workspace(tmp_path: Path) -> None:
+    root = _initialized_repository(tmp_path)
+    (root / "index.md").write_text(
+        "---\ntype: index\ndoctidex:\n  type: index\n  root: true\n---\n[missing](/missing.md)\n"
+    )
+
+    result = _run(["--repos-path", str(root), "init"])
+
+    assert result.code == 0
+    assert result.payload["message"]["code"] == "workspace.already-initialized"
+    assert _run(["--repos-path", str(root), "validate"]).payload["valid"] is False
+    assert _run(["--repos-path", str(root), "validate", "--model-structure"]).payload["valid"] is True
+
+
+def test_init_supplements_existing_root_index_frontmatter(tmp_path: Path) -> None:
+    root = _git_repository(tmp_path)
+    index = root / "index.md"
+    index.write_text("---\ntitle: Overview\ndoctidex:\n  type: index\n---\nExisting body.\n")
+
+    result = _run(["--repos-path", str(root), "init"])
+
+    assert result.code == 0
+    assert root_index_frontmatter(index.read_text()) == {
+        "title": "Overview",
+        "doctidex": {"type": "index", "root": True},
+        "type": "index",
+    }
+    assert index.read_text().endswith("Existing body.\n")
+
+
+def test_init_rejects_conflicting_root_index_frontmatter(tmp_path: Path) -> None:
+    root = _git_repository(tmp_path)
+    index = root / "index.md"
+    original = "---\ntype: guide\n---\nExisting body.\n"
+    index.write_text(original)
+
+    result = _run(["--repos-path", str(root), "init"])
+
+    assert result.code == 2
+    assert result.payload["message"]["code"] == "root-index.frontmatter.conflict"
+    assert result.payload["message"]["subject"] == {"kind": "root-index", "path": "/index.md"}
+    assert result.payload["message"]["details"] == {"field": "type", "expected": "index", "actual": "guide"}
+    assert index.read_text() == original
+    assert not (root / ".doctidex-git").exists()
+
+
+def test_init_rejects_a_non_mapping_doctidex_frontmatter_field(tmp_path: Path) -> None:
+    root = _git_repository(tmp_path)
+    (root / "index.md").write_text("---\ndoctidex: null\n---\n")
+
+    result = _run(["--repos-path", str(root), "init"])
+
+    assert result.code == 2
+    assert result.payload["message"]["code"] == "root-index.frontmatter.conflict"
+    assert result.payload["message"]["details"] == {"field": "doctidex", "expected": "mapping", "actual": None}
 
 
 def test_init_reports_an_unresolved_explicit_git_root(tmp_path: Path) -> None:
@@ -95,7 +155,7 @@ def test_init_reports_an_unresolved_explicit_git_root(tmp_path: Path) -> None:
     assert result.payload["message"]["details"]["requested-repos-path"] == str(tmp_path)
 
 
-def test_init_diagnoses_an_incomplete_existing_workspace_without_modifying_it(tmp_path: Path) -> None:
+def test_init_reports_incomplete_existing_workspace_without_modifying_it(tmp_path: Path) -> None:
     root = _git_repository(tmp_path)
     workspace = root / ".doctidex-git"
     workspace.mkdir()
@@ -103,12 +163,16 @@ def test_init_diagnoses_an_incomplete_existing_workspace_without_modifying_it(tm
 
     result = _run(["--repos-path", str(root), "init"])
 
-    assert result.code == 2
-    assert result.payload["message"]["code"] == "work-model.invalid"
+    assert result.code == 0
+    assert result.payload["message"]["code"] == "workspace.already-initialized"
+    assert result.payload["message"]["details"]["next-command"] == "validate --model-structure"
     assert not (workspace / "runtime.json").exists()
+    validation = _run(["--repos-path", str(root), "validate", "--model-structure"])
+    assert validation.code == 1
+    assert validation.payload["diagnostics"][0]["rule"] == "work-model.valid"
 
 
-def test_init_reports_pending_transactions_without_recovering_them(tmp_path: Path) -> None:
+def test_init_reports_existing_workspace_without_recovering_pending_transactions(tmp_path: Path) -> None:
     root = _initialized_repository(tmp_path)
     store = RuntimeStore(root)
     changed = RuntimeState(
@@ -121,10 +185,20 @@ def test_init_reports_pending_transactions_without_recovering_them(tmp_path: Pat
 
     result = _run(["--repos-path", str(root), "init"])
 
-    assert result.code == 2
-    assert result.payload["message"]["code"] == "work-model.invalid"
-    assert result.payload["message"]["details"]["violations"][0]["code"] == "transaction.recovery.required"
+    assert result.code == 0
+    assert result.payload["message"]["code"] == "workspace.already-initialized"
     assert directory.exists()
+
+
+def test_init_completes_an_existing_empty_workspace(tmp_path: Path) -> None:
+    root = _git_repository(tmp_path)
+    (root / ".doctidex-git").mkdir()
+
+    result = _run(["--repos-path", str(root), "init"])
+
+    assert result.code == 0
+    assert result.payload == {"status": "ok", "message": {}}
+    assert (root / ".doctidex-git" / "runtime.json").exists()
 
 
 def test_runtime_state_rebuilds_tracked_and_runtime_projections(tmp_path: Path) -> None:

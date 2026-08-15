@@ -143,6 +143,13 @@ class BoundaryPoint:
 
 
 @dataclass(frozen=True, slots=True)
+class InlineAnnotation:
+    """A valid doctidex structured annotation attached to one Markdown link."""
+
+    cross_boundary_point: str
+
+
+@dataclass(frozen=True, slots=True)
 class Worktree:
     """A managed Git worktree and the external source it represents."""
 

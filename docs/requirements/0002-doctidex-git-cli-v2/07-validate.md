@@ -41,10 +41,16 @@ worktree 与工作模型。诊断必须描述可理解的模型状态、对象�
 
 ## 3. 校验范围和结果原则
 
-`validate` 的 Git root 由通用 `--repos-path` 解析。`--subdir` 未提供时，目录树内容扫描范围为
-`/`；提供时必须是 Git root 内可读取的目录，且不得为 `/.doctidex-git` 或其子目录。若该路径
+`validate` 的 Git root 由通用 `--repos-path` 解析。默认模式或指定 `--subdir` 时，目录树内容扫描范围为
+`/`；`--subdir` 提供时必须是 Git root 内可读取的目录，且不得为 `/.doctidex-git` 或其子目录。若该路径
 本身位于某个 `BoundaryPoint` 或其后代，则它已不属于当前 doctidex 目录树的规则范围，命令返回
 `validation.scope.unavailable`，并在 `message.details.reason` 中标记 `outside-current-tree`。
+
+`--model-structure` 是与 `--subdir` 互斥的显式模式。它读取并校验 Git root 的 RuntimeStore 工作模型结构、
+仓库级投影约束，以及根 `index.md` 是否存在且具有 Architecture 规定的基础 frontmatter；`scope.subdir`
+固定为 `/`。该模式不扫描根 `index.md` 正文或其他 Markdown 文件/link、跨界结构化注释，也不检查
+`worktree.clean`。根入口问题继续使用 `index.conforms` 诊断。该模式仍返回普通 `validate` 的 `valid`、
+`diagnostics` 与退出状态，不构成另一个命令或单独的校验 API。
 
 `--subdir` 只限制目录树内容和其中 Markdown link 的扫描起点，不限制以下仓库级校验：
 
@@ -75,9 +81,9 @@ Worktree 的 RuntimeStore 投影、路径保护和物理登记是否有效仍属
 `validation.scope.unavailable` 或 `validation.scan.unavailable`。
 
 显式 `doctidex-git validate` 使用专用诊断读取事务：只获取 RuntimeStore 锁和读取快照，不恢复、创建、
-重写或清理 journal，也不修改 CacheStore。它执行本需求的完整范围校验，并向用户返回 `valid` 与
-`diagnostics`。已有工作空间上的 `init` 可以复用其中的模型诊断规则，但不构成另一种 `validate` 执行
-形态，也不触发 repair。
+重写或清理 journal，也不修改 CacheStore。默认模式执行本需求的完整范围校验，`--model-structure` 执行
+仓库级工作模型和根入口 frontmatter 校验；两者均向用户返回 `valid` 与 `diagnostics`。已有工作空间上的 `init` 不调用本命令，也
+不构成另一种 `validate` 执行形态或触发 repair；用户可显式执行 `validate --model-structure` 检查工作模型。
 
 命令簇还可以在自己的工作流中执行解决当前操作所需的局部校验，例如 remove 前的 link 或引用
 阻塞检查；这些校验不等同于对外执行完整的 `validate`，也不得因此修改工作模型。
@@ -87,7 +93,7 @@ Worktree 的 RuntimeStore 投影、路径保护和物理登记是否有效仍属
 ### 4.1 建立范围和诊断快照
 
 1. 按通用规则解析 Git root；失败时返回 `git-root.unresolved`。
-2. 规范化 `--subdir`。路径不在 Git root 内、为 `/.doctidex-git` 或其子目录、不是目录或不可读取时，返回
+2. 未提供 `--model-structure` 时，规范化 `--subdir`。路径不在 Git root 内、为 `/.doctidex-git` 或其子目录、不是目录或不可读取时，返回
    `validation.scope.unavailable`；`details.reason` 依次使用 `outside-repository`、
    `workspace-internal`、`not-directory` 或 `unreadable`。
 3. 以专用诊断读取事务检查 `.doctidex-git/.transactions/`，目录不存在时视为空。该事务只获取锁和
@@ -101,21 +107,23 @@ Worktree 的 RuntimeStore 投影、路径保护和物理登记是否有效仍属
 4. 未发现未完成事务时，读取 tracked 投影和 `runtime.json`，对可读取的状态数据逐项完成结构和
    一致性检查，并从有效记录重建可用的 Installation、Ref、Worktree 和 BoundaryPoint 视图。状态
    文件缺失或格式不合法时记录模型违规，而不是暴露原始解析器信息。
-5. 在完整 BoundaryPoint 视图可用时，检查 `--subdir` 是否位于某个 BoundaryPoint 或其后代；若是，
+5. 未提供 `--model-structure` 且完整 BoundaryPoint 视图可用时，检查 `--subdir` 是否位于某个 BoundaryPoint 或其后代；若是，
    返回 `validation.scope.unavailable`，并设置 `details.reason: "outside-current-tree"`。
-6. 如果模型违规使完整的有效 `boundary-set` 无法确定，则仍返回所有可确定的
+6. 提供 `--model-structure` 时，在本步骤完成后校验根 `index.md` 的根身份和基础 frontmatter，汇总并返回
+   诊断；不扫描其正文或执行其他内容、link 或 worktree 检查。否则，如果模型违规使完整的有效 `boundary-set` 无法确定，则仍返回所有可确定的
    `work-model.valid` 违规及根入口诊断，但跳过依赖边界集合的 Markdown 文件和 link 扫描。
    此时 `work-model.valid.details.content-scan` 为 `skipped`。模型已经无效，因此结果固定为
    `valid: false`，不会把不完整扫描表示为通过。
 
 ### 4.2 检查目录树内容
 
-无论 BoundaryPoint 视图是否完整，均检查 Git root 的 `/index.md` 是否满足 doctidex 根入口要求。
+本节只适用于未提供 `--model-structure` 的完整校验。`--model-structure` 已在第 4.1 节完成根入口
+frontmatter 校验；完整校验同样检查 Git root 的 `/index.md` 是否满足 doctidex 根入口要求，并继续扫描正文和其他内容。
 在完整 BoundaryPoint 视图可用时，显式校验继续执行以下步骤：
 
 1. 使用父需求定义的共享领域工具从 `scope.subdir` 枚举 Markdown 文件；遇到 BoundaryPoint 时不进入
    该节点的后代目录。
-2. 使用同一工具对每个 Markdown 文档解析本地文件系统 link，得到仓库内部目标、源文件行号和第一个
+2. 使用同一工具对每个 Markdown 文档解析本地文件系统 link，得到仓库内部目标、源文件行号、源码范围和第一个
    跨越的 BoundaryPoint。带 URI scheme 的外部 link 不具有当前 Git root
    的路径语义，不纳入本命令的本地路径存在性检查；只有 fragment 的 link 以源文件为目标文件。
 3. 按 Architecture 的根路径和相对路径规则解析本地 link。不能在当前 Git root 内得到规范化
@@ -123,7 +131,11 @@ Worktree 的 RuntimeStore 投影、路径保护和物理登记是否有效仍属
 4. 对不越过 BoundaryPoint 的 link，检查目标文件或目录是否实际存在；对越过 BoundaryPoint 的
    link，先确定第一个跨越点及其关联 Installation 是否处于本节定义的待恢复状态，仅在不属于
    该例外时检查物理目标是否实际存在。
-5. 检查越过 BoundaryPoint 的 link 是否有正确的 `cross-boundary-point` 结构化注释。
+5. 对越过 BoundaryPoint 的每个 link，通过共享领域工具从该 link 的结束位置解析
+   `InlineAnnotation`；解析器仅考察紧邻的连续 HTML 注释块序列，link 与首个注释块、相邻注释块之间允许
+   空白，注释块内部允许空白和换行。它按源码顺序采用首个合规的 `doctidex` YAML 映射，再由本命令检查
+   `InlineAnnotation.cross_boundary_point` 是否为 link 目标 path 的完整路径段前缀，并按源文档规范化后是否
+   等于第一个跨越 BoundaryPoint。每个 link 独立从自己的结束位置提取序列，因此同一行的多个 link 不共享注释。
 6. 当 link 的第一个跨越点是某个 `import` 类型 BoundaryPoint 时，检查对应 Installation 是
    tracked。通过 `import-ref` 类型点的 link 不额外产生该诊断，因为 `import ref` 已将其
    Installation 提升为 tracked；其关联正确性由工作模型校验负责。
@@ -140,7 +152,7 @@ Architecture 没有要求验证 Markdown anchor 是否存在，也没有要求�
 
 ### 4.3 检查 Worktree
 
-仅对 `work-path` 等于或位于 `scope.subdir` 之下、且结构和物理登记均可用的 Worktree 检查其
+本节只适用于未提供 `--model-structure` 的完整校验。仅对 `work-path` 等于或位于 `scope.subdir` 之下、且结构和物理登记均可用的 Worktree 检查其
 未提交修改。`scope.subdir` 为 `/` 时，该条件覆盖全部 Worktree。存在暂存、未暂存或未跟踪修改
 时，产生 `worktree.clean` 诊断。缺失、未登记或与 RuntimeStore 记录不一致的物理 worktree
 属于工作模型违规，不将无法读取的工作区误报为“干净”。
@@ -236,7 +248,7 @@ Ref 指向该安装产物，缺失的安装目录也不产生 `ref.source.unavai
 | `index.conforms` | Git root 的 `/index.md` 缺失，或其根入口 frontmatter 缺少、类型错误或值不匹配。 | `path: "/index.md"`；无 `line`。 | `expected`、`actual`；字段问题另含 `field`。 |
 | `link.path.conforms` | 扫描范围内 Markdown 文档的本地 link 不能按根路径或相对路径规则在 Git root 内规范化。 | `path` 为源文档，必须有 `line`。 | `link-path`、`reason`、`resolved-from`。 |
 | `link.target.exists` | 已规范化的本地 link 的目标文件或目录不存在，且不属于本节定义的待恢复 import 例外。 | `path` 为源文档，必须有 `line`。 | `link-path`、`target-path`。 |
-| `link.annotation.required` | link 越过 BoundaryPoint，但缺少、格式非法、重复、位置不合法，或 `cross-boundary-point` 与第一个跨越点不匹配。 | `path` 为源文档，必须有 `line`。 | `link-path`、`expected-cross-boundary-point`、`reason`；存在但不正确时另含 `actual-cross-boundary-point`。 |
+| `link.annotation.required` | link 越过 BoundaryPoint，但其紧邻连续注释序列中不存在合规的 `doctidex` 映射，或该映射的 `cross-boundary-point` 与第一个跨越点不匹配。 | `path` 为源文档，必须有 `line`。 | `link-path`、`expected-cross-boundary-point`、`reason`；存在但不正确时另含 `actual-cross-boundary-point`。 |
 | `import.link.tracked` | link 的第一个跨越点是 untracked Installation 的 `import` 类型 BoundaryPoint。 | `path` 为源文档，必须有 `line`。 | `link-path`、`install-id`、`install-path`、`tracked: false`。 |
 | `worktree.clean` | `work-path` 等于或位于 `scope.subdir` 之下、且结构和物理状态有效的 Worktree 存在未提交修改。 | `path` 为 `work-path`；无 `line`。 | `work-path`、`changes`；每个 `changes[].path` 为仓库内部绝对路径，`changes[].state` 表示 Git 修改状态。 |
 | `work-model.valid` | 第 5 节任一工作模型违规成立。 | `path: "/.doctidex-git"`；无 `line`。 | `violations`、`content-scan`。 |
@@ -245,15 +257,15 @@ Ref 指向该安装产物，缺失的安装目录也不产生 `ref.source.unavai
 缺失项的 `actual` 为 `null`。非根位置的 `index.md` 没有 Architecture 强制的 frontmatter，因此
 不适用该 rule。
 
-对于 `link.annotation.required`，`reason` 使用简洁的自然语言说明结构化注释缺失、格式不合法、
-位置不连续或跨界点不匹配等具体原因。程序以 `rule`、`expected-cross-boundary-point` 和
+对于 `link.annotation.required`，`reason` 使用简洁的自然语言说明连续注释序列中缺少合规映射或
+跨界点不匹配等具体原因。程序以 `rule`、`expected-cross-boundary-point` 和
 `actual-cross-boundary-point` 等结构化字段判断问题，不依赖 `reason` 的措辞。
 
 ## 7. 与命令工作流的关系
 
 | 调用方或模型 | 与本命令的关系 |
 |---|---|
-| `init` | 已有工作空间时以专用诊断读取事务采用本需求的工作模型检查。模型无效时，`init` 返回 `work-model.invalid`，其 `details.violations` 与本需求第 5 节完全一致；不会以 `validate` 的 `valid` 返回替代 `init` 的命令结果，也不触发 repair。 |
+| `init` | 非空 `.doctidex-git/` 工作空间上，`init` 不执行本需求的校验，直接返回已运行过初始化并建议执行 `validate --model-structure` 的成功信息；空工作空间由 `init` 继续完成初始化。 |
 | 非 `validate` 命令 | 可以执行各自所需的局部校验。在不能安全重建模型时，使用 `work-model.invalid` 返回相同违规数组；工作模型无效时不继续变更 Installation、Ref、BoundaryPoint 或 Worktree。若普通 RuntimeStore 事务检测到残留 journal，按需求 0002-08 第 5.4 节释放锁并报告 `repair-required`，由命令协调器运行 repair 后重试对应的 RuntimeStore 操作；只有重试能建立无残留事务的状态快照时才进入该操作的业务工作流。 |
 | `import remove` | 仍按需求 0002-05 在修改前检查实际阻塞它的 Markdown link 和 Ref，并以 `installation.remove.blocked` 返回；该动作前置检查不依赖用户先执行 `validate`。 |
 | `import unref` | 与 `import remove` 使用同一 BoundaryPoint/link 关联语义；Markdown link 跨越待移除 Ref 的 `import-ref` BoundaryPoint 时，以 `ref.remove.blocked` 返回。 |

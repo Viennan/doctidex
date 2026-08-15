@@ -16,6 +16,8 @@ import whero.doctidex.worktree as worktree_workflow
 from whero.doctidex.cli.main import main
 from whero.doctidex.coordination import StoreCoordinator
 from whero.doctidex.git_cache import GitCache
+from whero.doctidex.model import InlineAnnotation, Ref, RuntimeState
+from whero.doctidex.model_view import parse_inline_annotation, resolve_inline_annotation_boundary
 from whero.doctidex.store.runtime import RuntimeStore
 
 
@@ -30,6 +32,39 @@ def test_validate_uninitialized_is_a_diagnostic_result(tmp_path: Path) -> None:
     assert result.payload["diagnostics"][0]["details"]["violations"][0]["code"] == "workspace.uninitialized"
 
 
+def test_validate_model_structure_skips_directory_tree_checks(tmp_path: Path) -> None:
+    root = _initialized_root(tmp_path)
+    _write_root_index(root, "[missing](/missing.md)\n")
+
+    structure = _run(root, "validate", "--model-structure")
+    complete = _run(root, "validate")
+
+    assert structure.code == 0
+    assert structure.payload["valid"] is True
+    assert structure.payload["scope"] == {"repos-path": str(root), "subdir": "/"}
+    assert complete.code == 1
+    assert any(item["rule"] == "link.target.exists" for item in complete.payload["diagnostics"])
+
+
+def test_validate_model_structure_checks_root_index_frontmatter(tmp_path: Path) -> None:
+    root = _initialized_root(tmp_path)
+    (root / "index.md").write_text("---\ntype: guide\n---\n")
+
+    result = _run(root, "validate", "--model-structure")
+
+    assert result.code == 1
+    assert any(item["rule"] == "index.conforms" for item in result.payload["diagnostics"])
+
+
+def test_validate_model_structure_reports_an_absent_root_index_with_an_uninitialized_workspace(tmp_path: Path) -> None:
+    root = _git_repository(tmp_path / "root")
+
+    result = _run(root, "validate", "--model-structure")
+
+    assert result.code == 1
+    assert {item["rule"] for item in result.payload["diagnostics"]} == {"work-model.valid", "index.conforms"}
+
+
 def test_validate_valid_root_and_missing_link_include_scope_and_line(tmp_path: Path) -> None:
     root = _initialized_root(tmp_path)
     _write_root_index(root, "[missing](/missing.md)\n")
@@ -42,6 +77,80 @@ def test_validate_valid_root_and_missing_link_include_scope_and_line(tmp_path: P
     assert diagnostic["path"] == "/index.md"
     assert diagnostic["line"] == 7
     assert diagnostic["details"]["target-path"] == "/missing.md"
+
+
+def test_validate_extracts_each_link_annotation_from_its_own_comment_sequence(tmp_path: Path) -> None:
+    root = _initialized_root(tmp_path)
+    (root / "first").mkdir()
+    (root / "second").mkdir()
+    _run(root, "boundary-set", "add", "--path", "/first", "--path", "/second")
+    _write_root_index(
+        root,
+        "[first](/first) <!-- another comment --><!--\n"
+        "  doctidex:\n"
+        "    cross-boundary-point: /first\n"
+        "--> [second](/second) <!-- doctidex: {cross-boundary-point: /second} -->\n",
+    )
+
+    result = _run(root, "validate")
+
+    assert result.code == 0
+    assert result.payload["valid"] is True
+
+
+def test_validate_does_not_share_an_annotation_between_identical_links_on_one_line(tmp_path: Path) -> None:
+    root = _initialized_root(tmp_path)
+    (root / "external").mkdir()
+    _run(root, "boundary-set", "add", "--path", "/external")
+    _write_root_index(
+        root,
+        "[same](/external) [same](/external) "
+        "<!-- doctidex: {cross-boundary-point: /external} -->\n",
+    )
+
+    result = _run(root, "validate")
+
+    annotations = [item for item in result.payload["diagnostics"] if item["rule"] == "link.annotation.required"]
+    assert result.code == 1
+    assert len(annotations) == 1
+
+
+def test_parse_inline_annotation_returns_the_first_valid_annotation_after_position() -> None:
+    content = (
+        "[external](/external) <!-- another comment --> <!-- doctidex: not-a-mapping -->"
+        "<!-- doctidex: {cross-boundary-point: /external} -->"
+    )
+    position = content.index(")") + 1
+
+    assert parse_inline_annotation(content, position) == InlineAnnotation(cross_boundary_point="/external")
+
+
+def test_inline_annotation_must_be_a_link_path_prefix_before_normalization() -> None:
+    relative_annotation = InlineAnnotation(cross_boundary_point="../external")
+    absolute_annotation = InlineAnnotation(cross_boundary_point="/external")
+
+    assert (
+        resolve_inline_annotation_boundary("/guides/intro.md", "../external/readme.md", relative_annotation)
+        == "/external"
+    )
+    assert resolve_inline_annotation_boundary("/guides/intro.md", "../external/readme.md", absolute_annotation) is None
+
+
+def test_validate_accepts_relative_cross_boundary_annotation(tmp_path: Path) -> None:
+    root = _initialized_root(tmp_path)
+    _write_root_index(root)
+    (root / "external").mkdir()
+    (root / "external" / "readme.md").write_text("external\n")
+    (root / "guides").mkdir()
+    _run(root, "boundary-set", "add", "--path", "/external")
+    (root / "guides" / "intro.md").write_text(
+        "[external](../external/readme.md) <!-- doctidex: {cross-boundary-point: ../external} -->\n"
+    )
+
+    result = _run(root, "validate")
+
+    assert result.code == 0
+    assert result.payload["valid"] is True
 
 
 def test_validate_diagnostic_transaction_does_not_recover_or_create_journal(tmp_path: Path) -> None:
@@ -228,6 +337,41 @@ def test_repair_recreates_a_dangling_ref_when_tracked_install_is_missing(tmp_pat
     assert (root / "linked").resolve(strict=False) == (
         root / installation.install_path.lstrip("/")
     ).resolve(strict=False)
+
+
+def test_repair_removes_a_ref_without_an_installation_without_scanning_links(tmp_path: Path) -> None:
+    root = _initialized_root(tmp_path)
+    _write_root_index(root, "[obsolete](/obsolete)\n")
+    store = RuntimeStore(root)
+    with store.write_transaction() as transaction:
+        transaction.replace_state(
+            RuntimeState(
+                custom_boundary_points=(),
+                installations=(),
+                refs=(Ref(install_id="missing", src_sub_dir="", target_dir="/obsolete"),),
+                worktrees=(),
+            )
+        )
+    (root / "obsolete").write_text("obsolete target\n")
+
+    assert _run(root, "repair").code == 0
+    assert not (root / "obsolete").exists()
+    assert RuntimeStore(root).read_state().refs == ()
+
+
+def test_repair_rebuilds_an_inconsistent_ref_target(tmp_path: Path) -> None:
+    root, source = _source_and_root(tmp_path)
+    _run(root, "import", "install", "--tracked", "--url", str(source), "--branch", "main")
+    installation = RuntimeStore(root).read_state().installations[0]
+    _run(root, "import", "ref", "--install-id", installation.install_id, "--target-dir", "/linked")
+    target = root / "linked"
+    target.unlink()
+    target.mkdir()
+    (target / "old-content").write_text("replace me\n")
+
+    assert _run(root, "repair").code == 0
+    assert target.is_symlink()
+    assert target.resolve(strict=False) == (root / installation.install_path.lstrip("/")).resolve(strict=False)
 
 
 def test_repair_removes_stale_tool_worktree_ignore_pairs(tmp_path: Path, monkeypatch) -> None:

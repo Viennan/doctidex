@@ -90,10 +90,14 @@ repair 工作流处理已有残留 journal 时才可使用该 journal 的 backup
 
 对每条 `import-refs.json` 中的 Ref：
 
-1. 根据其 `install-id`、Installation 的 `install-path` 和 `src-sub-dir` 计算预期源路径。
-2. 检查 `target-dir` 对应的受管理符号链接是否存在。
-3. 受管理符号链接不存在时，按照 Ref 记录创建该链接，并保留原 Ref 记录；已存在的受管理符号
-   链接保持不变。
+1. 使用当前 ModelView 按 `install-id` 查询 Installation，不得自行重建 Installation 索引。若没有
+   对应 Installation，直接移除该 Ref 记录及其 `target-dir` 物理对象；不扫描 Markdown link，也不以
+   link 阻塞该维护动作。多个此类无效 Ref 必须作为一次 `import-refs.json` 原子更新删除。
+2. 对存在关联 Installation 的 Ref，根据 Installation 的 `install-path` 和 `src-sub-dir` 计算预期源路径，
+   并检查 `target-dir`。
+3. `target-dir` 缺失时，按照 Ref 记录创建相对符号链接；已存在且解析结果等于预期源的受管理
+   符号链接保持不变。存在但不是该记录所描述目标的文件、目录或符号链接时，删除后重新创建，
+   不返回目标冲突错误。
 
 仓库当前 doctidex 目录树有效范围内，凡是指向某个 Installation 的 `install-path` 或其子目录、
 但没有对应 `import-refs.json` 记录的符号链接，均视为未登记链接并删除。该扫描必须复用父需求定义的
@@ -124,9 +128,9 @@ Worktree 创建所需的 bare repository 访问经 GitCache 事务完成；目�
 5. 只移除能够确认由 doctidex-git 自动加入、且已不再由当前模型需要的 Git ignore 规则；保留用户
    手工维护的其他规则。
 
-BoundaryPoint 和 Git ignore 的修复在同一 RuntimeStore 诊断锁定访问及命令级协调锁保护下完成。repair 不发布
-新的业务 RuntimeStore 状态；若它正处理残留 journal，只有完成 JSON 收敛及全部相关物理修复后，才删除该
-journal。
+BoundaryPoint 和 Git ignore 的修复在同一 RuntimeStore 诊断锁定访问及命令级协调锁保护下完成。除清理
+无关联 Ref 所需的 `import-refs.json` 原子更新外，repair 不发布新的业务 RuntimeStore 状态；若它正处理
+残留 journal，只有完成 JSON 收敛及全部相关物理修复后，才删除该 journal。
 
 ## 5. 提交、失败和生命周期
 
@@ -143,7 +147,7 @@ worktree 和派生边界相关物理状态。残留 journal 要求的 JSON 收�
 | 对象 | repair 的作用 | 不发生的转换 |
 |---|---|---|
 | `Installation` | 以 JSON 记录为基准对齐已存在的安装目录和可观察状态 | 不因未知 install-path 创建 Installation；不自动改变 install-id |
-| `Ref` | 创建缺失的受管理符号链接，清理未登记的 import link | 不根据未知符号链接创建 Ref |
+| `Ref` | 创建缺失引用，重建与记录不一致的目标，清理未登记链接和没有 Installation 的 Ref | 不根据未知符号链接创建 Ref |
 | `Worktree` | 为已有记录补建缺失的 work-path | 不改变 Worktree 记录本身 |
 | `BoundaryPoint` | 重建派生点并保留 custom 点 | 不允许 repair 删除 custom BoundaryPoint |
 | Git ignore | 补齐模型要求的自动规则，移除不再需要的工具生成规则 | 不覆盖用户维护的无关规则 |

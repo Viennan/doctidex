@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal, Self
 
@@ -369,6 +369,20 @@ class RuntimeDiagnosticTransaction(RuntimeTransaction):
         """Refresh the snapshot after repair has explicitly reconciled pending journals."""
 
         self._set_state(self.store._load_state())
+        self._snapshot_hashes = self.store._snapshot_hashes()
+
+    def _replace_refs_for_repair(self, refs: tuple[Ref, ...]) -> None:
+        """Publish repair's narrowed Ref cleanup without opening a business journal."""
+
+        if refs == self.state.refs:
+            return
+        atomic_write_bytes(
+            self.store.workspace_path / "import-refs.json",
+            _encode_json([reference.to_json() for reference in refs]),
+            store="runtime",
+            phase="repair",
+        )
+        self._set_state(replace(self.state, refs=refs))
         self._snapshot_hashes = self.store._snapshot_hashes()
 
 
