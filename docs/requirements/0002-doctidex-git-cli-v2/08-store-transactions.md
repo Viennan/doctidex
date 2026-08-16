@@ -3,7 +3,7 @@
 | 属性 | 值 |
 |---|---|
 | ID | `DX-REQ-0002-08` |
-| 状态 | `draft` |
+| 状态 | `implemented` |
 | 日期 | 2026-08-10 |
 | 来源 | 用户要求将 `CacheStore`、`RuntimeStore` 事务机制的技术选型与实现方案独立记录 |
 | 父需求 | [需求 0002：设计 doctidex-git 命令行工具 v2.x.x](overview.md) |
@@ -435,27 +435,25 @@ journal 不单独构成待恢复违规；其清理由后续 repair 负责。普�
 
 ## 9. 验收标准
 
-- [ ] 两个 doctidex-git 进程不能同时提交同一 `CacheStore` 或 `RuntimeStore`。
-- [ ] 单个状态文件写入使用临时文件和原子替换，不产生半写 JSON。
-- [ ] `RuntimeStore` 多文件事务具有 `prepared`、`publishing`、`committed` 阶段和可持久化 journal。
-- [ ] 在每个提交阶段模拟进程中断后，下一次事务能够完成提交、恢复旧状态或明确报告不可自动恢复。
-- [ ] 显式 `validate` 使用只锁定、不恢复且不创建 journal 的诊断读取事务；发现 `prepared` 或
+- [x] 两个 doctidex-git 进程不能同时提交同一 `CacheStore` 或 `RuntimeStore`。
+- [x] 单个状态文件写入使用临时文件和原子替换，不产生半写 JSON。
+- [x] `RuntimeStore` 多文件事务具有 `prepared`、`publishing`、`committed` 阶段和可持久化 journal。
+- [x] 在每个提交阶段模拟进程中断后，下一次事务能够完成提交、恢复旧状态或明确报告不可自动恢复。
+- [x] 显式 `validate` 使用只锁定、不恢复且不创建 journal 的诊断读取事务；发现 `prepared` 或
       `publishing` journal 时，仅报告待恢复事务并跳过其余校验。
-- [ ] 普通 RuntimeStore 事务只检测残留 journal；检测到后释放当前 RuntimeStore 锁并报告内部
+- [x] 普通 RuntimeStore 事务只检测残留 journal；检测到后释放当前 RuntimeStore 锁并报告内部
       `repair-required` 信号。命令协调器运行不创建自身 journal 的 repair 锁定访问，再重试对应的
       RuntimeStore 操作；该信号最多处理 3 次，耗尽后返回含 `attempts: 3` 和残留 transaction ID 的
       `store.transaction.unavailable`；repair 不调用或消费 `validate`。
-- [ ] CacheStore 的 `preparing` 记录及其 repository 在下一次事务进入时可直接清理，且追加式 Git object 残留不会导致 RuntimeStore 状态错误。
-- [ ] GitCache 对外只提供 ReadOnly/Write 事务；Write 的 `load` 复用可用缓存、登记 `preparing` 并在加载完成后发布 `published`。
-- [ ] 涉及两个 Store 的命令通过 GitCache 事务与 RuntimeStore 协调；需要同时持有时固定为
+- [x] CacheStore 的 `preparing` 记录及其 repository 在下一次事务进入时可直接清理，且追加式 Git object 残留不会导致 RuntimeStore 状态错误。
+- [x] GitCache 对外只提供 ReadOnly/Write 事务；Write 的 `load` 复用可用缓存、登记 `preparing` 并在加载完成后发布 `published`。
+- [x] 涉及两个 Store 的命令通过 GitCache 事务与 RuntimeStore 协调；需要同时持有时固定为
       `GitCache -> RuntimeStore`，但不为纯 RuntimeStore 命令预先打开 GitCache。repair 能复用当前
       GitCache Write 事务，使用 cache repository 的外部 Git 操作保持在 GitCache 事务内。
-- [ ] install/worktree 的物理目录失败时，模型状态不会发布为已完成状态。
-- [ ] 事务实现不改变当前 JSON 文件的权威性、tracked/untracked 投影规则和模型生命周期。
+- [x] install/worktree 的物理目录失败时，模型状态不会发布为已完成状态。
+- [x] 事务实现不改变当前 JSON 文件的权威性、tracked/untracked 投影规则和模型生命周期。
 
 ## 10. 状态
 
-本子需求目前为 `draft`，用于审阅事务实现边界和恢复协议；本次补充已细化 CacheStore 的
-`preparing`/`published` 状态、ReadOnly/Write 事务以及 GitCache 的对外事务封装。现有代码中的
-CacheStore/GitCache 实现不因本次文档更新而视为已符合该协议；完成审阅并获得明确批准前，不授权
-修改 CLI 实现、测试或 Architecture。后续实施计划需要单独安排该协议与现有实现的同步。
+本子需求为 `implemented`。CacheStore/GitCache 事务、RuntimeStore journal、残留事务 repair 协调和
+跨 Store 锁顺序已实现，并由 phase 7 完整回归和端到端场景验证；当前设计以 Architecture 文档为权威说明。

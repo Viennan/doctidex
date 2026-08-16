@@ -3,12 +3,12 @@
 | 属性 | 值 |
 |---|---|
 | ID | `DX-REQ-0002` |
-| 状态 | `planned` |
+| 状态 | `implemented` |
 | 日期 | 2026-08-07 |
 | 来源 | 用户要求设计在 Git 环境中与 doctidex v2 目录树外观规范配套使用的 `doctidex-git` 命令行工具 v2.x.x |
 | 影响范围 | `doctidex-git` CLI 的产品目标、Git 工作区与版本库边界、命令与输出契约、目录树识别与导航、校验/诊断、错误与退出状态、兼容性和交付验证 |
-| 配套 Architecture | [doctidex v2 目录树外观规范](../../architecture/doctidex-v2-directory-tree.md) |
-| 文档性质 | 大型 Requirement；仅记录总体设计，不授权实现代码、测试或发布配置 |
+| 配套 Architecture | [doctidex v2 目录树外观规范](../../architecture/doctidex-v2-directory-tree.md)、[doctidex-git v2 Architecture](../../architecture/doctidex-git-v2.md) |
+| 文档性质 | 大型 Requirement；记录 v2 设计、实施计划与完成证据 |
 
 本文记录 `doctidex-git` v2.x.x 当前已经确认的总体设计及其子需求。命令契约、工作模型、
 事务、校验和修复规则分别由下列子需求展开。
@@ -33,9 +33,9 @@
   Worktree 和 BoundaryPoint 组成；tracked 投影、事务恢复及派生边界规则分别由子需求定义。
 - `repair` 以 JSON 描述为基准，使物理安装、引用、worktree、派生边界和 Git ignore 与模型相容；常规
   repair 不从历史恢复旧版本，但处理残留 RuntimeStore journal 时可使用其 backup 收敛混合发布的 JSON。
-- 本次需求包含代码库开发；代码开发完成后还必须完成配套 Architecture 文档的撰写。
-- 本次需求暂不撰写 user 文档；人类维护者、agent 和自动化程序的差异仅在后续 user 文档中用于
-  调整内容组织。
+- 本次需求包含代码库开发；代码开发完成后还必须完成配套的 user 与 Architecture 文档撰写。
+- user 文档与 Architecture 文档的权威边界、组织与编写要求由 [需求 0002-10](10-documentation-authoring.md)
+  定义。
 
 ### 并发与外部修改边界
 
@@ -94,15 +94,15 @@ doctidex-git 工作模型的共同概念，不能由单个命令簇各自解释�
   这些命令策略仍由各自工作流定义。具体 Python 模块、类或函数名称由实施确定，但不得继续在各命令
   模块中复制这些语义。
 
-### Architecture 文档交付要求
+### 文档交付要求
 
-- Architecture 文档在本次需求的代码库开发完成后撰写，作为实现完成后的独立交付物。
+- user 与 Architecture 文档在本次需求的代码库开发完成后撰写，作为实现完成后的独立交付物。
 - 撰写时必须重新组织语言逻辑和文档结构，按照 Architecture 文档自身的组织要求表达内容，
   不直接复用或照搬本需求的子需求结构。
 - 需要理清并解耦当前混合在各子需求中的定义、规则和概念描述，将分散在各子需求中的有效信息
   整合到 Architecture 文档中。
 - 必须纳入本页“并发与外部修改边界”所定义的设计约束与保证范围。
-- 本次需求不包含 user 文档撰写。
+- user 文档的权威边界、组织、渐进加载和导航要求以 [需求 0002-10](10-documentation-authoring.md) 为准。
 
 ## 3. 与 Architecture 的已知依赖
 
@@ -137,7 +137,7 @@ doctidex-git 工作模型的共同概念，不能由单个命令簇各自解释�
 | 输出接口 | 提供统一 JSON 成功、错误和 validate 诊断结构 | 由需求 0002-01 定义 |
 | Python 代码库组织 | 定义源码目录、项目配置文件位置和 Python import 包前缀 | 约束已确认 |
 | 跨命令簇领域工具 | 统一工作模型关系、boundary-scoped 目录扫描和 Markdown link 跨界关联 | 约束已确认；由阶段 4 实现并供阶段 6 复用 |
-| 文档与发布 | 代码开发完成后的 Architecture 文档；user 文档暂不撰写 | Architecture 文档为本次需求后续交付物 |
+| 文档与发布 | 代码开发完成后的 user 与 Architecture 文档 | 两类文档均为本次需求后续交付物；要求由需求 0002-10 定义 |
 
 ## 5. 设计决策记录
 
@@ -157,7 +157,7 @@ doctidex-git 工作模型的共同概念，不能由单个命令簇各自解释�
   此基础上定义各自的修改、校验或修复策略。
 - 删除命令对不存在的可删除模型记录保持幂等；对仍受其他模型管理的对象保留明确的禁止删除语义。
 - Python 代码库按本页第 2 节的 `src/python/whero/doctidex` 布局组织。
-- 代码开发完成后，按本页第 2 节的 Architecture 文档交付要求完成独立 Architecture 文档。
+- 代码开发完成后，按本页第 2 节的文档交付要求完成 user 与 Architecture 文档。
 - 当前不额外定义 v2.x.x 的版本兼容或向后兼容承诺。
 
 后续决策应在主题子需求中记录内容、理由、影响面和确认日期，并从本页保持可导航关系。
@@ -174,47 +174,49 @@ doctidex-git 工作模型的共同概念，不能由单个命令簇各自解释�
 - 子需求：[`validate` 命令簇工作流与校验设计](07-validate.md)。
 - 子需求：[`CacheStore` 与 `RuntimeStore` 事务机制实现设计要求](08-store-transactions.md)。
 - 子需求：[`repair` 命令簇工作流与生命周期设计](09-repair.md)。
+- 子需求：[user / architecture 文档编写](10-documentation-authoring.md)。
 - 当前没有已确认的 Issue、实现记录或其他 Requirement 依赖。
 
-父需求已进入 `planned` 阶段；各子需求当前状态如下。子需求仍作为设计依据维护，未单独授权实现：
+父需求及其子需求均已完成实施；子需求继续作为设计与实现的追溯依据维护：
 
 | 子需求 | 状态 |
 |---|---|
-| 0002-01 CLI 参数及返回结果 | `draft` |
-| 0002-02 工作模型 | `draft` |
-| 0002-03 `boundary-set` | `draft` |
-| 0002-04 `init` | `draft` |
-| 0002-05 `import` | `draft` |
-| 0002-06 `worktree` | `draft` |
-| 0002-07 `validate` | `draft` |
-| 0002-08 Store 事务 | `draft` |
-| 0002-09 `repair` | `draft` |
+| 0002-01 CLI 参数及返回结果 | `implemented` |
+| 0002-02 工作模型 | `implemented` |
+| 0002-03 `boundary-set` | `implemented` |
+| 0002-04 `init` | `implemented` |
+| 0002-05 `import` | `implemented` |
+| 0002-06 `worktree` | `implemented` |
+| 0002-07 `validate` | `implemented` |
+| 0002-08 Store 事务 | `implemented` |
+| 0002-09 `repair` | `implemented` |
+| 0002-10 user / architecture 文档编写 | `implemented` |
 
 后续新增的协议、解析器、仓库结构、发布流程或 Issue 记录，应在相关文档中补充双向链接；
 当前没有可补充的已确认记录。
 
 ## 7. 验收标准
 
-以下标准用于完成本 Requirement 的定义，不代表当前已满足：
+除 user 文档的命令簇按需加载交付外，以下标准均已完成，并由 phase 7 的回归、端到端和文档检查提供证据：
 
-- [ ] 产品目标、适用范围、首要 Git 工作流和非目标已明确；角色优先级不作为本需求前置条件。
-- [ ] 支持的 Git 环境、仓库范围、工作区状态、提交/分支/远程语义已明确。
-- [ ] 命令树、参数、配置来源、输出格式、退出码和机器接口已明确。
-- [ ] doctidex v2 根识别、frontmatter 校验、任意位置 `index.md`、`boundary-set` 和 link
+- [x] 产品目标、适用范围、首要 Git 工作流和非目标已明确；角色优先级不作为本需求前置条件。
+- [x] 支持的 Git 环境、仓库范围、工作区状态、提交/分支/远程语义已明确。
+- [x] 命令树、参数、配置来源、输出格式、退出码和机器接口已明确。
+- [x] doctidex v2 根识别、frontmatter 校验、任意位置 `index.md`、`boundary-set` 和 link
       语义与 Architecture 一致，并有冲突处理方案。
-- [ ] 读操作、写操作、暂存区/工作树影响和幂等性已明确。
-- [ ] 错误分类、诊断信息、权限与安全边界和性能目标已明确；本次需求不额外定义版本兼容承诺。
-- [ ] 每项关键行为都有可执行的验收场景和测试证据要求。
-- [x] Architecture 文档作为代码库开发完成后的独立交付物，其重组、解耦和信息整合要求已明确；
-      本次需求暂不撰写 user 文档。
-- [x] 分阶段实施计划、每阶段具体输出、验证/审阅检查点和 Architecture 后置交付已记录。
-- [ ] 需求、Architecture、Issue、实现和测试之间的链接已校验。
+- [x] 读操作、写操作、暂存区/工作树影响和幂等性已明确。
+- [x] 错误分类、诊断信息、权限与安全边界和性能目标已明确；本次需求不额外定义版本兼容承诺。
+- [x] 每项关键行为都有可执行的验收场景和测试证据要求。
+- [x] user 与 Architecture 文档作为代码库开发完成后的独立交付物，其权威边界、组织、重组、解耦和
+      信息整合要求已由需求 0002-10 明确。
+- [x] 分阶段实施计划、每阶段具体输出、验证/审阅检查点和文档后置交付已记录。
+- [x] user 文档已按命令簇完成按需加载组织，并与 Architecture、实现、测试和 Skills 的链接及术语保持一致；当前无关联 Issue。
 
 ## 8. 实施计划
 
-本计划记录父需求从代码库开发到 Architecture 文档交付的分阶段范围。每个阶段均应独立完成并
+本计划记录父需求从代码库开发到 user 与 Architecture 文档交付的分阶段范围。每个阶段均应独立完成并
 通过检查点后再进入下一阶段；`planned` 只表示计划已记录，不授权直接修改实现代码、测试、
-Architecture 或 Skills。实施前仍需取得明确的实现授权。
+user 文档、Architecture 或 Skills。实施前仍需取得明确的实现授权。
 
 ### 8.1 分阶段实施原则
 
@@ -234,7 +236,7 @@ Architecture 或 Skills。实施前仍需取得明确的实现授权。
 | 5. worktree | `completed` | 已按 [需求 0002-06](06-worktree.md) 重新实现 `worktree create/remove/query`。URL 来源使用 branch、tag、commit 三选一，在 GitCache 事务内解析创建时的 base commit；Worktree 在 `runtime.json` 持久化 `base-commit-hash`，不跟踪后续 `HEAD`。默认 work-path 使用 `/.doctidex-git/worktrees/<domain>/<repository-path-without-.git>/<tree-name>`，支持仅用于默认路径的 `--tree-name` 和短随机末级名称；随机名称发生模型或物理路径冲突时重试。创建保持 `GitCache -> RuntimeStore` 协调；移除只在 RuntimeStore 事务内直接删除受管目录，正常删除不访问 GitCache，stale Git worktree registration 由后续创建前的 prune 清理。 | 已验证 URL 三种 selector、base commit 持久化及 worktree 后续提交不改变它、URL 层级默认路径、嵌套 tree-name 和短随机名称及其冲突重试，以及 Installation 来源、直接移除、边界、ignore、路径占用、缺失清理、事务顺序和正常移除不打开 GitCache transaction。 |
 | 5.1 Git worktree 目标 commit 可用性补充 | `completed` | 已在共享 Git repository 操作中实现目标 commit 的 `cat-file` 检查、按 hash fetch 和复验；`import install`、`import restore` 与 `worktree create` 的 URL/Installation 两类来源均在创建或切换 Git worktree 前接入该流程。GitCache 继续只负责 transaction 与 bare repository 获取，不接管 revision fetch。 | 已验证已发布 bare repository 缺少目标 commit 时的 restore、Installation 来源 Worktree 创建和 URL 来源创建；验证命中时不重复 fetch、已记录 commit 不重新解析 selector、远程无法提供 commit 时使用命令簇既有来源/恢复诊断，以及所有 Git 操作保持在 GitCache transaction 内。81 个自动化测试、Ruff、`pip check` 和 `git diff --check` 通过。 |
 | 6. repair、validate 与跨 Store 协调 | `completed` | 已按更新后的 [需求 0002-07](07-validate.md)、[需求 0002-08](08-store-transactions.md) 和 [需求 0002-09](09-repair.md) 重新实现恢复协调：RuntimeStore 仅报告 `repair-required`；`StoreCoordinator` 在 RuntimeStore 外部执行 repair 并重试实际操作，最多三次。repair 核心复用调用方已有的 GitCache Write 事务；ReadOnly 事务退出后才打开 Write。工作流通过独立的 `WorkflowCoordinator` 协议依赖协调能力，避免与 repair 的依赖环；显式 `validate` 保持只读诊断。 | 已验证 RuntimeStore 不含跨 Store 回调或空预检、已有 GitCache Write 事务的 repair 复用、GitCache ReadOnly 退出后再以 Write repair、纯 RuntimeStore 命令不预先打开 GitCache、三次重试与最终 transaction ID、import/worktree 重试中的 revision 固定，以及 validate/repair 物理修复场景。 |
-| 7. 集成验收与 Architecture 交付 | `pending` | 完成各命令簇端到端集成、回归验证和需求验收证据；在代码库开发完成后，依据 Architecture 文档自身的组织要求重新撰写并整合 Architecture 文档。此阶段不撰写 user 文档。 | 运行完整自动化测试和跨阶段场景检查，校验需求、Architecture 与实现的链接及术语一致性；完成 Architecture 文档审阅后，才可将父需求转为 `implemented`。 |
+| 7. 集成验收与文档交付 | `completed` | 已完成各命令簇端到端集成和回归验证，并交付 [doctidex-git v2 Architecture](../../architecture/doctidex-git-v2.md)，同步 `AGENTS.md`、`user-docs` 与 `write-architecture-docs` Skills。user 文档已重组为 [overview](../../user/doctidex-git-v2.md)、[共同接口与恢复说明](../../user/doctidex-git-v2/common.md) 和 `init`、`boundary-set`、`import`、`worktree`、`validate`、`repair` 六篇可独立加载的命令簇文档。 | 完整自动化测试 `116 passed`，Ruff、`pip check`、`git diff --check` 通过；隔离 Git 仓库端到端覆盖 `init`、boundary-set、import、worktree、validate、repair 及删除流程，最终 `validate --model-structure` 有效。已复核命令簇文档的接口覆盖、链接与术语。 |
 
 阶段 4 的 install-path 补充实施记录：
 
@@ -368,7 +370,6 @@ Architecture 或 Skills。实施前仍需取得明确的实现授权。
 
 ## 9. 实施与状态
 
-本记录目前为 `planned`。阶段 1 至 5 已完成并待审阅；阶段 4 已按重定位后的 revision selector
-设计重新实现，阶段 5 已按更新后的 worktree revision 与默认路径设计重新实现并完成验证。阶段 6 至 7
-尚未开始。作废记录、阶段 2 至 5 的实现选择与延后事项记录于第 8.1 节。未取得相应阶段的明确实现
-授权前不得继续修改代码、测试或 Architecture 文档。
+本记录为 `implemented`。阶段 1 至 7 均已完成；阶段 7 已完成回归、端到端、Architecture 及按命令簇可独立
+加载的 user 文档交付。阶段 4、5 的重实施与阶段 6 的恢复协调结论保留在第 8.1 节，作为后续维护的设计和
+验证历史。当前产品权威说明由 user 与 Architecture 文档承担；后续变更应通过新的 Requirement 记录后再实施。

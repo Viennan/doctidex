@@ -3,7 +3,7 @@
 | 属性 | 值 |
 |---|---|
 | ID | `DX-REQ-0002-09` |
-| 状态 | `draft` |
+| 状态 | `implemented` |
 | 日期 | 2026-08-10 |
 | 来源 | 用户要求新增 `repair` 命令簇，使物理仓库状态与 doctidex 配置描述相容 |
 | 父需求 | [需求 0002：设计 doctidex-git 命令行工具 v2.x.x](overview.md) |
@@ -198,5 +198,5 @@ GitCache ReadOnly 事务时，必须先退出该事务，再打开 GitCache Writ
 
 ## 8. 实施与状态
 
-本子需求目前为 `draft`。修复范围、生命周期和错误复用规则已完成一次同步；获得明确批准前，
-不授权修改 CLI 实现、测试或相关 Architecture 文档。
+本子需求为 `implemented`。残留事务收敛及 Installation、Ref、Worktree、boundary 和 ignore 的相容性
+修复已实现，并由 phase 7 集成验收；当前行为以 user 与 Architecture 文档为权威说明。

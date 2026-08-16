@@ -3,7 +3,7 @@
 | 属性 | 值 |
 |---|---|
 | ID | `DX-REQ-0002-05` |
-| 状态 | `draft` |
+| 状态 | `implemented` |
 | 日期 | 2026-08-09 |
 | 来源 | 用户要求按命令簇设计 import 背后的模型交互工作流及生命周期 |
 | 父需求 | [需求 0002：设计 doctidex-git 命令行工具 v2.x.x](overview.md) |
@@ -354,5 +354,5 @@ tracked Installation 的直接 link、通过其 Ref 的 link，均阻塞该 Inst
 
 ## 9. 实施与状态
 
-本子需求目前为 `draft`。设计内容已与 CLI 契约、工作模型及相关命令簇完成一次同步；获得明确
-批准前，不授权修改 CLI 实现、测试或相关 Architecture 文档。
+本子需求为 `implemented`。Installation、Ref、缓存协作、revision 固定和移除阻塞规则已实现，并由
+phase 7 集成验收；当前行为以 user 与 Architecture 文档为权威说明。

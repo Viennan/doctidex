@@ -12,12 +12,18 @@ are preserved in `archive/v1/`; do not treat them as authority for v2 design or 
 
 ## Documentation Roles
 
-`docs/architecture/` is the authoritative description of the product's current state.
-`docs/requirements/` records the incremental trajectory of the product's evolution.
+`docs/user/` is authoritative for the product's user-visible surface: interfaces, parameters,
+results, diagnostics, recovery guidance, and usage patterns.
+`docs/architecture/` is authoritative for the product's current design: product model, design
+constraints, responsibilities, workflows, and implementation architecture.
+`docs/requirements/` records the incremental trajectory of the product's evolution; it does not
+replace either user or Architecture documentation as authority for the current product.
 
 Architecture documents must remain self-contained as the authority on the current product. They must
-not delegate that authority to requirements through links, but may link to requirements to express
-the design requirements from which an architectural decision originated.
+not delegate that authority to Requirements through links, but may link to Requirements to express
+the design requirements from which an architectural decision originated. User and Architecture
+documentation must be organized from the complete current product design, not by the incremental
+numbering or local structure of Requirements.
 
 ## Repository Skill Maintenance
 

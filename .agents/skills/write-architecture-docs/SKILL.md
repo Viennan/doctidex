@@ -7,6 +7,14 @@ description: Write and validate complete product Architecture documents under do
 
 Write and validate the complete current product Architecture under `docs/architecture/`.
 
+## Complete Product Perspective
+
+Organize Architecture from the complete current product design, not from the incremental order,
+numbering, or local structure of Requirements. Requirements are inputs for recovering facts and
+design intent, not a template for Architecture structure. Use the complete design view to group
+stable models, responsibilities, constraints, and workflows into the organization that best
+explains their relationships.
+
 ## Architecture Scope
 
 Architecture is the product's complete design authority. It must define:

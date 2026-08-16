@@ -7,6 +7,14 @@ description: Create and maintain user-facing Markdown documents under docs/user.
 
 Create and maintain user-facing documents in `docs/user/`.
 
+## Complete Product Perspective
+
+When the current product design is known, organize documentation from that complete design rather
+than from the incremental order, numbering, or local structure of Requirements. Requirements are
+inputs for recovering facts and design intent, not a template for the final document structure.
+Choose an organization that gives users a coherent view of the complete user surface and their
+actual usage and decision paths.
+
 ## User Surface
 
 1. Start each document or workflow with a concrete user scenario and problem.

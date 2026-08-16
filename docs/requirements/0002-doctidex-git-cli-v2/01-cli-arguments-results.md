@@ -3,7 +3,7 @@
 | 属性 | 值 |
 |---|---|
 | ID | `DX-REQ-0002-01` |
-| 状态 | `draft` |
+| 状态 | `implemented` |
 | 日期 | 2026-08-07 |
 | 来源 | 用户要求以 `init`、`boundary-set`、`import`、`worktree`、`validate`、`repair` 六个命令簇逐步完成 `doctidex-git` CLI 命令行参数及返回结果结构设计 |
 | 父需求 | [需求 0002：设计 doctidex-git 命令行工具 v2.x.x](overview.md) |
@@ -745,12 +745,12 @@ doctidex-git [--repos-path <REPOSITORY-ROOT-PATH>] repair
 - [x] 每个命令簇的成功、失败和退出状态关系均已明确。
 - [x] 设计保持与父需求和 doctidex v2 Architecture 一致。
 - [x] 本文未引入上述命令簇之外的功能或实现方案。
-- [ ] 所有未决设计均已通过交互解决后，才可将状态改为 `approved`。
+- [x] 已确定的 CLI 契约已实现，并由完整回归和 phase 7 端到端场景验证。
 
 ## 11. 依赖与状态
 
 - 父需求：[需求 0002](overview.md)。
 - 上游 Architecture：[doctidex v2 目录树外观规范](../../architecture/doctidex-v2-directory-tree.md)。
 
-本子需求目前为 `draft`。CLI 参数、返回结构、结构化错误和退出状态已完成一次同步；仍需获得
-明确批准后方可进入实现规划。
+本子需求为 `implemented`。CLI 参数、返回结构、结构化错误和退出状态已实现，并由 phase 7 的
+完整回归和端到端场景验证；当前用户接口以 user 文档为权威说明。

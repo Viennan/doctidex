@@ -3,7 +3,7 @@
 | 属性 | 值 |
 |---|---|
 | ID | `DX-REQ-0002-07` |
-| 状态 | `draft` |
+| 状态 | `implemented` |
 | 日期 | 2026-08-09 |
 | 来源 | 用户要求在非 `validate` 命令簇的核心模型完成后，盘点工作流错误并设计结构化诊断与 `validate` 命令簇 |
 | 父需求 | [需求 0002：设计 doctidex-git 命令行工具 v2.x.x](overview.md) |
@@ -305,5 +305,5 @@ BoundaryPoint 派生结果或 Worktree 生命周期。
 
 ## 10. 实施与状态
 
-本子需求目前为 `draft`。设计内容已与 CLI 契约、工作模型及各命令簇完成一次同步；获得明确
-批准前，不授权修改 CLI 实现、测试或相关 Architecture 文档。
+本子需求为 `implemented`。模型、目录树、link 与 Worktree 的只读校验及诊断结构已实现，并由 phase 7
+集成验收；当前行为以 user 与 Architecture 文档为权威说明。
