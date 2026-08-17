@@ -1,0 +1,4 @@
+interface:
+  display_name: "Interactive Docs Refinement"
+  short_description: "Refine repository Markdown with user feedback"
+  default_prompt: "Use $interactive-docs-refinement to refine this repository Markdown document with the user."
