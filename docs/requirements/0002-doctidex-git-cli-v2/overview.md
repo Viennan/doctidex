@@ -3,7 +3,7 @@
 | 属性 | 值 |
 |---|---|
 | ID | `DX-REQ-0002` |
-| 状态 | `implemented` |
+| 状态 | `approved` |
 | 日期 | 2026-08-07 |
 | 来源 | 用户要求设计在 Git 环境中与 doctidex v2 目录树外观规范配套使用的 `doctidex-git` 命令行工具 v2.x.x |
 | 影响范围 | `doctidex-git` CLI 的产品目标、Git 工作区与版本库边界、命令与输出契约、目录树识别与导航、校验/诊断、错误与退出状态、兼容性和交付验证 |
@@ -177,20 +177,20 @@ doctidex-git 工作模型的共同概念，不能由单个命令簇各自解释�
 - 子需求：[user / architecture 文档编写](10-documentation-authoring.md)。
 - 当前没有已确认的 Issue、实现记录或其他 Requirement 依赖。
 
-父需求及其子需求均已完成实施；子需求继续作为设计与实现的追溯依据维护：
+父需求及其子需求均已完成实施并获批准；子需求继续作为设计与实现的追溯依据维护：
 
 | 子需求 | 状态 |
 |---|---|
-| 0002-01 CLI 参数及返回结果 | `implemented` |
-| 0002-02 工作模型 | `implemented` |
-| 0002-03 `boundary-set` | `implemented` |
-| 0002-04 `init` | `implemented` |
-| 0002-05 `import` | `implemented` |
-| 0002-06 `worktree` | `implemented` |
-| 0002-07 `validate` | `implemented` |
-| 0002-08 Store 事务 | `implemented` |
-| 0002-09 `repair` | `implemented` |
-| 0002-10 user / architecture 文档编写 | `implemented` |
+| 0002-01 CLI 参数及返回结果 | `approved` |
+| 0002-02 工作模型 | `approved` |
+| 0002-03 `boundary-set` | `approved` |
+| 0002-04 `init` | `approved` |
+| 0002-05 `import` | `approved` |
+| 0002-06 `worktree` | `approved` |
+| 0002-07 `validate` | `approved` |
+| 0002-08 Store 事务 | `approved` |
+| 0002-09 `repair` | `approved` |
+| 0002-10 user / architecture 文档编写 | `approved` |
 
 后续新增的协议、解析器、仓库结构、发布流程或 Issue 记录，应在相关文档中补充双向链接；
 当前没有可补充的已确认记录。
@@ -370,6 +370,6 @@ user 文档、Architecture 或 Skills。实施前仍需取得明确的实现授�
 
 ## 9. 实施与状态
 
-本记录为 `implemented`。阶段 1 至 7 均已完成；阶段 7 已完成回归、端到端、Architecture 及按命令簇可独立
+本记录为 `approved`，阶段 1 至 7 的实施均已完成。阶段 7 已完成回归、端到端、Architecture 及按命令簇可独立
 加载的 user 文档交付。阶段 4、5 的重实施与阶段 6 的恢复协调结论保留在第 8.1 节，作为后续维护的设计和
 验证历史。当前产品权威说明由 user 与 Architecture 文档承担；后续变更应通过新的 Requirement 记录后再实施。

@@ -3,7 +3,7 @@
 | 属性 | 值 |
 |---|---|
 | ID | `DX-REQ-0002-08` |
-| 状态 | `implemented` |
+| 状态 | `approved` |
 | 日期 | 2026-08-10 |
 | 来源 | 用户要求将 `CacheStore`、`RuntimeStore` 事务机制的技术选型与实现方案独立记录 |
 | 父需求 | [需求 0002：设计 doctidex-git 命令行工具 v2.x.x](overview.md) |
@@ -455,5 +455,5 @@ journal 不单独构成待恢复违规；其清理由后续 repair 负责。普�
 
 ## 10. 状态
 
-本子需求为 `implemented`。CacheStore/GitCache 事务、RuntimeStore journal、残留事务 repair 协调和
+本子需求为 `approved`，其实施已完成。CacheStore/GitCache 事务、RuntimeStore journal、残留事务 repair 协调和
 跨 Store 锁顺序已实现，并由 phase 7 完整回归和端到端场景验证；当前设计以 Architecture 文档为权威说明。

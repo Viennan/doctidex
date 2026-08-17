@@ -24,6 +24,9 @@ Create and maintain Requirements.
 5. Keep each record focused: title, status, intent, affected surfaces, decisions, dependencies,
    and acceptance criteria. Use one visible lowercase status: `draft`, `planned`, `implemented`,
    or `approved`; only explicit user approval permits `approved`.
+   For a large Requirement, before marking its overview `approved`, verify that every child
+   Requirement is `implemented`; when the overview is marked `approved`, synchronize every child
+   Requirement's status to `approved` as well, preserving each child's implementation evidence.
 6. Write or revise the Requirement before modifying artifacts it governs. A Requirement request
    alone does not authorize code, design, tests, or Skills; obtain explicit implementation
    authorization.
@@ -49,3 +52,7 @@ Use the statuses as follows:
 Only explicit user approval permits the `approved` status. Set `implemented` only after every planned
 outcome is complete and validated. The Requirement status does not replace explicit authorization
 for implementation work.
+
+For a large Requirement, `approved` additionally means that all child Requirements have completed
+and validated implementation before approval. Approval is synchronized across the overview and all
+children; changing the status does not remove the recorded implementation evidence.

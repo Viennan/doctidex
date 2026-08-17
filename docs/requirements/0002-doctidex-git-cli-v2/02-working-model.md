@@ -3,7 +3,7 @@
 | 属性 | 值 |
 |---|---|
 | ID | `DX-REQ-0002-02` |
-| 状态 | `implemented` |
+| 状态 | `approved` |
 | 日期 | 2026-08-08 |
 | 来源 | 用户要求为 doctidex-git 工作模型建立专门的子需求并逐步完成设计 |
 | 父需求 | [需求 0002：设计 doctidex-git 命令行工具 v2.x.x](overview.md) |
@@ -379,5 +379,5 @@ cache-path = 'cache'
 
 ## 9. 实施与状态
 
-本子需求为 `implemented`。工作模型已由命令簇、事务、修复和校验实现，并由 phase 7 集成验收；
+本子需求为 `approved`，其实施已完成。工作模型已由命令簇、事务、修复和校验实现，并由 phase 7 集成验收；
 当前模型、状态归属和约束以 Architecture 文档为权威说明。

@@ -2,7 +2,9 @@
 
 ## 1. Purpose And Scope
 
-`doctidex-git` is the Git-aware companion to the doctidex v2 directory tree. It gives one Git repository a local work model for fixed-revision Installations, managed symbolic Refs, editable Worktrees, and their relationship to doctidex boundaries.
+doctidex is a simple directory-tree convention: `index.md` supplies reading navigation. `doctidex-git` applies that convention to a Git repository. Its product direction is "Git repos also a doctidex tree": a repository remains ordinary source and history while also becoming a knowledge-base tree that explains itself and evolves with development.
+
+`doctidex-git` gives one Git repository a local work model for fixed-revision Installations, managed symbolic Refs, editable Worktrees, and their relationship to doctidex boundaries.
 
 The [doctidex v2 directory tree appearance specification](doctidex-v2-directory-tree.md) remains the authority for root identity, `index.md`, Markdown links, and the abstract meaning of `boundary-set`. This document defines how doctidex-git supplies concrete boundaries and Git-backed state without changing those directory-tree semantics.
 

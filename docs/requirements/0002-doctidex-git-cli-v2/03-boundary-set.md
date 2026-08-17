@@ -3,7 +3,7 @@
 | 属性 | 值 |
 |---|---|
 | ID | `DX-REQ-0002-03` |
-| 状态 | `implemented` |
+| 状态 | `approved` |
 | 日期 | 2026-08-09 |
 | 来源 | 用户要求按命令簇设计模型交互工作流及生命周期，并优先审阅 `boundary-set` 命令簇 |
 | 父需求 | [需求 0002：设计 doctidex-git 命令行工具 v2.x.x](overview.md) |
@@ -153,5 +153,5 @@
 
 ## 9. 实施与状态
 
-本子需求为 `implemented`。custom 与派生 BoundaryPoint 的命令工作流、生命周期和路径解析已实现，
+本子需求为 `approved`，其实施已完成。custom 与派生 BoundaryPoint 的命令工作流、生命周期和路径解析已实现，
 并由 phase 7 集成验收；当前行为以 user 与 Architecture 文档为权威说明。

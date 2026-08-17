@@ -3,7 +3,7 @@
 | 属性 | 值 |
 |---|---|
 | ID | `DX-REQ-0002-10` |
-| 状态 | `implemented` |
+| 状态 | `approved` |
 | 日期 | 2026-08-16 |
 | 来源 | 用户要求专门确定 user / architecture 文档编写问题 |
 | 父需求 | [需求 0002：设计 doctidex-git 命令行工具 v2.x.x](overview.md) |
@@ -148,7 +148,7 @@ user 与 Architecture 文档均应以准确、简洁为目标，不用冗长文�
 
 ## 9. 实施与状态
 
-本子需求为 `implemented`。Architecture 文档、相关规则同步以及 user 文档均已完成。user 文档由
+本子需求为 `approved`，其实施已完成。Architecture 文档、相关规则同步以及 user 文档均已完成。user 文档由
 [overview](../../user/doctidex-git-v2.md)、[共同接口与恢复说明](../../user/doctidex-git-v2/common.md) 及
 `init`、`boundary-set`、`import`、`worktree`、`validate`、`repair` 六篇命令簇文档组成；overview 可直接
 导航至全部入口，每篇命令簇文档可独立阅读，并按需链接共同接口、诊断/恢复与相邻命令簇。

@@ -3,7 +3,7 @@
 | 属性 | 值 |
 |---|---|
 | ID | `DX-REQ-0002-06` |
-| 状态 | `implemented` |
+| 状态 | `approved` |
 | 日期 | 2026-08-09 |
 | 来源 | 用户要求按命令簇设计 worktree 背后的模型交互工作流及生命周期 |
 | 父需求 | [需求 0002：设计 doctidex-git 命令行工具 v2.x.x](overview.md) |
@@ -169,5 +169,5 @@ repair，并在重试时重新取得缓存；不得重新同步远程或重新�
 
 ## 10. 实施与状态
 
-本子需求为 `implemented`。Worktree 的创建、移除、查询、base commit 与路径保护规则已实现，并由
+本子需求为 `approved`，其实施已完成。Worktree 的创建、移除、查询、base commit 与路径保护规则已实现，并由
 phase 7 集成验收；当前行为以 user 与 Architecture 文档为权威说明。

@@ -3,7 +3,7 @@
 | 属性 | 值 |
 |---|---|
 | ID | `DX-REQ-0002-04` |
-| 状态 | `implemented` |
+| 状态 | `approved` |
 | 日期 | 2026-08-09 |
 | 来源 | 用户要求按命令簇设计 doctidex-git 工作模型初始化工作流 |
 | 父需求 | [需求 0002：设计 doctidex-git 命令行工具 v2.x.x](overview.md) |
@@ -137,5 +137,5 @@ doctidex:
 
 ## 9. 实施与状态
 
-本子需求为 `implemented`。初始化、根入口补充、工作空间创建和结构校验引导已实现，并由 phase 7
+本子需求为 `approved`，其实施已完成。初始化、根入口补充、工作空间创建和结构校验引导已实现，并由 phase 7
 集成验收；当前行为以 user 与 Architecture 文档为权威说明。

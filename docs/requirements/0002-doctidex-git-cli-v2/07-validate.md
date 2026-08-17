@@ -3,7 +3,7 @@
 | 属性 | 值 |
 |---|---|
 | ID | `DX-REQ-0002-07` |
-| 状态 | `implemented` |
+| 状态 | `approved` |
 | 日期 | 2026-08-09 |
 | 来源 | 用户要求在非 `validate` 命令簇的核心模型完成后，盘点工作流错误并设计结构化诊断与 `validate` 命令簇 |
 | 父需求 | [需求 0002：设计 doctidex-git 命令行工具 v2.x.x](overview.md) |
@@ -305,5 +305,5 @@ BoundaryPoint 派生结果或 Worktree 生命周期。
 
 ## 10. 实施与状态
 
-本子需求为 `implemented`。模型、目录树、link 与 Worktree 的只读校验及诊断结构已实现，并由 phase 7
+本子需求为 `approved`，其实施已完成。模型、目录树、link 与 Worktree 的只读校验及诊断结构已实现，并由 phase 7
 集成验收；当前行为以 user 与 Architecture 文档为权威说明。

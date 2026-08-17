@@ -1,6 +1,8 @@
 # doctidex-git v2 使用指南
 
-`doctidex-git` 为一个 Git 仓库建立和维护 doctidex v2 工作模型。它将固定 revision 的外部仓库作为 Installation 管理，以 Ref 公开其内容，并用 Worktree 提供可继续开发的工作区。
+`doctidex` 本质上是一套简单的目录树组织规范，通过 `index.md` 提供阅读导航。`doctidex-git` 是在 Git 仓库中使用的命令行工具，帮助将仓库维护为 doctidex 目录树，即“Git repos also a doctidex tree”。因此，Git 仓库既承载代码与历史，也成为解释自身的知识库目录树，并随开发过程同步演进。
+
+为此，`doctidex-git` 为一个 Git 仓库建立和维护 doctidex v2 工作模型：它将固定 revision 的外部仓库作为 Installation 管理，以 Ref 公开其内容，并用 Worktree 提供可继续开发的工作区。
 
 目录树的根身份、`index.md`、boundary 与 Markdown link 规则由[doctidex v2 目录树外观规范](../architecture/doctidex-v2-directory-tree.md)定义。关于工作模型、缓存、事务和实现约束，请参阅[doctidex-git v2 Architecture](../architecture/doctidex-git-v2.md)。
 
