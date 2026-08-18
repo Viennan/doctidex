@@ -25,6 +25,7 @@ from whero.doctidex.initialization import (
     WorkspaceInitializeFailed,
     initialize,
 )
+from whero.doctidex.installation import resolve_installation_context
 from whero.doctidex.model import ModelFormatError
 from whero.doctidex.model_view import RuntimeModelView
 from whero.doctidex.paths import normalize_repo_path
@@ -185,6 +186,7 @@ def _command_result[**P](
             try:
                 root = resolve_git_root(invocation.repos_path)
                 operation = ParsedInvocation(invocation.command, str(root))
+                _installation_context_preflight(invocation.command, root)
                 payload = handler(operation, root, *args, **kwargs)
             except CommandFailure as exc:
                 payload = _command_failure(operation, exc)
@@ -207,6 +209,51 @@ def _command_result[**P](
         return run
 
     return decorate
+
+
+def _installation_context_preflight(command: str, root: Path) -> None:
+    """Reject forbidden or not-yet-available commands in Installation context."""
+
+    context = resolve_installation_context(root)
+    if context is None:
+        return
+    if command == "validate":
+        return
+
+    subject = {
+        "kind": "installation",
+        "install-path": context.install_path,
+    }
+    if _is_forbidden_installation_command(command):
+        raise CommandFailure(
+            code="installation.context.forbidden",
+            summary="This command is not allowed inside an import Installation.",
+            subject=subject,
+            details={"owner-path": str(context.owner_root), "command": command},
+        )
+
+    raise CommandFailure(
+        code="installation.context.unavailable",
+        summary="This command is not yet available inside an import Installation.",
+        subject=subject,
+        details={"owner-path": str(context.owner_root), "command": command, "next-phase": "3"},
+    )
+
+
+def _is_forbidden_installation_command(command: str) -> bool:
+    """Return whether an Installation-context command is prohibited outright."""
+
+    if command == "init" or command.startswith("worktree"):
+        return True
+    return command in {
+        "import install",
+        "import track",
+        "import ref",
+        "import unref",
+        "boundary-set add",
+        "boundary-set remove",
+        "repair",
+    }
 
 
 @_command_result()
@@ -398,7 +445,11 @@ def _normalize_optional_path(value: str | None, parameter: str) -> str | None:
 
 def _run_init(invocation: ParsedInvocation) -> int:
     try:
+        root = resolve_git_root(invocation.repos_path)
+        _installation_context_preflight("init", root)
         result = initialize(invocation.repos_path)
+    except CommandFailure as exc:
+        payload = _command_failure(ParsedInvocation("init", str(root)), exc)
     except GitRootUnresolved as exc:
         payload = error(
             command="init",

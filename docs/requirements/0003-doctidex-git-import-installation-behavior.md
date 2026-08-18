@@ -3,7 +3,7 @@
 | 属性 | 值 |
 |---|---|
 | ID | `DX-REQ-0003` |
-| 状态 | `draft` |
+| 状态 | `planned` |
 | 日期 | 2026-08-17 |
 | 来源 | 用户补充 import installation 行为的草稿信息，并要求细化目标、需求、方案、细节处理和验收标准 |
 | 影响范围 | `--repos-path` 语义、owner 识别、Installation 只读边界、间接 import 的恢复与查询、`import-by-installations` 关系、Installation 目录组织、`import remove` 语义、CLI 错误码，以及 Installation 上下文命令运行环境 |
@@ -165,6 +165,9 @@ RuntimeState 与当前 Installation 上下文中父 Installation 的 import 声�
 - 在运行环境内部，将 Installation 自身坐标映射到 owner 坐标，将 Installation 本地
   `install-id`/Ref 映射到 owner-level Installation/Ref，并将 owner-level 状态映射为
   Installation 可见视图。
+- 阶段 3 的事务 `__enter__` 应在取得 owner 文件锁后，根据 `InstallationContext.install_path`
+  匹配 owner RuntimeStore 中的 Installation，并校验其仍然存在；阶段 2 只负责记录
+  `install_path`，不提前读取或校验。
 - 写事务中的状态更新和物理副作用必须落在 owner 的工作区；读事务返回的模型视图应让命令认为
   自己在读取当前 Installation 的普通模型，但路径和数据已经过映射。
 - 命令参数和命令主流程优先不做大规模变化；当某些代码路径难以通过现有接口透明映射时，允许
@@ -181,14 +184,17 @@ RuntimeState 与当前 Installation 上下文中父 Installation 的 import 声�
 该运行环境优先复用现有 restore 主流程；仅在难以通过环境抽象透明处理的路径上，才调整已有实现。
 需要完成以下映射：
 
-- 把 `--install-id` 从 Installation 本地身份映射到 owner-level Installation 身份；映射规则仍为
-  按 `(git-url, commit-hash)` 匹配。
+- 把 `--install-id` 从 Installation 本地身份映射到 owner-level Installation 身份；映射规则为
+  按 `(git-url, commit-hash)` 在 owner 的 **commit-hash Installation** 中匹配。Installation 自身
+  `imports.json` 中的 branch/tag 形式 revision，必须使用其记录的 commit-hash 参与匹配，而不是
+  去匹配 owner 中的 branch/tag Installation。
 - 把目标 Installation 的 `install-path`、Ref 等 Installation 自身坐标映射为 owner 中的实际物理
   路径。
 - 把 restore 写事务中的 Installation 状态更新提交到 owner 的 RuntimeStore，而不是 Installation
   自身的 `.doctidex-git`。
-- 对不存在或 owner 中已有匹配记录的情况，沿用现有 restore 的成功、no-op 或错误语义；如果
-  owner 中存在多个按 `(git-url, commit-hash)` 匹配的候选，则转换为明确错误。
+- 对不存在或 owner 中已有匹配记录的情况，沿用现有 restore 的成功、no-op 或错误语义。在当前
+  架构下，`git-url + commit-hash` 唯一标识一个 commit-hash Installation（排除 branch/tag），因此
+  不需要处理多个候选。
 - restore 最终返回的 `install-id` 和 `install-path` 经过适配层转换，表现为 owner 实际安装结果，
   或按命令输出契约所需的可见形式。
 
@@ -218,6 +224,9 @@ branch/tag 的规则。
 ### 4.7 Installation 目录组织
 
 新的 Installation 目录组织以 commit-hash 为唯一物理目录，branch/tag 作为符号链接：
+
+Installation 上下文进行间接 import 身份匹配时，只匹配 commit-hash Installation；branch/tag
+Installation 只作为同一 commit-hash 的语义化别名，不参与该匹配。
 
 ```text
 <owner>/.doctidex-git/imports/
@@ -268,6 +277,15 @@ commit-hash Installation 是否仍被其他 selector、Ref 或 link 使用。
 ## 5. 实施方案
 
 以下方案用于记录实施范围和阶段边界；`planned` 或本阶段拆分本身不授权修改代码。
+
+| 阶段 | 状态 |
+|---|---|
+| 1. 扩展 RuntimeStore 模型 | `completed` |
+| 2. owner 识别与命令路由 | `completed` |
+| 3. Installation 命令运行环境 | `pending` |
+| 4. restore、query 与 boundary parse 上下文适配 | `pending` |
+| 5. Installation 目录组织与 remove 语义 | `pending` |
+| 6. 验证与文档 | `pending` |
 
 ### 阶段 1：扩展 RuntimeStore 模型
 
@@ -344,20 +362,21 @@ commit-hash Installation 是否仍被其他 selector、Ref 或 link 使用。
 
 ### 6.2 禁止命令的失败边界
 
-禁止命令必须在解析 owner 和读取 RuntimeStore 后、但在任何写入或物理副作用前失败。错误返回
-应使用统一结构化错误结构，`subject` 至少包含 `kind: "installation"`、`install-id` 和
-`install-path`。
+禁止命令必须在解析 owner 后、但在读取 owner RuntimeStore、创建任何锁或物理副作用前失败。错误
+返回应使用统一结构化错误结构，`subject` 至少包含 `kind: "installation"` 和 `install-path`；
+禁止命令的报错信息无需进一步解析 `install-id`。
 
 ### 6.3 只读保证
 
 允许运行的命令只能读取 Installation 自身文件，并只能在 owner 的 RuntimeStore 中写入。若发现
 需要写 Installation 自身的情况，命令必须失败，不得静默降级或忽略。
 
-### 6.4 重复身份与符号链接
+### 6.4 身份唯一性与符号链接
 
-同一 `(git-url, commit-hash)` 的候选 Installation 存在多个时，Installation 上下文
-查询或 restore 不得任意选择；应返回明确错误，要求用户在 owner 上下文中处理。符号链接损坏、
-指向错误 commit 或目标缺失时，应转换为稳定的 Installation 目标错误，而不是底层文件系统错误。
+在当前架构下，`git-url + commit-hash` 唯一标识一个 commit-hash Installation；branch/tag
+Installation 不作为间接 import 的匹配对象，因此 Installation 上下文查询或 restore 不存在多个
+候选需要消歧。符号链接损坏、指向错误 commit 或目标缺失时，应转换为稳定的 Installation 目标
+错误，而不是底层文件系统错误。
 
 ### 6.5 `import remove` 幂等性
 
@@ -380,7 +399,7 @@ Installation 命令运行环境必须提供与普通 `RuntimeStore`/`RuntimeTran
 
 ## 7. 验收标准
 
-以下验收标准仍为 `draft`；实现授权后应逐项转为可执行测试。
+以下验收标准尚未全部完成；阶段 1 相关项已由自动化测试覆盖，其余项待后续阶段实现后验证。
 
 1. 当 `--repos-path` 位于某个 Installation 内时，工具能识别唯一 owner；不存在 owner 时按普通
    行为处理，存在多个候选 owner 时返回 `installation.owner.ambiguous`。
@@ -409,6 +428,9 @@ Installation 命令运行环境必须提供与普通 `RuntimeStore`/`RuntimeTran
     必须使用单一 `InstallationTransaction`。
 13. `import restore`、`import query` 和 `boundary-set parse` 在 Installation 上下文优先复用既有
     工作流，通过运行环境完成行为差异；仅在必要时通过共同环境抽象调整已有实现。
+14. 间接 import 的 `(git-url, commit-hash)` 匹配只针对 owner 中的 commit-hash Installation；
+    Installation 自身声明为 branch/tag 时，必须按其记录的 commit-hash 匹配，不匹配 branch/tag
+    别名记录；在该集合内该组合唯一标识一个 Installation，不产生重复候选。
 
 ## 8. 依赖与相关记录
 
@@ -423,11 +445,39 @@ Installation 命令运行环境必须提供与普通 `RuntimeStore`/`RuntimeTran
 
 ## 9. 实施与状态
 
-本记录目前为 `draft`。用户给出的三个 answer 已吸收：`validate` 在 Installation 上下文针对
+本记录目前为 `planned`。用户给出的三个 answer 已吸收：`validate` 在 Installation 上下文针对
 Installation 自身执行；`import-by-installations` 是动态字段，不持久化；Installation 身份按
-`(git-url, commit-hash)` 匹配。新增实现约束也已吸收：允许命令不大改现有实现，改用
+`(git-url, commit-hash)` 匹配，且该匹配发生在 commit-hash Installation 上；Installation 自身的
+branch/tag 声明按其记录的 commit-hash 匹配，不匹配 owner 的 branch/tag 别名。新增实现约束也已吸收：允许命令不大改现有实现，改用
 Installation 命令运行环境提供与 `RuntimeStore`/`RuntimeTransaction` 相同的支撑能力，在运行环境
 内部完成逻辑映射，使命令实现仍认为自己在普通 repos 中运行；实现形式开放，可以复用现有
 `RuntimeStore`/`RuntimeTransaction` 及工具，不一定使用单一 `InstallationTransaction`。命令实现
-原则上是尽量保持现有逻辑；对难以处理的代码路径，允许新建共同的环境抽象并调整已有实现。确认
-剩余内容和明确授权前，不得修改代码、测试、user 文档、Architecture 文档或 Skills。
+原则上是尽量保持现有逻辑；对难以处理的代码路径，允许新建共同的环境抽象并调整已有实现。此外，
+`git-url + commit-hash` 在 commit-hash Installation 集合中唯一，不需要设计多个候选消歧。
+
+阶段 1 已完成：
+
+- `Installation` 增加运行时字段 `import_by_installations`，但不进入 `to_json()`。
+- `RuntimeState.from_documents()` 通过占位派生函数 `_derived_installation_importers()` 初始化该
+  字段；当前返回空关系，后续阶段再接入真实 Installation 上下文。
+- `RuntimeModelView.installation_importers()` 暴露该动态字段。
+- `import query` 的候选结果新增 `import-by-installations` 字段。
+- 序列化文件 `imports.json` 和 `runtime.json` 的结构保持不变。
+
+阶段 2 已完成：
+
+- 新增 `installation.py`，通过解析 Git root 祖先路径中的 `.doctidex-git` 目录识别 owner；零个
+  owner 保持普通行为，一个 owner 进入 Installation 上下文，多个 owner 返回
+  `installation.owner.ambiguous`。
+- `InstallationContext` 当前只记录 `owner_root` 和 `install_path`；不读取 owner RuntimeStore，
+  也不提前校验 Installation 是否存在。该匹配和校验延后到阶段 3 的 Installation 事务
+  `__enter__` 阶段，取得文件锁后执行。
+- CLI 分发增加 Installation 上下文预检：禁止命令返回 `installation.context.forbidden`；
+  `validate` 允许并继续针对 Installation 自身执行；`import restore`、`import query` 和
+  `boundary-set parse` 当前返回 `installation.context.unavailable` 占位，等待阶段 3 接入命令
+  运行环境。
+- 禁止命令在实际创建或修改 Installation 工作区前失败；测试已覆盖 `init`、`worktree create`。
+- 阶段 3 需要把当前 `installation.context.unavailable` 占位替换为真实的命令运行环境适配。
+
+后续阶段仍需单独取得实现授权；在授权前不得继续修改代码、测试、user 文档、Architecture 文档或
+Skills。

@@ -15,7 +15,7 @@ from markdown_it.rules_inline.link import link as _markdown_link_rule
 from markdown_it.rules_inline.state_inline import StateInline
 
 from whero.doctidex.model import BoundaryPoint, InlineAnnotation, Installation, Ref, RuntimeState, Worktree
-from whero.doctidex.paths import normalize_repo_path, repo_path_to_fs
+from whero.doctidex.paths import fs_path_to_repo_path, normalize_repo_path, repo_path_to_fs
 
 if TYPE_CHECKING:
     from whero.doctidex.store.runtime import (
@@ -80,6 +80,11 @@ class RuntimeModelView:
         """Find an Installation for one Git URL and final commit hash."""
 
         return self._transaction._installations_by_commit.get((git_url, commit_hash))
+
+    def installation_importers(self, installation: Installation) -> tuple[str, ...]:
+        """Return the runtime-only Installation IDs that indirectly import this Installation."""
+
+        return installation.import_by_installations
 
     def ref(self, target_dir: str) -> Ref | None:
         """Find the Ref that owns a target directory."""
@@ -417,13 +422,6 @@ def resolve_local_link(document_path: str, link_path: str) -> str | None:
         return normalize_repo_path(candidate, parameter="link-path")
     except Exception:
         return None
-
-
-def fs_path_to_repo_path(git_root: Path, path: Path) -> str:
-    """Convert an in-root filesystem path to its repository-internal absolute path."""
-
-    relative_path = path.relative_to(git_root).as_posix()
-    return "/" if relative_path == "." else f"/{relative_path}"
 
 
 def _ancestor_paths(path: str) -> tuple[str, ...]:

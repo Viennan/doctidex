@@ -6,6 +6,7 @@ import io
 import json
 import os
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -237,6 +238,31 @@ def test_runtime_state_rebuilds_tracked_and_runtime_projections(tmp_path: Path) 
         ("import", "/imports/untracked"),
         ("worktree", "/work"),
     }
+
+
+def test_import_by_installations_is_runtime_only_and_not_persisted() -> None:
+    installation = replace(_installation(tracked=True), import_by_installations=("parent-install-id",))
+
+    assert "import-by-installations" not in installation.to_json()
+
+    state = RuntimeState(
+        custom_boundary_points=(),
+        installations=(installation,),
+        refs=(),
+        worktrees=(),
+    )
+    documents = state.to_documents()
+    assert documents["imports.json"] == [installation.to_json()]
+
+    restored = RuntimeState.from_documents(
+        boundary_set=documents["boundary-set.json"],
+        imports=[
+            {**installation.to_json(), "import-by-installations": ["parent-install-id"]},
+        ],
+        import_refs=documents["import-refs.json"],
+        runtime=documents["runtime.json"],
+    )
+    assert restored.installations[0].import_by_installations == ()
 
 
 def test_runtime_read_only_transaction_does_not_create_a_journal(tmp_path: Path) -> None:
