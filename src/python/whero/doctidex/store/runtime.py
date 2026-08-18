@@ -130,6 +130,11 @@ class RuntimeStore:
 
         return RuntimeWriteTransaction(self)
 
+    def unlocked_read_only_transaction(self) -> RuntimeUnlockedReadOnlyTransaction:
+        """Return a lock-free read-only snapshot for already-isolated contexts."""
+
+        return RuntimeUnlockedReadOnlyTransaction(self)
+
     def read_state(self) -> RuntimeState:
         """Read a state snapshot through the normal residual-journal check."""
 
@@ -340,9 +345,29 @@ class RuntimeTransaction:
     def _before_exit(self, exc_type: object) -> None:
         """Complete or discard transaction-specific work before releasing the lock."""
 
+    def model_view(self):
+        """Return the read-only work-model view for this transaction."""
+
+        from .model_view import RuntimeModelView
+
+        return RuntimeModelView(self)
+
 
 class RuntimeReadOnlyTransaction(RuntimeTransaction):
     """A RuntimeStore snapshot that never creates or publishes a transaction journal."""
+
+
+class RuntimeUnlockedReadOnlyTransaction(RuntimeTransaction):
+    """A read-only snapshot that deliberately does not acquire the RuntimeStore lock."""
+
+    def __enter__(self) -> Self:
+        self._set_state(self.store._load_state())
+        self._snapshot_hashes = self.store._snapshot_hashes()
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> bool:
+        self._before_exit(exc_type)
+        return False
 
 
 class RuntimeDiagnosticTransaction(RuntimeTransaction):
@@ -385,6 +410,13 @@ class RuntimeDiagnosticTransaction(RuntimeTransaction):
         self._set_state(replace(self.state, refs=refs))
         self._snapshot_hashes = self.store._snapshot_hashes()
 
+    def repair_model_view(self):
+        """Return the narrow repair view for this diagnostic transaction."""
+
+        from .model_view import RuntimeRepairModelView
+
+        return RuntimeRepairModelView(self)
+
 
 class RuntimeWriteTransaction(RuntimeTransaction):
     """A RuntimeStore transaction whose existence is journaled as soon as it opens."""
@@ -421,6 +453,13 @@ class RuntimeWriteTransaction(RuntimeTransaction):
     def replace_state(self, state: RuntimeState) -> None:
         self._set_state(state)
         self._changed = True
+
+    def write_model_view(self):
+        """Return the write view for this transaction."""
+
+        from .model_view import RuntimeWriteModelView
+
+        return RuntimeWriteModelView(self)
 
     def _replace_collections(
         self,

@@ -9,7 +9,6 @@ from pathlib import Path
 
 from whero.doctidex.errors import CommandFailure
 from whero.doctidex.model import Worktree
-from whero.doctidex.model_view import RuntimeModelView, RuntimeWriteModelView
 from whero.doctidex.paths import normalize_repo_path, repo_path_to_fs
 from whero.doctidex.repository import (
     GitCommitUnavailable,
@@ -19,6 +18,7 @@ from whero.doctidex.repository import (
 )
 from whero.doctidex.store.coordination import WorkflowCoordinator
 from whero.doctidex.store.files import StoreFailure, atomic_write_bytes
+from whero.doctidex.store.model_view import RuntimeWriteModelView
 from whero.doctidex.store.runtime import RuntimeStore
 
 _DEFAULT_WORKTREE_DIRECTORY = "/.doctidex-git/worktrees"
@@ -105,7 +105,7 @@ def remove(
 
     selected_path = normalize_repo_path(work_path, parameter="--work-path")
     with store.write_transaction() as transaction:
-        view = RuntimeWriteModelView(transaction)
+        view = transaction.write_model_view()
         if view.worktree(selected_path) is None:
             return
 
@@ -123,7 +123,7 @@ def remove(
 
 def _read_installation(store: RuntimeStore, install_id: str):
     with store.read_only_transaction() as transaction:
-        return RuntimeModelView(transaction).installation(install_id)
+        return transaction.model_view().installation(install_id)
 
 
 def query(store: RuntimeStore, *, work_path: str) -> Worktree:
@@ -131,7 +131,7 @@ def query(store: RuntimeStore, *, work_path: str) -> Worktree:
 
     selected_path = normalize_repo_path(work_path, parameter="--work-path")
     with store.read_only_transaction() as transaction:
-        record = RuntimeModelView(transaction).worktree(selected_path)
+        record = transaction.model_view().worktree(selected_path)
     if record is None:
         raise _not_found_failure(selected_path, operation="query")
     return record
@@ -150,7 +150,7 @@ def _create_from_repository(
     selector_value: str,
 ) -> Worktree:
     with store.write_transaction() as transaction:
-        view = RuntimeWriteModelView(transaction)
+        view = transaction.write_model_view()
         work_path = _select_work_path(view, store.git_root, source_url, explicit_work_path, tree_name)
         target = repo_path_to_fs(store.git_root, work_path)
         _ensure_available_target(view, target, work_path)

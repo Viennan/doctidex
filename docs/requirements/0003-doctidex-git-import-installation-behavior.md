@@ -165,9 +165,9 @@ RuntimeState 与当前 Installation 上下文中父 Installation 的 import 声�
 - 在运行环境内部，将 Installation 自身坐标映射到 owner 坐标，将 Installation 本地
   `install-id`/Ref 映射到 owner-level Installation/Ref，并将 owner-level 状态映射为
   Installation 可见视图。
-- 阶段 3 的事务 `__enter__` 应在取得 owner 文件锁后，根据 `InstallationContext.install_path`
-  匹配 owner RuntimeStore 中的 Installation，并校验其仍然存在；阶段 2 只负责记录
-  `install_path`，不提前读取或校验。
+- Installation 事务 `__enter__` 应在取得 owner 文件锁后，根据
+  `InstallationContext.install_path` 匹配 owner RuntimeStore 中的 Installation，并校验其仍然
+  存在；阶段 2 只负责记录 `install_path`，不提前读取或校验。
 - 写事务中的状态更新和物理副作用必须落在 owner 的工作区；读事务返回的模型视图应让命令认为
   自己在读取当前 Installation 的普通模型，但路径和数据已经过映射。
 - 命令参数和命令主流程优先不做大规模变化；当某些代码路径难以通过现有接口透明映射时，允许
@@ -282,8 +282,8 @@ commit-hash Installation 是否仍被其他 selector、Ref 或 link 使用。
 |---|---|
 | 1. 扩展 RuntimeStore 模型 | `completed` |
 | 2. owner 识别与命令路由 | `completed` |
-| 3. Installation 命令运行环境 | `pending` |
-| 4. restore、query 与 boundary parse 上下文适配 | `pending` |
+| 3. 拆分 `model_view.py` 与事务/视图构造 | `completed` |
+| 4. 重实现 Installation Store/Transaction/ModelView | `pending` |
 | 5. Installation 目录组织与 remove 语义 | `pending` |
 | 6. 验证与文档 | `pending` |
 
@@ -306,34 +306,222 @@ commit-hash Installation 是否仍被其他 selector、Ref 或 link 使用。
 
 检查点：owner 唯一、无 owner、多 owner 三种情况均有稳定行为；禁止命令不会写入 Installation。
 
-### 阶段 3：Installation 命令运行环境
+### 附：旧方案存档（不采用）
 
-1. 构建 Installation 上下文的命令运行环境，向允许命令提供与
-   `RuntimeStore`/`RuntimeTransaction` 等价的支撑能力；实现形式开放，不强求使用单一
-   `InstallationTransaction`。
-2. 优先复用现有 `RuntimeStore`、`RuntimeTransaction` 及相关工具，仅在需要时增加适配对象、
-   模型视图或路径映射。
-3. 让允许运行命令优先通过既有入口调用该运行环境；仅在难以处理时新建共同的环境抽象，并对
-   已有实现做必要调整。
-4. 在运行环境内部封装 owner 的 RuntimeStore 事务，并实现 Installation 本地 `install-id`、
-   `install-path`、Ref 与 owner-level 记录之间的映射。
-5. 为允许命令需要的只读视图和写视图提供映射后的模型视图。
+核心方向改为 **RuntimeStore 变体**：不按命令分别修改 `boundary_workflow.parse`、
+`import_workflow.query` 等业务函数，而是在 CLI 构造 `StoreCoordinator` 时，把一个面向
+Installation 上下文的 `RuntimeStore` 变体作为普通 `store` 传入。这样 `StoreCoordinator`、
+命令工作流、`RuntimeModelView` 和既有事务协议都能尽量复用。
 
-检查点：允许命令的参数和主流程保持基本稳定；现有命令工作流可以优先传入 Installation 命令运行
-环境提供的 Store/Transaction 对象完成读、写和查询。对难以透明映射的路径，允许在共同环境抽象
-内调整已有实现，且不要求在命令模块中保持零修改。
+#### 3.1 入口改造
 
-### 阶段 4：restore、query 与 boundary parse 上下文适配
+`main.py` 当前在 `_run_boundary`、`_run_import` 中统一调用：
 
-1. 验证 `import restore` 在 Installation 上下文中优先复用现有工作流，通过 Installation 命令
-   运行环境完成映射；对难以透明处理的路径，可在共同环境抽象内调整实现。
-2. 验证 `import query`、`boundary-set parse` 优先复用现有查询逻辑，通过只读映射视图完成路径
-   和身份转换；仅在必要时调整已有查询实现。
-3. 确保所有返回路径均为 owner 实际路径，且查询不产生副作用。
+```python
+with StoreCoordinator(_runtime_store(root), GitCache.from_environment()) as coordinator:
+    store = coordinator.store
+```
 
-检查点：允许命令的参数和主流程没有大规模改动；间接 restore 只在 owner 的
-`/.doctidex-git/imports/` 下创建扁平目录；查询命令返回 owner-level 实际路径。对难以处理的
-代码路径，允许通过共同环境抽象调整已有实现，但不以命令级临时特判为默认方式。
+阶段 3 将把 `_runtime_store(root)` 替换为一个统一工厂：
+
+```python
+store = _command_runtime_store(root)
+```
+
+该工厂首先解析 `InstallationContext`：
+
+- 无 owner：返回普通 `RuntimeStore(root)`，现有流程完全不变。
+- 有 owner 且命令为允许命令：返回 `InstallationRuntimeStore(context)` 变体。
+- 有 owner 且命令为禁止命令：在进入工厂前已由阶段 2 预检拒绝。
+
+#### 3.2 `InstallationRuntimeStore`
+
+新增一个与 `RuntimeStore` 接口等价的变体，内部持有：
+
+- `owner_store`：owner 的普通 `RuntimeStore`。
+- `context`：阶段 2 得到的 `InstallationContext`。
+- `installation_record`：在取得 owner 锁后，按 `context.install_path` 匹配到的父
+  Installation；匹配发生在事务 `__enter__` 阶段，而不是命令分发阶段。
+
+`InstallationRuntimeStore` 至少需要提供：
+
+- `git_root`：owner root，保证 `repo_path_to_fs(store.git_root, ...)` 解释为 owner 坐标系。
+- `workspace_path`：owner 的 `/.doctidex-git`，保证 `StoreCoordinator` 的 `.command.lock`
+  作用在 owner 工作区。
+- `transactions_path`：owner 的 `/.doctidex-git/.transactions`，供 `StoreCoordinator` 和
+  repair 定位残留 journal。
+- `read_only_transaction()`、`write_transaction()`：返回对应的 Installation 事务包装器。
+- `diagnostic_transaction()`：直接或适配地委托给 owner `RuntimeStore`，使
+  `StoreCoordinator.repair()` 仍能在 owner 工作区执行既有恢复流程。
+- `read_state()`：如命令或协调逻辑需要完整 owner 状态时，委托给 owner。
+
+#### 3.3 事务包装器
+
+阶段 3 不要求所有命令模块零修改，但业务函数的主流程保持不变。事务包装器负责把
+Installation 本地坐标映射到 owner 坐标，并反向映射结果。
+
+```text
+boundary_workflow.parse(store, paths)
+        |
+        | store.read_only_transaction()
+        v
+InstallationReadOnlyTransaction
+        |
+        | 持有 owner RuntimeTransaction
+        | 建立 owner state 或安装树视图
+        v
+RuntimeModelView(transaction)
+```
+
+`InstallationReadOnlyTransaction` 需要：
+
+- 在 `__enter__` 中取得 owner RuntimeStore 锁，按 `context.install_path` 找到父
+  Installation；找不到时返回 `installation.context.unavailable`。
+- 把 `context.install_path` 作为路径前缀映射器；命令传入的 Installation 本地绝对路径，
+  在进入 owner 模型查询前转换为 owner 内部绝对路径。
+- 对 `RuntimeModelView` 可见的 `install-path`、`Ref.target-dir`、`boundary_point.path` 等
+  字段，按 owner 实际路径返回。
+
+`InstallationWriteTransaction` 需要：
+
+- 包装 owner 的 `RuntimeWriteTransaction`，让写操作提交到 owner 的 `RuntimeStore`。
+- 在 `import restore` 场景中，把 Installation 本地 `install-id` 解析为 Installation 自身
+  `imports.json` 中的 `(git-url, commit-hash)`，再匹配 owner 的 commit-hash Installation。
+- 如果 owner 中尚无对应 commit-hash Installation，由包装器调用既有 import 安装能力创建
+  untracked Installation；如果已存在，则沿用已有 restore 的复用/补齐语义。
+
+#### 3.4 `boundary-set parse` 示例
+
+`boundary_workflow.parse` 仍保持现有签名和流程，只接收 `store`：
+
+```python
+def parse(store: RuntimeStore, paths: list[str]) -> list[dict[str, object]]:
+    with store.read_only_transaction() as transaction:
+        view = RuntimeModelView(transaction)
+        ...
+```
+
+当 `store` 是 `InstallationRuntimeStore` 时：
+
+1. `store.read_only_transaction()` 返回 `InstallationReadOnlyTransaction`。
+2. 该事务按 `context.install_path` 把输入 `/readme.md` 映射为 owner 路径
+   `/<install-path>/readme.md`。
+3. `RuntimeModelView` 使用 owner 的完整 `boundary-set` 索引解析该 owner 路径。
+4. 结果中返回的 `boundary-point`、`path` 使用 owner 实际路径，不返回 Installation 元数据
+   中的原始路径。
+
+#### 3.5 `import query` 与 `import restore`
+
+- `import query` 通过 `InstallationReadOnlyTransaction` 提供的映射视图执行；本地
+  `--install-id` 先经 Installation 自身 `imports.json` 映射到 `(git-url, commit-hash)`，
+  再查询 owner 的 commit-hash Installation。
+- `import restore` 优先复用现有 `import_workflow.restore` 主流程；包装事务负责把本地
+  `install-id` 映射到 owner-level Installation，并确保物理产物落在 owner 的
+  `/.doctidex-git/imports/` 下，而不是 Installation 内部。
+- Installation 自身的 `imports.json`、`import-refs.json`、`boundary-set.json`、
+  `runtime.json` 等文件解析失败时，直接返回结构化的 Installation 上下文错误；不得抛出
+  `RepairRequired`，也不得触发 `StoreCoordinator` 对 owner 的 repair。Installation 自身的
+  模型错误只属于该 Installation，不应进入 owner RuntimeStore 恢复流程。
+
+#### 3.6 阶段 3 检查点
+
+- `_command_runtime_store(root)` 能根据 Installation 上下文返回普通或变体 Store。
+- `boundary_workflow.parse`、`import_workflow.query`、`import_workflow.restore` 的主体流程
+  不需要按 Installation 上下文增加命令级分支。
+- 路径映射集中在 RuntimeStore 变体和事务包装器内。
+- `StoreCoordinator` 仍使用同一套 `.command.lock`、repair/retry 机制。
+- 阶段 3 只覆盖允许命令；禁止命令仍在进入 Store 前被阶段 2 预检拒绝。
+
+#### 3.7 与 `StoreCoordinator` 的交互
+
+`StoreCoordinator` 对传入的 store 有以下依赖，`InstallationRuntimeStore` 必须保持等价：
+
+| `StoreCoordinator` 使用点 | `InstallationRuntimeStore` 行为 |
+|---|---|
+| `FileLock(store.workspace_path / ".command.lock")` | 返回 owner 的 `workspace_path`，使命令锁落在 owner 工作区。 |
+| `coordinator.run(operation)` | 包装事务在 owner 事务中发现残留 journal 时，原样传播 `RepairRequired`，由 coordinator 在 owner 上执行 repair 后重试。 |
+| `coordinator.repair()` | 调用 `repair_core(self.store, cache_transaction)`；`InstallationRuntimeStore.diagnostic_transaction()` 和 `transactions_path` 必须指向 owner，修复范围是 owner RuntimeStore。 |
+| `coordinator.with_repository(...)` | GitCache 仍使用 owner 级 cache 和 URL；Installation 事务包装器只负责映射 RuntimeStore 模型，不改变 GitCache 交互。 |
+
+约束：
+
+- `InstallationRuntimeStore` 不得打开 Installation 自身的 `.doctidex-git/.lock`、
+  `.command.lock` 或 `.transactions/`；这些状态只属于 owner。
+- 当 owner RuntimeStore 有残留 journal 时，允许 coordinator 对 owner 执行 repair；这是因为
+  Installation 上下文命令的持久化目标就是 owner。
+- 当 Installation 自身的若干工作模型 JSON 文件解析失败时，不进入 owner 的 repair；必须直接
+  报告 Installation 上下文错误。
+- 阶段 3 只要求 owner repair 对 Installation 上下文命令保持可用；是否限制 repair 只扫描父
+  Installation 或全部 owner Installations，可作为后续阶段的优化，不在本阶段强约束。
+
+### 阶段 3：拆分 `model_view.py` 并调整事务/视图构造
+
+1. 将 `RuntimeModelView` 移到 `store` 中，与 `RuntimeTransaction` 及其变体同层管理。
+2. 让 `RuntimeTransaction` 及其变体提供成员方法创建对应 `RuntimeModelView`，命令不再直接
+   `RuntimeModelView(transaction)`。
+3. 将 Markdown link 解析、仓库内受管 symlink 扫描等逻辑拆到独立模块，便于复用和测试。
+4. 新增“无锁只读” `RuntimeTransaction` 变体，用于读取 Installation 自身的 RuntimeState。
+
+检查点：命令模块改为通过 transaction 成员方法创建 model view；`model_view.py` 不再混杂 link、
+symlink 与核心 RuntimeModelView。
+
+### 阶段 4：重实现 InstallationRuntimeStore/Transaction 与 InstallationRuntimeModelView
+
+阶段 4 在阶段 3 拆分完成的基础上，重实现 Installation 侧运行环境。核心是保持 owner 与
+Installation 各自 RuntimeState 独立，通过新的 `InstallationRuntimeModelView` 在查询时完成映射，
+不再构造融合 RuntimeState。
+
+#### 4.1 双独立视图
+
+`InstallationRuntimeStore` 同时准备：
+
+- owner `RuntimeStore` / `RuntimeModelView`；
+- Installation 自身的无锁只读 `RuntimeStore` / `RuntimeModelView`；
+- `InstallationContext` 提供的 `owner_root` 与 `install_path`。
+
+两者 RuntimeState 互不投影、互不合并。
+
+#### 4.2 新增 `InstallationRuntimeModelView`
+
+`InstallationRuntimeModelView` 是新的核心查询入口：
+
+```text
+command query
+   |
+   v
+InstallationRuntimeModelView
+   |-- Installation RuntimeModelView（本地）
+   |-- owner RuntimeModelView（owner）
+   `-- 路径 / install-id / commit-hash 动态映射
+```
+
+典型查询流程：
+
+1. 从 Installation RuntimeModelView 查询本地 `install-id`，得到本地 `git-url` 与
+   `commit-hash`。
+2. 用 `(git-url, commit-hash)` 在 owner RuntimeModelView 中匹配 commit-hash Installation。
+3. 命中后，以 Installation-level 结果为主体，仅把其 `install-path` 替换为 owner 中的实际物理
+   路径；其余字段保持 Installation 声明的结果。
+4. 未命中时，按既有查询语义返回空结果或对应错误；不构造融合状态。
+
+#### 4.3 读写事务分离
+
+- `InstallationReadOnlyTransaction` 供 `import query`、`boundary-set parse` 等只读命令使用。
+- `InstallationWriteTransaction` 供 `import restore` 使用，虽然名称是 write，但只修改 owner
+  RuntimeStore；Installation 自身仍保持只读。
+- Installation 自身的 JSON 解析失败直接报 `installation.context.unavailable`，不触发 owner
+  repair。
+
+#### 4.4 命令接入
+
+- 接入 `import query`、`boundary-set parse` 和 `import restore`，保持命令主体流程尽量不变。
+- `import restore` 的 write 只修改 owner，物理产物落在 owner 的 `/.doctidex-git/imports/`。
+
+检查点：
+
+- owner 与 Installation RuntimeState 不融合。
+- 查询结果来自 `InstallationRuntimeModelView`。
+- `StoreCoordinator` 仍只管理 owner 锁、repair 和 GitCache。
 
 ### 阶段 5：Installation 目录组织与 remove 语义
 
@@ -473,11 +661,21 @@ Installation 命令运行环境提供与 `RuntimeStore`/`RuntimeTransaction` 相
   也不提前校验 Installation 是否存在。该匹配和校验延后到阶段 3 的 Installation 事务
   `__enter__` 阶段，取得文件锁后执行。
 - CLI 分发增加 Installation 上下文预检：禁止命令返回 `installation.context.forbidden`；
-  `validate` 允许并继续针对 Installation 自身执行；`import restore`、`import query` 和
-  `boundary-set parse` 当前返回 `installation.context.unavailable` 占位，等待阶段 3 接入命令
-  运行环境。
+  `validate` 允许并继续针对 Installation 自身执行。
 - 禁止命令在实际创建或修改 Installation 工作区前失败；测试已覆盖 `init`、`worktree create`。
-- 阶段 3 需要把当前 `installation.context.unavailable` 占位替换为真实的命令运行环境适配。
+
+阶段 3 已完成：
+
+- `RuntimeModelView`、`RuntimeWriteModelView`、`RuntimeRepairModelView` 已从 `model_view.py`
+  移入 `store/model_view.py`。
+- `RuntimeTransaction` 增加 `model_view()`，`RuntimeWriteTransaction` 增加
+  `write_model_view()`，`RuntimeDiagnosticTransaction` 增加 `repair_model_view()`；命令代码不再
+  直接构造这些视图。
+- Markdown link 与 annotation 解析已拆到 `markdown_links.py`，受管 symlink 扫描已拆到
+  `managed_symlinks.py`；`model_view.py` 保留兼容 re-export。
+- `RuntimeStore` 增加 `unlocked_read_only_transaction()`，返回无锁只读事务变体。
+- 现有允许命令在 Installation 上下文中暂时通过旧 `InstallationReadOnlyTransaction.model_view()`
+  保持可用；阶段 4 将按 `InstallationRuntimeModelView` 方案重做映射。
 
 后续阶段仍需单独取得实现授权；在授权前不得继续修改代码、测试、user 文档、Architecture 文档或
 Skills。
