@@ -300,6 +300,11 @@ def query(
             "commit-hash": item.commit_hash,
             "install-id": item.install_id,
             "install-path": item.install_path,
+            **(
+                {"presentation-path": item.presentation_path}
+                if item.presentation_path is not None
+                else {}
+            ),
             "keys": list(item.keys),
             "refs": [
                 {"src-sub-dir": ref.src_sub_dir, "target-dir": ref.target_dir}

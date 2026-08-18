@@ -170,6 +170,9 @@ RuntimeState 与当前 Installation 上下文中父 Installation 的 import 声�
   存在；阶段 2 只负责记录 `install_path`，不提前读取或校验。
 - 写事务中的状态更新和物理副作用必须落在 owner 的工作区；读事务返回的模型视图应让命令认为
   自己在读取当前 Installation 的普通模型，但路径和数据已经过映射。
+- `Installation` 增加可选运行时字段 `presentation_path`，类型为文件系统绝对路径；仅由
+  `InstallationRuntimeModelView` 填写。若结果中出现该字段，使用者应优先通过它访问
+  Installation；不会改写原始 `install-path`。
 - 命令参数和命令主流程优先不做大规模变化；当某些代码路径难以通过现有接口透明映射时，允许
   新建共同的环境抽象，并对已有实现做出必要调整，而不是在每个命令中散落临时的上下文特判。
 - 本需求当前只要求为第 4.2 节允许运行的命令提供该运行环境；被禁止的命令在进入运行环境之前
@@ -188,15 +191,15 @@ RuntimeState 与当前 Installation 上下文中父 Installation 的 import 声�
   按 `(git-url, commit-hash)` 在 owner 的 **commit-hash Installation** 中匹配。Installation 自身
   `imports.json` 中的 branch/tag 形式 revision，必须使用其记录的 commit-hash 参与匹配，而不是
   去匹配 owner 中的 branch/tag Installation。
-- 把目标 Installation 的 `install-path`、Ref 等 Installation 自身坐标映射为 owner 中的实际物理
-  路径。
+- 把目标 Installation 的 owner 实际物理路径填入 `presentation_path`；原始 `install-path` 保持
+  Installation 自身声明不变。
 - 把 restore 写事务中的 Installation 状态更新提交到 owner 的 RuntimeStore，而不是 Installation
   自身的 `.doctidex-git`。
 - 对不存在或 owner 中已有匹配记录的情况，沿用现有 restore 的成功、no-op 或错误语义。在当前
   架构下，`git-url + commit-hash` 唯一标识一个 commit-hash Installation（排除 branch/tag），因此
   不需要处理多个候选。
-- restore 最终返回的 `install-id` 和 `install-path` 经过适配层转换，表现为 owner 实际安装结果，
-  或按命令输出契约所需的可见形式。
+- restore 最终返回 Installation-level 结果，并在需要时提供 `presentation_path`；不替换
+  `install-path`。
 
 restore 仍然通过 owner 的 `GitCache` 获取 Git object，并遵守既有
 [需求 0002-05](0002-doctidex-git-cli-v2/05-import.md) 中只使用已记录 commit、不重新解析
@@ -209,9 +212,9 @@ branch/tag 的规则。
 环境提供的只读视图。查询实现原则上不增加 owner/Installation 分支，由运行环境完成数据映射；
 仅在难以透明处理的路径上允许调整已有查询实现：
 
-- `import query` 从运行环境的只读视图中读取候选 Installation 和 Ref；
-  返回结果中的 `install-path`、`refs` 等字段应解析为 owner 中的实际物理路径，而不是
-  Installation 元数据中的原始记录路径。
+- `import query` 从运行环境的只读视图中读取候选 Installation 和 Ref；候选结果保持
+  Installation-level 身份，原始 `install-path` 不变。需要访问 owner 实际路径时，在
+  `presentation_path` 中提供。
 - `import query` 可以继续输出动态字段 `import-by-installations`，该字段仍只存在于运行时视图，
   不来自持久化文件。
 - `boundary-set parse` 继续调用现有解析逻辑；运行环境先把输入路径映射到 owner 坐标系，再使用
@@ -283,7 +286,7 @@ commit-hash Installation 是否仍被其他 selector、Ref 或 link 使用。
 | 1. 扩展 RuntimeStore 模型 | `completed` |
 | 2. owner 识别与命令路由 | `completed` |
 | 3. 拆分 `model_view.py` 与事务/视图构造 | `completed` |
-| 4. 重实现 Installation Store/Transaction/ModelView | `pending` |
+| 4. 重实现 Installation Store/Transaction/ModelView | `completed` |
 | 5. Installation 目录组织与 remove 语义 | `pending` |
 | 6. 验证与文档 | `pending` |
 
@@ -500,8 +503,8 @@ InstallationRuntimeModelView
 1. 从 Installation RuntimeModelView 查询本地 `install-id`，得到本地 `git-url` 与
    `commit-hash`。
 2. 用 `(git-url, commit-hash)` 在 owner RuntimeModelView 中匹配 commit-hash Installation。
-3. 命中后，以 Installation-level 结果为主体，仅把其 `install-path` 替换为 owner 中的实际物理
-   路径；其余字段保持 Installation 声明的结果。
+3. 命中后，以 Installation-level 结果为主体，保持 `install-path` 不变；仅在其上设置
+   `presentation_path` 为 owner 中的实际物理路径，其余字段保持 Installation 声明的结果。
 4. 未命中时，按既有查询语义返回空结果或对应错误；不构造融合状态。
 
 #### 4.3 读写事务分离
@@ -674,8 +677,24 @@ Installation 命令运行环境提供与 `RuntimeStore`/`RuntimeTransaction` 相
 - Markdown link 与 annotation 解析已拆到 `markdown_links.py`，受管 symlink 扫描已拆到
   `managed_symlinks.py`；`model_view.py` 保留兼容 re-export。
 - `RuntimeStore` 增加 `unlocked_read_only_transaction()`，返回无锁只读事务变体。
-- 现有允许命令在 Installation 上下文中暂时通过旧 `InstallationReadOnlyTransaction.model_view()`
-  保持可用；阶段 4 将按 `InstallationRuntimeModelView` 方案重做映射。
+
+阶段 4 已完成：
+
+- `InstallationRuntimeStore` 重新实现为同时持有 owner 视图与 Installation 本地声明，不融合
+  RuntimeState。
+- `InstallationRuntimeStore` 现在直接持有 `owner_store` 和 `installation_store`；
+  `InstallationReadOnlyTransaction` / `InstallationWriteTransaction` 会同时打开 owner 与
+  Installation 两个事务，Installation 侧使用无锁只读事务。
+- 新增 `InstallationRuntimeModelView`，直接持有 owner 与 Installation 的 RuntimeModelView；
+  查询时把 Installation 本地 `install-id` 映射到 `(git-url, commit-hash)`，再查询 owner 的
+  commit-hash Installation，并仅填写 `presentation_path`，不替换 `install-path`。
+- boundary-point、Ref 等其他路径不进行 owner 映射，直接由 Installation RuntimeModelView 提供。
+- `InstallationReadOnlyTransaction` / `InstallationWriteTransaction` 现在分别提供
+  `model_view()` / `write_model_view()`。
+- Installation 自身视图通过阶段 3 的 `RuntimeUnlockedReadOnlyTransaction` 构建；workspace 缺失
+  时直接报 `installation.context.unavailable`，不提供空视图。
+- `import restore` 通过 `InstallationRuntimeStore.restore_import()` 复用 owner 写事务和既有
+  import 安装能力，只写 owner。
 
 后续阶段仍需单独取得实现授权；在授权前不得继续修改代码、测试、user 文档、Architecture 文档或
 Skills。

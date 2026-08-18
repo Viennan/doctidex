@@ -52,6 +52,7 @@ class Installation:
     branch: str = ""
     tag: str = ""
     import_by_installations: tuple[str, ...] = ()
+    presentation_path: str | None = None
 
     @classmethod
     def from_json(cls, value: object, *, artifact: str) -> Installation:
@@ -76,6 +77,7 @@ class Installation:
             branch=branch,
             tag=tag,
             import_by_installations=(),
+            presentation_path=None,
         )
 
     def to_json(self) -> dict[str, object]:

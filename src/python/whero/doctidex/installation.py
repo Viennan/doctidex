@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import json
-import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Self
 
+from whero.doctidex import imports as import_workflow
 from whero.doctidex.errors import CommandFailure
-from whero.doctidex.model import BoundaryPoint, Installation, ModelFormatError, Ref, RuntimeState, Worktree
+from whero.doctidex.model import BoundaryPoint, Installation, Ref, RuntimeState, Worktree
 from whero.doctidex.paths import fs_path_to_repo_path, repo_path_to_fs
 from whero.doctidex.store.runtime import RuntimeStore
 
@@ -53,6 +52,7 @@ class InstallationRuntimeStore:
     def __init__(self, context: InstallationContext) -> None:
         self.context = context
         self.owner_store = RuntimeStore(context.owner_root)
+        self.installation_store = RuntimeStore(repo_path_to_fs(context.owner_root, context.install_path))
         if not self.owner_store.workspace_path.is_dir():
             raise CommandFailure(
                 code="work-model.uninitialized",
@@ -60,6 +60,8 @@ class InstallationRuntimeStore:
                 subject={"kind": "workspace", "path": "/.doctidex-git"},
                 details={"required-command": "init", "owner-path": str(context.owner_root)},
             )
+        if not self.installation_store.workspace_path.is_dir():
+            raise _local_declaration_error(context)
 
     @property
     def git_root(self) -> Path:
@@ -76,162 +78,220 @@ class InstallationRuntimeStore:
     def read_only_transaction(self) -> InstallationReadOnlyTransaction:
         return InstallationReadOnlyTransaction(self)
 
+    def write_transaction(self) -> InstallationWriteTransaction:
+        return InstallationWriteTransaction(self)
+
     def diagnostic_transaction(self):
         return self.owner_store.diagnostic_transaction()
-
-    def write_transaction(self):
-        raise CommandFailure(
-            code="installation.context.unavailable",
-            summary="Write transactions are not yet available inside an import Installation.",
-            subject={"kind": "installation", "install-path": self.context.install_path},
-            details={"owner-path": str(self.context.owner_root), "next-phase": "4"},
-        )
 
     def read_state(self) -> RuntimeState:
         return self.owner_store.read_state()
 
+    def restore_import(self, coordinator, install_id: str) -> Installation:
+        """Restore an Installation-local import into the owner work model."""
 
-@dataclass(frozen=True, slots=True)
-class _LocalDeclarations:
-    installations: tuple[Installation, ...]
-    refs: tuple[Ref, ...]
+        with self.installation_store.unlocked_read_only_transaction() as transaction:
+            local = transaction.model_view().installation(install_id)
+        if local is None:
+            raise CommandFailure(
+                code="installation.not-found",
+                summary="The requested installation does not exist.",
+                subject={"kind": "installation", "install-id": install_id},
+                details={"operation": "find"},
+            )
+        owner_installation = import_workflow.install(
+            self.owner_store,
+            coordinator,
+            tracked=False,
+            git_url=local.git_url,
+            branch="",
+            tag="",
+            commit=local.commit_hash,
+            keys=list(local.keys),
+        )
+        return replace(
+            local,
+            presentation_path=str(
+                repo_path_to_fs(self.owner_store.git_root, owner_installation.install_path)
+            ),
+        )
+
+
+class InstallationRuntimeModelView:
+    """Coordinate owner and Installation RuntimeModelViews without merging state."""
+
+    def __init__(
+        self,
+        context: InstallationContext,
+        owner_view,
+        installation_view,
+    ) -> None:
+        self.context = context
+        self._owner_view = owner_view
+        self._installation_view = installation_view
+
+    @property
+    def state(self) -> RuntimeState:
+        return self._installation_view.state
+
+    @property
+    def installations(self) -> tuple[Installation, ...]:
+        return tuple(self._mapped_installation(item) for item in self._installation_view.installations)
+
+    @property
+    def refs(self) -> tuple[Ref, ...]:
+        return self._installation_view.refs
+
+    @property
+    def worktrees(self) -> tuple[Worktree, ...]:
+        return self._installation_view.worktrees
+
+    @property
+    def boundary_points(self) -> tuple[BoundaryPoint, ...]:
+        return self._installation_view.boundary_points
+
+    def installation(self, install_id: str) -> Installation | None:
+        return self._mapped_installation(self._installation_view.installation(install_id))
+
+    def installation_at(self, install_path: str) -> Installation | None:
+        return self._mapped_installation(self._installation_view.installation_at(install_path))
+
+    def installation_for_selector(self, git_url: str, *, branch: str, tag: str) -> Installation | None:
+        return self._mapped_installation(
+            self._installation_view.installation_for_selector(git_url, branch=branch, tag=tag)
+        )
+
+    def installation_for_commit(self, git_url: str, commit_hash: str) -> Installation | None:
+        return self._mapped_installation(
+            self._installation_view.installation_for_commit(git_url, commit_hash)
+        )
+
+    def installation_importers(self, installation: Installation) -> tuple[str, ...]:
+        return self._installation_view.installation_importers(installation)
+
+    def ref(self, target_dir: str) -> Ref | None:
+        return self._installation_view.ref(target_dir)
+
+    def refs_for(self, installation: Installation) -> tuple[Ref, ...]:
+        return self._installation_view.refs_for(installation)
+
+    def worktree(self, work_path: str) -> Worktree | None:
+        return self._installation_view.worktree(work_path)
+
+    def custom_boundary_point(self, path: str) -> BoundaryPoint | None:
+        return self._installation_view.custom_boundary_point(path)
+
+    def boundary_point(self, path: str) -> BoundaryPoint | None:
+        return self._installation_view.boundary_point(path)
+
+    def first_boundary(self, path: str) -> BoundaryPoint | None:
+        return self._installation_view.first_boundary(path)
+
+    def first_boundaries(self, paths) -> tuple[BoundaryPoint | None, ...]:
+        return self._installation_view.first_boundaries(paths)
+
+    def ref_for_boundary(self, boundary: BoundaryPoint | None) -> Ref | None:
+        return self._installation_view.ref_for_boundary(boundary)
+
+    def installation_for_boundary(self, boundary: BoundaryPoint | None) -> Installation | None:
+        return self._installation_view.installation_for_boundary(boundary)
+
+    def _mapped_installation(self, local: Installation | None) -> Installation | None:
+        if local is None:
+            return None
+        owner_installation = self._owner_view.installation_for_commit(local.git_url, local.commit_hash)
+        if owner_installation is None:
+            return None
+        return replace(
+            local,
+            presentation_path=str(
+                repo_path_to_fs(self.context.owner_root, owner_installation.install_path)
+            ),
+        )
 
 
 class InstallationReadOnlyTransaction:
-    """Read-only transaction exposing an Installation-scoped RuntimeModelView."""
+    """Read-only transaction exposing an InstallationRuntimeModelView."""
 
     def __init__(self, store: InstallationRuntimeStore) -> None:
         self.store = store
-        self.state = RuntimeState.empty()
         self._owner_transaction = None
-        self._installations_by_id: dict[str, Installation] = {}
-        self._installations_by_path: dict[str, Installation] = {}
-        self._installations_by_source: dict[tuple[str, str, str], Installation] = {}
-        self._installations_by_commit: dict[tuple[str, str], Installation] = {}
-        self._refs_by_target_dir: dict[str, Ref] = {}
-        self._refs_by_installation: dict[str, tuple[Ref, ...]] = {}
-        self._worktrees_by_path: dict[str, Worktree] = {}
-        self._custom_boundary_points_by_path: dict[str, BoundaryPoint] = {}
-        self._boundary_points: tuple[BoundaryPoint, ...] = ()
-        self._boundary_points_by_path: dict[str, BoundaryPoint] = {}
+        self._installation_transaction = None
+        self._model_view = None
 
     def __enter__(self) -> Self:
         owner_transaction = self.store.owner_store.read_only_transaction()
         owner_transaction.__enter__()
         self._owner_transaction = owner_transaction
         try:
-            owner_state = owner_transaction.state
-            self._set_state(self._scoped_state(owner_state))
+            installation_transaction = self.store.installation_store.unlocked_read_only_transaction()
+            installation_transaction.__enter__()
+            self._installation_transaction = installation_transaction
+            owner_view = owner_transaction.model_view()
+            self._model_view = InstallationRuntimeModelView(
+                self.store.context,
+                owner_view,
+                installation_transaction.model_view(),
+            )
         except Exception:
-            owner_transaction.__exit__(*sys.exc_info())
+            exc_info = _current_exc_info()
+            if self._installation_transaction is not None:
+                self._installation_transaction.__exit__(*exc_info)
+            owner_transaction.__exit__(*exc_info)
             raise
         return self
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> bool:
         assert self._owner_transaction is not None
+        if self._installation_transaction is not None:
+            self._installation_transaction.__exit__(exc_type, exc, traceback)
         return self._owner_transaction.__exit__(exc_type, exc, traceback)
 
     def model_view(self):
-        """Return the current Installation-scoped RuntimeModelView."""
+        assert self._model_view is not None
+        return self._model_view
 
-        from whero.doctidex.store.model_view import RuntimeModelView
 
-        return RuntimeModelView(self)
+class InstallationWriteTransaction:
+    """Write transaction for ``import restore`` that only mutates owner."""
 
-    def _scoped_state(self, owner_state: RuntimeState) -> RuntimeState:
-        parent = next(
-            (
-                item
-                for item in owner_state.installations
-                if item.install_path == self.store.context.install_path
-            ),
-            None,
-        )
-        if parent is None:
-            raise CommandFailure(
-                code="installation.context.unavailable",
-                summary="The requested Installation is not recorded in its owner work model.",
-                subject={"kind": "installation", "install-path": self.store.context.install_path},
-                details={"owner-path": str(self.store.context.owner_root), "reason": "installation-not-found"},
+    def __init__(self, store: InstallationRuntimeStore) -> None:
+        self.store = store
+        self._owner_transaction = None
+        self._installation_transaction = None
+        self._model_view = None
+
+    def __enter__(self) -> Self:
+        owner_transaction = self.store.owner_store.write_transaction()
+        owner_transaction.__enter__()
+        self._owner_transaction = owner_transaction
+        try:
+            installation_transaction = self.store.installation_store.unlocked_read_only_transaction()
+            installation_transaction.__enter__()
+            self._installation_transaction = installation_transaction
+            owner_view = owner_transaction.model_view()
+            self._model_view = InstallationRuntimeModelView(
+                self.store.context,
+                owner_view,
+                installation_transaction.model_view(),
             )
+        except Exception:
+            exc_info = _current_exc_info()
+            if self._installation_transaction is not None:
+                self._installation_transaction.__exit__(*exc_info)
+            owner_transaction.__exit__(*exc_info)
+            raise
+        return self
 
-        local = _read_local_declarations(self.store.context)
-        owner_by_commit = {(item.git_url, item.commit_hash): item for item in owner_state.installations}
-        matched: dict[str, Installation] = {}
-        local_ids: dict[str, Installation] = {}
-        local_paths: dict[str, Installation] = {}
-        for declaration in local.installations:
-            owner_installation = owner_by_commit.get((declaration.git_url, declaration.commit_hash))
-            if owner_installation is None:
-                continue
-            matched[owner_installation.install_id] = owner_installation
-            local_ids[declaration.install_id] = owner_installation
-            local_paths[declaration.install_path] = owner_installation
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> bool:
+        assert self._owner_transaction is not None
+        if self._installation_transaction is not None:
+            self._installation_transaction.__exit__(exc_type, exc, traceback)
+        return self._owner_transaction.__exit__(exc_type, exc, traceback)
 
-        installations = tuple(matched.values())
-        refs = tuple(ref for ref in owner_state.refs if ref.install_id in matched)
-        state = RuntimeState(
-            custom_boundary_points=(),
-            installations=installations,
-            refs=refs,
-            worktrees=(),
-        )
-        self._local_ids = local_ids
-        self._local_paths = local_paths
-        self._owner_boundary_points = owner_state.boundary_points
-        self._set_state(state)
-        return state
-
-    def _set_state(self, state: RuntimeState) -> None:
-        self.state = state
-        self._reindex()
-
-    def _reindex(self) -> None:
-        self._installations_by_id = {item.install_id: item for item in self.state.installations}
-        self._installations_by_id.update(getattr(self, "_local_ids", {}))
-        self._installations_by_path = {item.install_path: item for item in self.state.installations}
-        self._installations_by_path.update(getattr(self, "_local_paths", {}))
-        self._installations_by_source = {}
-        self._installations_by_commit = {}
-        for item in self.state.installations:
-            if item.branch or item.tag:
-                self._installations_by_source.setdefault((item.git_url, item.branch, item.tag), item)
-            self._installations_by_commit.setdefault((item.git_url, item.commit_hash), item)
-        self._refs_by_target_dir = {item.target_dir: item for item in self.state.refs}
-        refs_by_installation: dict[str, list[Ref]] = {}
-        for reference in self.state.refs:
-            refs_by_installation.setdefault(reference.install_id, []).append(reference)
-        self._refs_by_installation = {
-            install_id: tuple(references) for install_id, references in refs_by_installation.items()
-        }
-        self._worktrees_by_path = {}
-        self._custom_boundary_points_by_path = {}
-        self._boundary_points = tuple(self._owner_boundary_points)
-        self._boundary_points_by_path = {}
-        for point in self._owner_boundary_points:
-            local_key = _local_boundary_key(self.store.context.install_path, point.path)
-            if local_key is not None:
-                self._boundary_points_by_path.setdefault(local_key, point)
-
-
-def _read_local_declarations(context: InstallationContext) -> _LocalDeclarations:
-    root = repo_path_to_fs(context.owner_root, context.install_path)
-    workspace = root / ".doctidex-git"
-    imports_path = workspace / "imports.json"
-    refs_path = workspace / "import-refs.json"
-    try:
-        imports = json.loads(imports_path.read_text()) if imports_path.is_file() else []
-        refs = json.loads(refs_path.read_text()) if refs_path.is_file() else []
-    except (OSError, json.JSONDecodeError) as exc:
-        raise _local_declaration_error(context) from exc
-    if not isinstance(imports, list) or not isinstance(refs, list):
-        raise _local_declaration_error(context)
-    try:
-        installations = tuple(Installation.from_json(item, artifact="imports.json") for item in imports)
-        references = tuple(Ref.from_json(item, artifact="import-refs.json") for item in refs)
-    except ModelFormatError as exc:
-        raise _local_declaration_error(context) from exc
-    return _LocalDeclarations(installations=installations, refs=references)
+    def write_model_view(self):
+        assert self._model_view is not None
+        return self._model_view
 
 
 def _local_declaration_error(context: InstallationContext) -> CommandFailure:
@@ -243,15 +303,15 @@ def _local_declaration_error(context: InstallationContext) -> CommandFailure:
     )
 
 
-def _local_boundary_key(install_path: str, owner_path: str) -> str | None:
-    if install_path == "/":
-        return owner_path
-    if owner_path == install_path:
-        return "/"
-    prefix = f"{install_path.rstrip('/')}/"
-    if owner_path.startswith(prefix):
-        return f"/{owner_path[len(prefix):]}"
-    return None
+def _current_exc_info():
+    import sys
+
+    return sys.exc_info()
 
 
-__all__ = ["InstallationContext", "InstallationRuntimeStore", "resolve_installation_context"]
+__all__ = [
+    "InstallationContext",
+    "InstallationRuntimeModelView",
+    "InstallationRuntimeStore",
+    "resolve_installation_context",
+]

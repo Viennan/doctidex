@@ -216,9 +216,7 @@ def _installation_context_preflight(command: str, root: Path) -> None:
     context = resolve_installation_context(root)
     if context is None:
         return
-    if command == "validate":
-        return
-    if command in {"boundary-set parse", "import query"}:
+    if command in {"validate", "boundary-set parse", "import query", "import restore"}:
         return
 
     subject = {
@@ -233,13 +231,12 @@ def _installation_context_preflight(command: str, root: Path) -> None:
             details={"owner-path": str(context.owner_root), "command": command},
         )
 
-    if command == "import restore":
-        raise CommandFailure(
-            code="installation.context.unavailable",
-            summary="This command is not yet available inside an import Installation.",
-            subject=subject,
-            details={"owner-path": str(context.owner_root), "command": command, "next-phase": "4"},
-        )
+    raise CommandFailure(
+        code="installation.context.unavailable",
+        summary="This command is not yet available inside an import Installation.",
+        subject=subject,
+        details={"owner-path": str(context.owner_root), "command": command, "next-phase": "5"},
+    )
 
 
 def _is_forbidden_installation_command(command: str) -> bool:
@@ -277,6 +274,22 @@ def _run_boundary(operation: ParsedInvocation, root: Path, args: argparse.Namesp
 
 @_command_result()
 def _run_import(operation: ParsedInvocation, root: Path, args: argparse.Namespace) -> CommandPayload:
+    context = resolve_installation_context(root)
+    if context is not None and args.import_command == "restore":
+        store = InstallationRuntimeStore(context)
+        with StoreCoordinator(store, GitCache.from_environment()) as coordinator:
+            item = coordinator.run(lambda: store.restore_import(coordinator, args.install_id))
+        fields: dict[str, object] = {
+            "install-id": item.install_id,
+            "install-path": item.install_path,
+        }
+        if item.presentation_path is not None:
+            fields["presentation-path"] = item.presentation_path
+        return success(
+            command=operation.command,
+            **fields,
+        )
+
     with StoreCoordinator(_command_runtime_store(root), GitCache.from_environment()) as coordinator:
         store = coordinator.store
 
