@@ -54,9 +54,6 @@ class RuntimeModelView:
     def installation_for_commit(self, git_url: str, commit_hash: str) -> Installation | None:
         return self._transaction._installations_by_commit.get((git_url, commit_hash))
 
-    def installation_importers(self, installation: Installation) -> tuple[str, ...]:
-        return installation.import_by_installations
-
     def ref(self, target_dir: str) -> Ref | None:
         return self._transaction._refs_by_target_dir.get(target_dir)
 

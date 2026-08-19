@@ -310,7 +310,6 @@ def query(
                 {"src-sub-dir": ref.src_sub_dir, "target-dir": ref.target_dir}
                 for ref in model.refs_for(item)
             ],
-            "import-by-installations": list(model.installation_importers(item)),
             "branch": item.branch,
             "tag": item.tag,
         }

@@ -166,9 +166,6 @@ class InstallationRuntimeModelView:
             self._installation_view.installation_for_commit(git_url, commit_hash)
         )
 
-    def installation_importers(self, installation: Installation) -> tuple[str, ...]:
-        return self._installation_view.installation_importers(installation)
-
     def ref(self, target_dir: str) -> Ref | None:
         return self._installation_view.ref(target_dir)
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Literal
 
@@ -51,7 +51,6 @@ class Installation:
     keys: tuple[str, ...]
     branch: str = ""
     tag: str = ""
-    import_by_installations: tuple[str, ...] = ()
     presentation_path: str | None = None
 
     @classmethod
@@ -76,7 +75,6 @@ class Installation:
             keys=tuple(keys),
             branch=branch,
             tag=tag,
-            import_by_installations=(),
             presentation_path=None,
         )
 
@@ -280,7 +278,6 @@ class RuntimeState:
             for item in _list(runtime_record.get("worktrees"), artifact="runtime.json")
         )
         installations = (*tracked, *untracked)
-        installations = _with_derived_import_by_installations(installations)
         return cls(
             custom_boundary_points=boundaries,
             installations=installations,
@@ -298,24 +295,3 @@ class RuntimeState:
                 "worktrees": [item.to_json() for item in self.worktrees],
             },
         }
-
-
-def _with_derived_import_by_installations(
-    installations: tuple[Installation, ...],
-) -> tuple[Installation, ...]:
-    """Attach the runtime-only import-parent relation to each Installation.
-
-    Stage 1 keeps the relation empty until later phases introduce Installation context and parent
-    import declarations. The field must remain absent from ``Installation.to_json``.
-    """
-
-    relations = _derived_installation_importers(installations)
-    return tuple(replace(item, import_by_installations=relations[item.install_id]) for item in installations)
-
-
-def _derived_installation_importers(
-    installations: tuple[Installation, ...],
-) -> dict[str, tuple[str, ...]]:
-    """Placeholder for deriving Installation import-parent relationships."""
-
-    return {item.install_id: () for item in installations}

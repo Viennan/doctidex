@@ -138,7 +138,6 @@ def test_import_track_ref_query_unref_and_remove(tmp_path: Path, monkeypatch) ->
     candidates = _run(root, "import", "query", "--key", "topic")["candidates"]
     assert candidates[0]["install-id"] == installed["install-id"]
     assert candidates[0]["refs"] == [{"src-sub-dir": "", "target-dir": "/linked"}]
-    assert candidates[0]["import-by-installations"] == []
 
     blocked = _run_error(root, "import", "remove", "--install-id", installed["install-id"])
     assert blocked["message"]["code"] == "installation.remove.blocked"
@@ -187,7 +186,6 @@ def test_import_query_fuzzy_keys_rank_match_count_then_exact_matches(tmp_path: P
         )
 
     assert [item["install-id"] for item in candidates] == ["many", "exact", "partial"]
-    assert [item["import-by-installations"] for item in candidates] == [[], [], []]
 
 
 def test_installation_context_rejects_forbidden_commands_before_writing(tmp_path: Path, monkeypatch) -> None:
