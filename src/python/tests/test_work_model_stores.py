@@ -238,7 +238,6 @@ def test_runtime_state_rebuilds_tracked_and_runtime_projections(tmp_path: Path) 
         ("worktree", "/work"),
     }
 
-
 def test_runtime_read_only_transaction_does_not_create_a_journal(tmp_path: Path) -> None:
     root = _initialized_repository(tmp_path)
     store = RuntimeStore(root)

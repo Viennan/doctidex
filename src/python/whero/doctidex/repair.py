@@ -11,9 +11,10 @@ from whero.doctidex import worktree as worktree_workflow
 from whero.doctidex.errors import CommandFailure
 from whero.doctidex.git_cache import GitCache, GitCacheWriteTransaction
 from whero.doctidex.initialization import _ensure_runtime_ignores
-from whero.doctidex.model_view import RuntimeRepairModelView, scan_managed_symlinks
+from whero.doctidex.model_view import scan_managed_symlinks
 from whero.doctidex.paths import repo_path_to_fs
 from whero.doctidex.store.files import StoreFailure, atomic_write_bytes, file_sha256, fsync_directory, read_bytes
+from whero.doctidex.store.model_view import RuntimeRepairModelView
 from whero.doctidex.store.runtime import RecoveryRequired, RuntimeStore, TransactionJournal, _observe_entry
 
 
@@ -39,7 +40,7 @@ def repair_core(
         journals = transaction.pending_journals
         requires_physical_repair = _recover_pending_journals(store, journals)
         transaction.reload_state()
-        model = RuntimeRepairModelView(transaction)
+        model = transaction.repair_model_view()
         if requires_physical_repair:
             _ensure_runtime_ignores(store.git_root)
             worktree_workflow._align_custom_ignores(

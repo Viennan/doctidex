@@ -188,6 +188,186 @@ def test_import_query_fuzzy_keys_rank_match_count_then_exact_matches(tmp_path: P
     assert [item["install-id"] for item in candidates] == ["many", "exact", "partial"]
 
 
+def test_installation_context_rejects_forbidden_commands_before_writing(tmp_path: Path, monkeypatch) -> None:
+    root, source, _ = _repositories(tmp_path)
+    monkeypatch.setenv("DOCTIDEX-GIT-HOME", str(tmp_path / "home"))
+    _run(root, "init")
+    installed = _run(root, "import", "install", "--untracked", "--url", str(source), "--branch", "main")
+    installation_root = root / installed["install-path"].lstrip("/")
+
+    forbidden_init = _run_error(installation_root, "init")
+    assert forbidden_init["message"]["code"] == "installation.context.forbidden"
+    assert forbidden_init["message"]["subject"] == {
+        "kind": "installation",
+        "install-path": installed["install-path"],
+    }
+    assert not (installation_root / ".doctidex-git").exists()
+
+    forbidden_worktree = _run_error(
+        installation_root,
+        "worktree",
+        "create",
+        "--url",
+        str(source),
+        "--branch",
+        "main",
+    )
+    assert forbidden_worktree["message"]["code"] == "installation.context.forbidden"
+
+
+def test_installation_context_parses_boundaries_and_defers_restore(tmp_path: Path, monkeypatch) -> None:
+    root, source, _ = _repositories(tmp_path)
+    (source / ".doctidex-git").mkdir()
+    _commit(source, ".doctidex-git/boundary-set.json", "[]")
+    _commit(source, ".doctidex-git/import-refs.json", "[]")
+    _commit(source, ".doctidex-git/runtime.json", json.dumps({"imports": [], "worktrees": []}))
+    _commit(source, ".doctidex-git/imports.json", "[]")
+
+    monkeypatch.setenv("DOCTIDEX-GIT-HOME", str(tmp_path / "home"))
+    _run(root, "init")
+    installed = _run(root, "import", "install", "--untracked", "--url", str(source), "--branch", "main")
+    installation_root = root / installed["install-path"].lstrip("/")
+
+    parsed = _run(installation_root, "boundary-set", "parse", "--path", "/readme.md")
+    assert parsed["results"] == [{"path": "/readme.md", "has-boundary": False}]
+
+    deferred_restore = _run_error(installation_root, "import", "restore", "--install-id", "anything")
+    assert deferred_restore["message"]["code"] == "installation.not-found"
+def test_installation_context_queries_local_install_id_against_owner_commit_installation(
+    tmp_path: Path, monkeypatch
+) -> None:
+    root, source, _ = _repositories(tmp_path)
+    nested_source = tmp_path / "nested-source"
+    subprocess.run(
+        ["git", "init", "--quiet", "--initial-branch", "main", str(nested_source)],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(nested_source), "config", "user.email", "tests@example.test"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(nested_source), "config", "user.name", "Tests"],
+        check=True,
+    )
+    nested_commit = _commit(nested_source, "readme.md", "nested\n")
+
+    (source / ".doctidex-git").mkdir()
+    _commit(source, ".doctidex-git/boundary-set.json", "[]")
+    _commit(source, ".doctidex-git/import-refs.json", "[]")
+    _commit(source, ".doctidex-git/runtime.json", json.dumps({"imports": [], "worktrees": []}))
+    declaration = [
+        {
+            "tracked": True,
+            "git-url": str(nested_source),
+            "commit-hash": nested_commit,
+            "install-id": "nested-id",
+            "install-path": "/.doctidex-git/imports/nested",
+            "keys": ["nested"],
+            "branch": "main",
+            "tag": "",
+        }
+    ]
+    _commit(source, ".doctidex-git/imports.json", json.dumps(declaration))
+
+    monkeypatch.setenv("DOCTIDEX-GIT-HOME", str(tmp_path / "home"))
+    _run(root, "init")
+    _run(root, "import", "install", "--untracked", "--url", str(source), "--branch", "main")
+    owner_nested = _run(
+        root,
+        "import",
+        "install",
+        "--untracked",
+        "--url",
+        str(nested_source),
+        "--commit",
+        nested_commit,
+    )
+    installed = _run(root, "import", "install", "--untracked", "--url", str(source), "--branch", "main")
+    installation_root = root / installed["install-path"].lstrip("/")
+
+    candidates = _run(installation_root, "import", "query", "--install-id", "nested-id")["candidates"]
+
+    assert [item["install-id"] for item in candidates] == ["nested-id"]
+    assert [item["install-path"] for item in candidates] == ["/.doctidex-git/imports/nested"]
+    assert [item["presentation-path"] for item in candidates] == [
+        str(root / owner_nested["install-path"].lstrip("/"))
+    ]
+
+
+def test_installation_context_restores_nested_import_to_owner(tmp_path: Path, monkeypatch) -> None:
+    root, source, _ = _repositories(tmp_path)
+    nested_source = tmp_path / "nested-source"
+    subprocess.run(
+        ["git", "init", "--quiet", "--initial-branch", "main", str(nested_source)],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(nested_source), "config", "user.email", "tests@example.test"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(nested_source), "config", "user.name", "Tests"],
+        check=True,
+    )
+    nested_commit = _commit(nested_source, "readme.md", "nested\n")
+
+    (source / ".doctidex-git").mkdir()
+    _commit(source, ".doctidex-git/boundary-set.json", "[]")
+    _commit(source, ".doctidex-git/import-refs.json", "[]")
+    _commit(source, ".doctidex-git/runtime.json", json.dumps({"imports": [], "worktrees": []}))
+    declaration = [
+        {
+            "tracked": True,
+            "git-url": str(nested_source),
+            "commit-hash": nested_commit,
+            "install-id": "nested-id",
+            "install-path": "/.doctidex-git/imports/nested",
+            "keys": ["nested"],
+            "branch": "main",
+            "tag": "",
+        }
+    ]
+    _commit(source, ".doctidex-git/imports.json", json.dumps(declaration))
+
+    monkeypatch.setenv("DOCTIDEX-GIT-HOME", str(tmp_path / "home"))
+    _run(root, "init")
+    installed = _run(root, "import", "install", "--untracked", "--url", str(source), "--branch", "main")
+    installation_root = root / installed["install-path"].lstrip("/")
+
+    restored = _run(installation_root, "import", "restore", "--install-id", "nested-id")
+
+    assert restored["install-id"] == "nested-id"
+    assert restored["install-path"] == "/.doctidex-git/imports/nested"
+    assert Path(restored["presentation-path"]).is_dir()
+    with RuntimeStore(root).read_only_transaction() as transaction:
+        records = [
+            item
+            for item in transaction.state.installations
+            if item.git_url == str(nested_source) and item.commit_hash == nested_commit
+        ]
+    assert len(records) == 1
+    assert records[0].tracked is False
+
+
+def test_installation_context_allows_validate_on_installation_itself(tmp_path: Path, monkeypatch) -> None:
+    root, source, _ = _repositories(tmp_path)
+    monkeypatch.setenv("DOCTIDEX-GIT-HOME", str(tmp_path / "home"))
+    _run(root, "init")
+    installed = _run(root, "import", "install", "--untracked", "--url", str(source), "--branch", "main")
+    installation_root = root / installed["install-path"].lstrip("/")
+
+    output = io.StringIO()
+    with contextlib.redirect_stdout(output):
+        code = main(["--repos-path", str(installation_root), "validate", "--model-structure"])
+
+    assert code == 1
+    payload = json.loads(output.getvalue())
+    assert payload["status"] == "ok"
+    assert payload["valid"] is False
+    assert payload["message"] == {}
+
+
 def test_import_remove_is_blocked_by_link_outside_boundary(tmp_path: Path, monkeypatch) -> None:
     root, source, _ = _repositories(tmp_path)
     monkeypatch.setenv("DOCTIDEX-GIT-HOME", str(tmp_path / "home"))

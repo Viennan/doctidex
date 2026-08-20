@@ -49,3 +49,12 @@ def normalize_repo_path(value: str, *, parameter: str) -> str:
 
 def repo_path_to_fs(git_root: Path, repo_path: str) -> Path:
     return git_root / repo_path.lstrip("/")
+
+
+def fs_path_to_repo_path(root: Path, path: Path) -> str:
+    """Convert an in-root filesystem path to its repository-internal absolute path."""
+
+    relative = path.relative_to(root)
+    if not relative.parts:
+        return "/"
+    return f"/{'/'.join(relative.parts)}"

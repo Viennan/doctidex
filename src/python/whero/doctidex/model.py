@@ -51,6 +51,7 @@ class Installation:
     keys: tuple[str, ...]
     branch: str = ""
     tag: str = ""
+    presentation_path: str | None = None
 
     @classmethod
     def from_json(cls, value: object, *, artifact: str) -> Installation:
@@ -74,6 +75,7 @@ class Installation:
             keys=tuple(keys),
             branch=branch,
             tag=tag,
+            presentation_path=None,
         )
 
     def to_json(self) -> dict[str, object]:
@@ -275,9 +277,10 @@ class RuntimeState:
             Worktree.from_json(item, artifact="runtime.json")
             for item in _list(runtime_record.get("worktrees"), artifact="runtime.json")
         )
+        installations = (*tracked, *untracked)
         return cls(
             custom_boundary_points=boundaries,
-            installations=(*tracked, *untracked),
+            installations=installations,
             refs=refs,
             worktrees=worktrees,
         )

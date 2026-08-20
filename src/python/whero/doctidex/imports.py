@@ -11,7 +11,7 @@ from pathlib import Path
 
 from whero.doctidex.errors import CommandFailure
 from whero.doctidex.model import Installation, Ref
-from whero.doctidex.model_view import RuntimeModelView, RuntimeWriteModelView, scan_markdown_links
+from whero.doctidex.model_view import scan_markdown_links
 from whero.doctidex.paths import normalize_repo_path, repo_path_to_fs
 from whero.doctidex.repository import (
     GitCommitUnavailable,
@@ -20,6 +20,7 @@ from whero.doctidex.repository import (
     resolve_revision,
 )
 from whero.doctidex.store.coordination import WorkflowCoordinator
+from whero.doctidex.store.model_view import RuntimeModelView
 from whero.doctidex.store.runtime import RuntimeStore
 
 
@@ -99,7 +100,7 @@ def _install_resolved(
     commit_hash: str,
 ) -> Installation:
     with store.write_transaction() as transaction:
-        view = RuntimeWriteModelView(transaction)
+        view = transaction.write_model_view()
         existing = (
             view.installation_for_selector(git_url, branch=branch, tag=tag)
             if selector_kind in {"branch", "tag"}
@@ -138,12 +139,12 @@ def _install_resolved(
 
 def _read_installation(store: RuntimeStore, install_id: str) -> Installation:
     with store.read_only_transaction() as transaction:
-        return _find_installation(RuntimeModelView(transaction), install_id)
+        return _find_installation(transaction.model_view(), install_id)
 
 
 def _restore_resolved(store: RuntimeStore, repository: Path, install_id: str) -> Installation:
     with store.write_transaction() as transaction:
-        view = RuntimeWriteModelView(transaction)
+        view = transaction.write_model_view()
         current = _find_installation(view, install_id)
         if not current.tracked:
             raise _installation_failure(
@@ -173,7 +174,7 @@ def _restore_resolved(store: RuntimeStore, repository: Path, install_id: str) ->
 
 def track(store: RuntimeStore, install_id: str) -> Installation:
     with store.write_transaction() as transaction:
-        view = RuntimeWriteModelView(transaction)
+        view = transaction.write_model_view()
         installation = _find_installation(view, install_id)
         if installation.tracked:
             return installation
@@ -188,7 +189,7 @@ def remove(
     auto: bool,
 ) -> None:
     with store.write_transaction() as transaction:
-        view = RuntimeWriteModelView(transaction)
+        view = transaction.write_model_view()
         selected = _select_installations(view, install_id, untracked=untracked, auto=auto)
         selected_ids = {item.install_id for item in selected}
         blocked = _blocked_installations(store.git_root, view, selected)
@@ -212,7 +213,7 @@ def ref(store: RuntimeStore, install_id: str, src_sub_dir: str, target_dir: str)
     if src_sub_dir:
         src_sub_dir = normalize_repo_path(src_sub_dir, parameter="--src-sub-dir")
     with store.write_transaction() as transaction:
-        view = RuntimeWriteModelView(transaction)
+        view = transaction.write_model_view()
         installation = _find_installation(view, install_id)
         source = repo_path_to_fs(store.git_root, installation.install_path)
         if src_sub_dir:
@@ -250,7 +251,7 @@ def ref(store: RuntimeStore, install_id: str, src_sub_dir: str, target_dir: str)
 def unref(store: RuntimeStore, target_dir: str) -> None:
     target_dir = normalize_repo_path(target_dir, parameter="--target-dir")
     with store.write_transaction() as transaction:
-        view = RuntimeWriteModelView(transaction)
+        view = transaction.write_model_view()
         record = view.ref(target_dir)
         if record is None:
             return
@@ -299,6 +300,11 @@ def query(
             "commit-hash": item.commit_hash,
             "install-id": item.install_id,
             "install-path": item.install_path,
+            **(
+                {"presentation-path": item.presentation_path}
+                if item.presentation_path is not None
+                else {}
+            ),
             "keys": list(item.keys),
             "refs": [
                 {"src-sub-dir": ref.src_sub_dir, "target-dir": ref.target_dir}

@@ -25,8 +25,8 @@ from whero.doctidex.initialization import (
     WorkspaceInitializeFailed,
     initialize,
 )
+from whero.doctidex.installation import InstallationRuntimeStore, resolve_installation_context
 from whero.doctidex.model import ModelFormatError
-from whero.doctidex.model_view import RuntimeModelView
 from whero.doctidex.paths import normalize_repo_path
 from whero.doctidex.repository import resolve_git_root
 from whero.doctidex.root_index import RootIndexFrontmatterConflict, RootIndexFrontmatterInvalid
@@ -185,6 +185,7 @@ def _command_result[**P](
             try:
                 root = resolve_git_root(invocation.repos_path)
                 operation = ParsedInvocation(invocation.command, str(root))
+                _installation_context_preflight(invocation.command, root)
                 payload = handler(operation, root, *args, **kwargs)
             except CommandFailure as exc:
                 payload = _command_failure(operation, exc)
@@ -209,9 +210,54 @@ def _command_result[**P](
     return decorate
 
 
+def _installation_context_preflight(command: str, root: Path) -> None:
+    """Reject forbidden or not-yet-available commands in Installation context."""
+
+    context = resolve_installation_context(root)
+    if context is None:
+        return
+    if command in {"validate", "boundary-set parse", "import query", "import restore"}:
+        return
+
+    subject = {
+        "kind": "installation",
+        "install-path": context.install_path,
+    }
+    if _is_forbidden_installation_command(command):
+        raise CommandFailure(
+            code="installation.context.forbidden",
+            summary="This command is not allowed inside an import Installation.",
+            subject=subject,
+            details={"owner-path": str(context.owner_root), "command": command},
+        )
+
+    raise CommandFailure(
+        code="installation.context.unavailable",
+        summary="This command is not yet available inside an import Installation.",
+        subject=subject,
+        details={"owner-path": str(context.owner_root), "command": command, "next-phase": "5"},
+    )
+
+
+def _is_forbidden_installation_command(command: str) -> bool:
+    """Return whether an Installation-context command is prohibited outright."""
+
+    if command == "init" or command.startswith("worktree"):
+        return True
+    return command in {
+        "import install",
+        "import track",
+        "import ref",
+        "import unref",
+        "boundary-set add",
+        "boundary-set remove",
+        "repair",
+    }
+
+
 @_command_result()
 def _run_boundary(operation: ParsedInvocation, root: Path, args: argparse.Namespace) -> CommandPayload:
-    with StoreCoordinator(_runtime_store(root), GitCache.from_environment()) as coordinator:
+    with StoreCoordinator(_command_runtime_store(root), GitCache.from_environment()) as coordinator:
         store = coordinator.store
 
         def execute() -> CommandPayload:
@@ -228,7 +274,23 @@ def _run_boundary(operation: ParsedInvocation, root: Path, args: argparse.Namesp
 
 @_command_result()
 def _run_import(operation: ParsedInvocation, root: Path, args: argparse.Namespace) -> CommandPayload:
-    with StoreCoordinator(_runtime_store(root), GitCache.from_environment()) as coordinator:
+    context = resolve_installation_context(root)
+    if context is not None and args.import_command == "restore":
+        store = InstallationRuntimeStore(context)
+        with StoreCoordinator(store, GitCache.from_environment()) as coordinator:
+            item = coordinator.run(lambda: store.restore_import(coordinator, args.install_id))
+        fields: dict[str, object] = {
+            "install-id": item.install_id,
+            "install-path": item.install_path,
+        }
+        if item.presentation_path is not None:
+            fields["presentation-path"] = item.presentation_path
+        return success(
+            command=operation.command,
+            **fields,
+        )
+
+    with StoreCoordinator(_command_runtime_store(root), GitCache.from_environment()) as coordinator:
         store = coordinator.store
 
         def execute() -> CommandPayload:
@@ -273,7 +335,7 @@ def _run_import(operation: ParsedInvocation, root: Path, args: argparse.Namespac
             ref_path = _normalize_optional_path(args.ref_path, "--ref-path")
             with store.read_only_transaction() as transaction:
                 candidates = import_workflow.query(
-                    RuntimeModelView(transaction),
+                    transaction.model_view(),
                     install_id=args.install_id,
                     install_path=install_path,
                     ref_path=ref_path,
@@ -392,13 +454,24 @@ def _runtime_store(root: Path) -> RuntimeStore:
     return store
 
 
+def _command_runtime_store(root: Path) -> RuntimeStore | InstallationRuntimeStore:
+    context = resolve_installation_context(root)
+    if context is None:
+        return _runtime_store(root)
+    return InstallationRuntimeStore(context)
+
+
 def _normalize_optional_path(value: str | None, parameter: str) -> str | None:
     return normalize_repo_path(value, parameter=parameter) if value is not None else None
 
 
 def _run_init(invocation: ParsedInvocation) -> int:
     try:
+        root = resolve_git_root(invocation.repos_path)
+        _installation_context_preflight("init", root)
         result = initialize(invocation.repos_path)
+    except CommandFailure as exc:
+        payload = _command_failure(ParsedInvocation("init", str(root)), exc)
     except GitRootUnresolved as exc:
         payload = error(
             command="init",

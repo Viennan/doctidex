@@ -14,7 +14,6 @@ from whero.doctidex.initialization import RUNTIME_IGNORE_PATHS, WORKSPACE_ARTIFA
 from whero.doctidex.model import InlineAnnotation, Installation, ModelFormatError, RuntimeState
 from whero.doctidex.model_view import (
     MarkdownLink,
-    RuntimeModelView,
     parse_inline_annotation,
     resolve_inline_annotation_boundary,
     scan_markdown_links,
@@ -22,6 +21,7 @@ from whero.doctidex.model_view import (
 from whero.doctidex.paths import normalize_repo_path, repo_path_to_fs
 from whero.doctidex.root_index import ROOT_INDEX_FRONTMATTER, root_index_frontmatter, root_index_matches
 from whero.doctidex.store.files import StoreFailure
+from whero.doctidex.store.model_view import RuntimeModelView
 from whero.doctidex.store.runtime import RecoveryRequired, RuntimeStore
 
 
@@ -122,7 +122,7 @@ def _check_model(store: RuntimeStore, scope: str) -> _ModelCheck:
                 )
                 return _ModelCheck(None, tuple(diagnostics), requires_recovery=True)
             state = transaction.state
-            model = RuntimeModelView(transaction)
+            model = transaction.model_view()
             if scope != "/" and model.first_boundary(scope) is not None:
                 raise _scope_failure(store.git_root, scope, "outside-current-tree")
     except (RecoveryRequired, StoreFailure):
