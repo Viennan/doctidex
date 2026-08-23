@@ -1,6 +1,6 @@
 # Doctidex Repository Guide
 
-First read `docs/dev/architecture/` before starting work.
+First read [docs/dev/architecture/overview.md](docs/dev/architecture/overview.md) before starting work.
 
 Start a non-trivial repository change from an Issue Note proposal. See [docs/dev/issues/AGENTS.md](docs/dev/issues/AGENTS.md).
 
