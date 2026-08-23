@@ -1,0 +1,165 @@
+# Doctidex Git v2 Architecture
+
+This document defines the current `doctidex-git` command architecture. It is authority for the work model, domain services, and implementation responsibilities. The directory-tree model is defined by [directory-tree-spec.md](directory-tree-spec.md); transactional store design is defined by [stores-transactions.md](stores-transactions.md).
+
+## Purpose and scope
+
+`doctidex-git` turns one Git repository into a doctidex tree while preserving ordinary Git development. It manages fixed-revision installations, symbolic refs, editable worktrees, custom boundaries, validation, and repair.
+
+The product is a Linux/macOS CLI, not a hosted service or a replacement for Git. It owns only managed declarations and derived boundaries. Ordinary repository content and user-created worktrees remain outside its ownership.
+
+## Bounded context
+
+The Git-root is the boundary for every command. `--repos-path` must select that root; when omitted, the CLI discovers it. Repository-internal paths begin with `/` and are rooted at the selected Git root, not the host filesystem.
+
+The domain distinguishes:
+
+- tracked declarations, which are reproducible across clones;
+- runtime declarations, which describe machine-local physical objects;
+- derived boundaries, which are computed from managed declarations.
+
+## Installation-context behavior
+
+Commands behave differently when the selected Git root is inside a managed Installation rather than an ordinary repository path.
+
+### Context detection
+
+`resolve_installation_context` walks ancestors for a `.doctidex-git` directory. If one owner is found, the current path is inside that owner's Installation. If multiple owners are found, the path is ambiguous and the command fails before any mutation.
+
+An `InstallationContext` records:
+
+- `owner-root`: the owning repository root;
+- `install-path`: the repository-internal path of the Installation containing the selected root.
+
+### Command admission
+
+| Command class | Installation-context behavior |
+|---|---|
+| `validate` | Allowed. |
+| `boundary-set parse` | Allowed. |
+| `import query` | Allowed. |
+| `import restore` | Allowed with special Installation-local routing. |
+| `init`, `worktree` | Forbidden. |
+| `import install`, `import track`, `import ref`, `import unref` | Forbidden. |
+| `boundary-set add`, `boundary-set remove`, `repair` | Forbidden. |
+| Other commands | Not yet available. |
+
+Forbidden and unavailable commands fail before state mutation. The failure identifies the owning Installation path.
+
+### Model adaptation
+
+An `InstallationRuntimeStore` coordinates two stores without merging their state:
+
+- the owner RuntimeStore, which owns the outer repository work model;
+- the Installation RuntimeStore, which owns declarations inside the selected Installation.
+
+An `InstallationRuntimeModelView` exposes Installation-local records while mapping their `presentation-path` to the owner's actual Installation path. The Installation and owner models remain separate.
+
+`import restore` in Installation context reads the requested Installation from the local model, then installs it into the owner work model as an untracked Installation. It never creates a nested Installation inside the current Installation; the local Installation is flattened into the owner repository's runtime projection. The result keeps the local Installation identity and supplies the owner-side `presentation-path`.
+
+## Domain model
+
+| Aggregate or value object | Meaning |
+|---|---|
+| **Installation** | One external Git source at one fixed commit and one install path. |
+| **Ref** | A managed symbolic link from a repository path into an Installation. |
+| **Worktree** | A managed, untracked editable Git worktree. |
+| **CustomBoundaryPoint** | A tracked boundary declared directly by `boundary-set add`. |
+| **InlineAnnotation** | Structured metadata on one Markdown link. |
+| **CacheItem** | A cached bare repository identity and publication state. |
+| **RuntimeState** | The merged tracked and runtime model view. |
+
+### Installation
+
+An Installation remains addressable by `install-id` even when its physical worktree is absent. A tracked Installation is stored in `imports.json`; an untracked Installation is stored in `runtime.json`.
+
+Revision selectors are resolution inputs, not live tracking relationships. A branch or tag resolves once to `commit-hash`; a direct commit is reused by URL and commit.
+
+### Ref
+
+A Ref links a `target-dir` to the root or a `src-sub-dir` of one tracked Installation. Creating a Ref promotes its Installation to tracked. Removal is blocked while an in-scope Markdown link crosses its boundary.
+
+### Worktree
+
+A Worktree records origin and creation base but does not track later commits. Default paths live under `/.doctidex-git/worktrees/`; a custom path receives tool-managed Git ignore rules. Removing a dirty recorded worktree requires `--force`.
+
+### Boundary points
+
+The complete boundary view is derived from current state:
+
+| Type | Source |
+|---|---|
+| `custom` | `boundary-set.json` |
+| `import` | `Installation.install-path` |
+| `import-ref` | `Ref.target-dir` |
+| `worktree` | `Worktree.work-path` |
+
+When paths overlap, resolution selects the first ancestor boundary from the Git root and does not continue below it.
+
+## Domain services by command cluster
+
+### Workspace bootstrap service
+
+Commands: `init`
+
+`init` establishes the `.doctidex-git` workspace, root `index.md` identity, empty state projections, and Git ignore protection. A non-empty workspace is already initialized; `validate --model-structure` or `repair` is the next step.
+
+### Boundary management service
+
+Commands: `boundary-set add`, `boundary-set remove`, `boundary-set parse`
+
+This service manages custom BoundaryPoints. `remove` refuses a derived boundary. `parse` returns the first boundary for each requested path.
+
+### Import service
+
+Commands: `import install`, `import restore`, `import track`, `import remove`, `import ref`, `import unref`, `import query`
+
+`install` resolves one revision, prepares the install path, and records a tracked or untracked Installation. `restore` recreates a tracked Installation at its recorded commit without re-resolving branch or tag. `track` moves an Installation into the tracked projection. `remove` deletes records and physical paths only when no Ref or in-scope link depends on them. `ref` and `unref` maintain managed symbolic links. `query` supports identity, path, ref, and fuzzy key selectors.
+
+### Worktree service
+
+Commands: `worktree create`, `worktree remove`, `worktree query`
+
+`create` accepts an Installation or URL source, resolves a fixed commit, creates a detached Git worktree, and records it. Default paths use short random names until an unused path is found. `remove` deletes the managed directory and optional custom ignore rule; a dirty worktree requires `--force`. `query` returns the recorded Worktree.
+
+### Validation service
+
+Commands: `validate`
+
+`validate` is read-only. It checks the work model first because an untrustworthy model cannot drive a complete Markdown scan. Full validation covers root identity, state projections, physical Installations, Refs, Worktrees, ignore protection, local link targets, cross-boundary annotations, and tracked-Installation requirements. It does not scan `.doctidex-git` or paths below a BoundaryPoint.
+
+### Repair service
+
+Commands: `repair`
+
+`repair` aligns JSON records and managed physical objects. It recovers residual journals, restores missing or inconsistent Installations, Refs, and Worktrees, removes unrecorded links, and reconciles ignore rules. It is maintenance, not history rollback, and does not modify Markdown link content.
+
+## Store and coordination services
+
+The RuntimeStore owns tracked and runtime JSON projections. The CacheStore owns bare repository cache records. The StoreCoordinator serializes one workspace command, performs repair outside a failed RuntimeStore transaction, and retries the actual operation. Commands needing both domains acquire cache access before RuntimeStore access.
+
+The stores are not database transactions. Their objective is recoverable model state under cooperating `doctidex-git` processes, not reversal of every filesystem or Git side effect.
+
+## Cross-cutting rules
+
+- The CLI emits machine-readable JSON.
+- `validate` returns `valid` plus diagnostics; operational failures use structured errors and exit status 2.
+- Path normalization rejects repository escape.
+- Markdown syntax recognition uses `markdown-it-py`; boundary and source-location logic supplements parser-recognized links.
+- Git cache accelerates operations but does not replace RuntimeStore declarations.
+- Python package is `whero.doctidex` under `src/python/whero/doctidex/`.
+
+## Implementation responsibilities
+
+| Responsibility | Implementation |
+|---|---|
+| CLI envelope and argument contract | [cli/main.py](../../../src/python/whero/doctidex/cli/main.py), [cli/results.py](../../../src/python/whero/doctidex/cli/results.py) |
+| Domain records | [model.py](../../../src/python/whero/doctidex/model.py) |
+| Shared model relations and link scans | [model_view.py](../../../src/python/whero/doctidex/model_view.py) |
+| Installation-context detection and owner routing | [installation.py](../../../src/python/whero/doctidex/installation.py) |
+| Store protocol and journals | [store/](../../../src/python/whero/doctidex/store/) |
+| Git source access and cache | [repository.py](../../../src/python/whero/doctidex/repository.py), [git_cache.py](../../../src/python/whero/doctidex/git_cache.py) |
+| Command workflows | [boundary.py](../../../src/python/whero/doctidex/boundary.py), [imports.py](../../../src/python/whero/doctidex/imports.py), [worktree.py](../../../src/python/whero/doctidex/worktree.py), [initialization.py](../../../src/python/whero/doctidex/initialization.py), [validate.py](../../../src/python/whero/doctidex/validate.py), [repair.py](../../../src/python/whero/doctidex/repair.py) |
+| Cross-store recovery | [coordination.py](../../../src/python/whero/doctidex/coordination.py) |
+
+Model views own shared relationship semantics. Command modules own policy, such as whether a relationship blocks deletion, creates a diagnostic, or triggers physical repair.

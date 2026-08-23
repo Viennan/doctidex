@@ -1,4 +1,0 @@
-interface:
-  display_name: "Issue"
-  short_description: "Create and maintain issue records"
-  default_prompt: "Use $issue to create or update an issue record."

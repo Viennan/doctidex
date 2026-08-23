@@ -1,52 +1,43 @@
-# Doctidex Developing Guide
+# Doctidex Repository Guide
 
-## Introduction
+First read `docs/dev/architecture/` before starting work.
 
-`doctidex` is a directory-tree structure standard that keeps Markdown and ordinary files readable
-while providing stable navigation for humans, agents, and programs. It supports repositories as
-navigable, traceable knowledge bases, including controlled links to fixed Git revisions in other
-repositories.
+Start a non-trivial repository change from an Issue Note proposal. See [docs/dev/issues/AGENTS.md](docs/dev/issues/AGENTS.md).
 
-Version 2.x.x is the active development line. The former 1.x.x codebase and its historical guidance
-are preserved in `archive/v1/`; do not treat them as authority for v2 design or implementation.
+## Repository Overview
 
-## Documentation Roles
+`doctidex` is a directory-tree structure standard that keeps Markdown and ordinary files readable while providing stable navigation for humans, agents, and programs. It supports repositories as navigable, traceable knowledge bases, including controlled links to fixed Git revisions in other repositories.
 
-`docs/user/` is authoritative for the product's user-visible surface: interfaces, parameters,
-results, diagnostics, recovery guidance, and usage patterns.
-`docs/architecture/` is authoritative for the product's current design: product model, design
-constraints, responsibilities, workflows, and implementation architecture.
-`docs/requirements/` records the incremental trajectory of the product's evolution; it does not
-replace either user or Architecture documentation as authority for the current product.
+Version 2.x.x is the active development line.
 
-Architecture documents must remain self-contained as the authority on the current product. They must
-not delegate that authority to Requirements through links, but may link to Requirements to express
-the design requirements from which an architectural decision originated. User and Architecture
-documentation must be organized from the complete current product design, not by the incremental
-numbering or local structure of Requirements.
+## Directory structure
 
-## Repository Skill Maintenance
+```text
+.
+├── AGENTS.md
+├── docs/               # Repository documentation and scoped guidance.
+│   ├── AGENTS.md
+│   ├── dev/            # Development, architecture, cookbook, and issue documentation.
+│   │   └── issues/
+│   │       └── AGENTS.md
+│   └── user/           # User-facing documentation for the user surface.
+└── src/                # Source code.
+    ├── AGENTS.md
+    └── python/         # Python implementation and tests.
+```
 
-Keep operations and data separate: repository Skills define workflows and rules, while other
-repository files provide the data those workflows consume. Do not embed repository data in a Skill;
-reference its authoritative location and direct the Skill to read it instead.
+Scoped `AGENTS.md` files:
 
-## Engineering Rules
+- `AGENTS.md`
+- `docs/AGENTS.md`
+- `docs/dev/issues/AGENTS.md`
+- `src/AGENTS.md`
 
-Do not declare, emphasize, or encode artifact-maintenance rules in an artifact's functional content.
-Apply those rules only during artifact development and validation.
+Treat a **scoped-AGENTS.md** as the root `AGENTS.md` scoped to its path. Read every **scoped-AGENTS.md** on the path you access.
 
-Prefer thoughtful, elegant, lean, straightforward solutions; introduce additional abstractions only as complexity
-grows and they provide clear value.
+Use [doctidex-scaffolding-builder](.agents/skills/doctidex-scaffolding-builder/SKILL.md) to keep this directory diagram and the scoped `AGENTS.md` list synchronized when either changes.
 
-Do not speculate about error handling for incomplete areas or cases impossible under the established overall design.
+## Python Engineering Conventions
 
-Use diagrams, tables, code blocks, and other Markdown-renderable structures proactively to simplify
-prose and improve comprehension.
-
-## Python Development
-
-Use the project-root `.venv` as the runtime environment for all Python code and tools in this
-repository. Create it before use when it does not exist.
-
-Develop all Python code in this repository against Python 3.12.
+- Use the project-root `.venv` as the default Python runtime for all Python code and tools in this repository. Create it before use when it does not exist.
+- Develop all Python code in this repository against Python 3.12 or later.

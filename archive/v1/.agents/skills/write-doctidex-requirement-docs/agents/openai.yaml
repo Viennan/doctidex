@@ -1,4 +1,0 @@
-interface:
-  display_name: "Write doctidex Requirement Docs"
-  short_description: "Record and maintain project Requirement history"
-  default_prompt: "Use $write-doctidex-requirement-docs to create or revise Requirement records for this repository."

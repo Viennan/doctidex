@@ -1,4 +1,0 @@
-interface:
-  display_name: "Write Architecture Docs"
-  short_description: "Write and validate complete product architecture"
-  default_prompt: "Use $write-architecture-docs to write or validate the product Architecture."

@@ -1,1 +1,0 @@
-[only-html-version](https://developers.openai.com/api/reference/resources/images/edit-streaming-events)

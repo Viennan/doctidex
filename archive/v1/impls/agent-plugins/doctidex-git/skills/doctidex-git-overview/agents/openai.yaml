@@ -1,4 +1,0 @@
-interface:
-  display_name: "Doctidex Git Overview"
-  short_description: "Choose and safely use doctidex Git workflows"
-  default_prompt: "Use $doctidex-git-overview to select the correct installed doctidex Git workflow."

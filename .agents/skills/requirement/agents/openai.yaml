@@ -1,4 +1,0 @@
-interface:
-  display_name: "Requirement"
-  short_description: "Create and maintain requirement records"
-  default_prompt: "Use $requirement to create or update a requirement record."

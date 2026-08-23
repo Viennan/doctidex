@@ -1,4 +1,0 @@
-interface:
-  display_name: "Read doctidex Git Trees"
-  short_description: "Navigate doctidex content and external links"
-  default_prompt: "Use $doctidex-git-read to navigate this doctidex tree and diagnose inaccessible external links."
