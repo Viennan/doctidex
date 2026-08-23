@@ -39,7 +39,10 @@ Keep non-obvious rationale when omitting it could plausibly cause misuse or an i
 
 ## Expression modes
 
-Prefer diagrams, tables, code blocks, and similar non-prose forms when they reduce explanatory text and improve comprehension, logical clarity, or brevity. Keep prose as the primary carrier of logic and content organization. Use non-prose forms only when they lower the reader's burden; do not construct complex, HTML-like markup that makes the passage harder to understand.
+- Prefer diagrams, tables, code blocks, and similar non-prose forms when they reduce explanatory text and improve comprehension, logical clarity, or brevity.
+- Keep prose as the primary carrier of logic and content organization.
+- Use non-prose forms only when they lower the reader's burden.
+- Do not construct complex, HTML-like markup that makes the passage harder to understand.
 
 ## Required coverage by prose location
 

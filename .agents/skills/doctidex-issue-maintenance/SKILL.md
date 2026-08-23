@@ -47,3 +47,4 @@ After maintaining Issue Notes, verify that:
 
 - No centralized `INDEX.md` was introduced; search or browse the tree directly.
 - Cross-references use relative Markdown links, never bare prose or numbers.
+- Prose is calibrated using [doctidex-prose-standard](../doctidex-prose-standard/SKILL.md).

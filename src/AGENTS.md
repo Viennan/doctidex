@@ -20,6 +20,7 @@ The active implementation is Python code under `src/python/`. Read `docs/dev/arc
 - Use `markdown-it-py` for Markdown parsing and `PyYAML` for structured annotation YAML.
 - Use type annotations. When a parameter accepts multiple custom structural types, annotate it with a `Protocol`.
 - After annotating with a `Protocol`, do not recover the original type with `isinstance` or similar checks; operate only through the Protocol.
+- Resolve circular imports by refactoring, extracting a module, or merging modules; do not use local imports.
 
 ## Code style
 
