@@ -26,6 +26,7 @@ Treat the lifecycle/class folders as the working inventory: browse `proposed/`, 
 
 - Use when a developing Issue Note has a design and must receive `## Implementation plan`.
 - Use when implementation rules or execution guidance are needed for an existing plan.
+- Authorizing design does not authorize implementation planning; `doctidex-issue-impl` requires separate explicit user authorization.
 
 ### Archive or delete
 

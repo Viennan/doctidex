@@ -11,6 +11,10 @@ This is a guide, not a script. It owns how to design a solution for an Issue Not
 
 When a user comments on an Issue Note, code, or another artifact, first infer intent and identify the developing Issue Note to which the comment applies. Before changing the design from that comment, collect missing context and re-determine the impact scope. Whether the comment addresses a local part or the whole issue, never draw conclusions or fix the design from only the comment's local information. Consider the complete issue and existing design; holistic review is an invariant of this skill.
 
+## Authorization boundary
+
+Authorization to produce a design does not authorize using [doctidex-issue-impl](../doctidex-issue-impl/SKILL.md) to create an implementation plan. Implementation planning requires separate explicit user authorization.
+
 ## Workflow
 
 ### Gather context before designing
