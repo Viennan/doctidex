@@ -84,6 +84,8 @@ class CacheTransaction:
         return False
 
     def find(self, git_url: str) -> CacheItem | None:
+        """Return the CacheItem for ``git_url``, if one is recorded."""
+
         return next((record for record in self.records if record.git_url == git_url), None)
 
     def _recover_preparing(self) -> None:
@@ -111,6 +113,8 @@ class CacheWriteTransaction(CacheTransaction):
     """A CacheStore transaction with immediate record publication."""
 
     def replace_records(self, records: tuple[CacheItem, ...] | list[CacheItem]) -> None:
+        """Publish the complete record set and update the in-memory copy."""
+
         candidate = tuple(records)
         self.store._publish_records(candidate, phase="commit")
         self.records = candidate

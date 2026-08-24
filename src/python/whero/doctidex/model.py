@@ -15,30 +15,6 @@ class ModelFormatError(ValueError):
         super().__init__(f"{artifact} does not match {expected_shape}")
         self.artifact = artifact
         self.expected_shape = expected_shape
-
-
-def _mapping(value: object, *, artifact: str) -> Mapping[str, Any]:
-    if not isinstance(value, Mapping):
-        raise ModelFormatError(artifact, "an object")
-    return value
-
-
-def _list(value: object, *, artifact: str) -> list[object]:
-    if not isinstance(value, list):
-        raise ModelFormatError(artifact, "an array")
-    return value
-
-
-def _string(value: Mapping[str, Any], field: str, *, artifact: str, path: bool = False) -> str:
-    candidate = value.get(field)
-    if not isinstance(candidate, str) or (path and not candidate.startswith("/")):
-        expected = f"a string field {field!r}"
-        if path:
-            expected += " containing a repository-internal absolute path"
-        raise ModelFormatError(artifact, expected)
-    return candidate
-
-
 @dataclass(frozen=True, slots=True)
 class Installation:
     """An installed external Git revision and its persisted metadata."""
@@ -55,6 +31,8 @@ class Installation:
 
     @classmethod
     def from_json(cls, value: object, *, artifact: str) -> Installation:
+        """Reconstruct an Installation from one persisted document value."""
+
         record = _mapping(value, artifact=artifact)
         tracked = record.get("tracked")
         keys = record.get("keys")
@@ -79,6 +57,8 @@ class Installation:
         )
 
     def to_json(self) -> dict[str, object]:
+        """Return the Installation as its persisted document representation."""
+
         return {
             "tracked": self.tracked,
             "git-url": self.git_url,
@@ -101,6 +81,8 @@ class Ref:
 
     @classmethod
     def from_json(cls, value: object, *, artifact: str) -> Ref:
+        """Reconstruct a Ref from one persisted document value."""
+
         record = _mapping(value, artifact=artifact)
         src_sub_dir = _string(record, "src-sub-dir", artifact=artifact)
         if src_sub_dir and not src_sub_dir.startswith("/"):
@@ -115,6 +97,8 @@ class Ref:
         )
 
     def to_json(self) -> dict[str, str]:
+        """Return the Ref as its persisted document representation."""
+
         return {
             "install-id": self.install_id,
             "src-sub-dir": self.src_sub_dir,
@@ -134,6 +118,8 @@ class BoundaryPoint:
 
     @classmethod
     def from_json(cls, value: object, *, artifact: str) -> BoundaryPoint:
+        """Reconstruct a BoundaryPoint from one persisted document value."""
+
         record = _mapping(value, artifact=artifact)
         kind = _string(record, "type", artifact=artifact)
         if kind not in {"custom", "import", "import-ref", "worktree"}:
@@ -141,6 +127,8 @@ class BoundaryPoint:
         return cls(type=kind, path=_string(record, "path", artifact=artifact, path=True))
 
     def to_json(self) -> dict[str, str]:
+        """Return the BoundaryPoint as its persisted document representation."""
+
         return {"type": self.type, "path": self.path}
 
 
@@ -162,6 +150,8 @@ class Worktree:
 
     @classmethod
     def from_json(cls, value: object, *, artifact: str) -> Worktree:
+        """Reconstruct a Worktree from one persisted document value."""
+
         record = _mapping(value, artifact=artifact)
         install_id = record.get("install-id")
         if install_id is not None and not isinstance(install_id, str):
@@ -174,6 +164,8 @@ class Worktree:
         )
 
     def to_json(self) -> dict[str, object]:
+        """Return the Worktree as its persisted document representation."""
+
         return {
             "url": self.url,
             "install-id": self.install_id,
@@ -199,6 +191,8 @@ class CacheItem:
 
     @classmethod
     def from_json(cls, value: object, *, artifact: str) -> CacheItem:
+        """Reconstruct a CacheItem from one persisted document value."""
+
         record = _mapping(value, artifact=artifact)
         return cls(
             git_url=_string(record, "git-url", artifact=artifact),
@@ -207,14 +201,9 @@ class CacheItem:
         )
 
     def to_json(self) -> dict[str, str]:
+        """Return the CacheItem as its persisted document representation."""
+
         return {"status": self.status.value, "git-url": self.git_url, "path": self.path}
-
-
-def _cache_item_status(value: object, *, artifact: str) -> CacheItemStatus:
-    try:
-        return CacheItemStatus(value)
-    except ValueError as exc:
-        raise ModelFormatError(artifact, "a cache item with status preparing or published") from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -239,6 +228,8 @@ class RuntimeState:
 
     @classmethod
     def empty(cls) -> RuntimeState:
+        """Return an empty state with no boundary points, installations, refs, or worktrees."""
+
         return cls(custom_boundary_points=(), installations=(), refs=(), worktrees=())
 
     @classmethod
@@ -250,6 +241,8 @@ class RuntimeState:
         import_refs: object,
         runtime: object,
     ) -> RuntimeState:
+        """Reconstruct the complete state from its durable projection documents."""
+
         boundaries = tuple(
             BoundaryPoint.from_json(item, artifact="boundary-set.json")
             for item in _list(boundary_set, artifact="boundary-set.json")
@@ -286,6 +279,8 @@ class RuntimeState:
         )
 
     def to_documents(self) -> dict[str, object]:
+        """Return the durable projection documents that back this state."""
+
         return {
             "boundary-set.json": [item.to_json() for item in self.custom_boundary_points],
             "imports.json": [item.to_json() for item in self.installations if item.tracked],
@@ -295,3 +290,32 @@ class RuntimeState:
                 "worktrees": [item.to_json() for item in self.worktrees],
             },
         }
+
+
+def _mapping(value: object, *, artifact: str) -> Mapping[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ModelFormatError(artifact, "an object")
+    return value
+
+
+def _list(value: object, *, artifact: str) -> list[object]:
+    if not isinstance(value, list):
+        raise ModelFormatError(artifact, "an array")
+    return value
+
+
+def _string(value: Mapping[str, Any], field: str, *, artifact: str, path: bool = False) -> str:
+    candidate = value.get(field)
+    if not isinstance(candidate, str) or (path and not candidate.startswith("/")):
+        expected = f"a string field {field!r}"
+        if path:
+            expected += " containing a repository-internal absolute path"
+        raise ModelFormatError(artifact, expected)
+    return candidate
+
+
+def _cache_item_status(value: object, *, artifact: str) -> CacheItemStatus:
+    try:
+        return CacheItemStatus(value)
+    except ValueError as exc:
+        raise ModelFormatError(artifact, "a cache item with status preparing or published") from exc

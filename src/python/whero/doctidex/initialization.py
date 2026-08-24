@@ -11,7 +11,7 @@ from whero.doctidex.model import ModelFormatError, RuntimeState
 from whero.doctidex.repository import GitRootUnresolved, resolve_git_root
 from whero.doctidex.root_index import prepare_root_index
 from whero.doctidex.store.files import StoreFailure, atomic_write_bytes, fsync_directory
-from whero.doctidex.store.runtime import RuntimeStore, _encode_state
+from whero.doctidex.store.runtime import RuntimeStore, encode_state
 
 WORKSPACE_NAME = ".doctidex-git"
 WORKSPACE_ARTIFACTS = ("config.toml", "boundary-set.json", "imports.json", "import-refs.json", "runtime.json")
@@ -57,6 +57,22 @@ def initialize(repos_path: str | None, *, cwd: Path | None = None) -> InitResult
     return InitResult(git_root=git_root, created=True)
 
 
+def ensure_runtime_ignores(git_root: Path) -> None:
+    """Add the managed runtime ignore rules to the Git-root ``.gitignore``."""
+
+    gitignore = git_root / ".gitignore"
+    try:
+        current = gitignore.read_text() if gitignore.exists() else ""
+    except OSError as exc:
+        raise StoreFailure(store="runtime", phase="initialize", state_path=gitignore) from exc
+    lines = current.splitlines()
+    additions = [path for path in RUNTIME_IGNORE_PATHS if path not in lines]
+    if not additions:
+        return
+    content = "\n".join([*lines, *additions]) + "\n"
+    atomic_write_bytes(gitignore, content.encode(), store="runtime", phase="initialize")
+
+
 def _create_workspace(git_root: Path) -> None:
     workspace = git_root / WORKSPACE_NAME
     workspace_sync_started = False
@@ -66,9 +82,9 @@ def _create_workspace(git_root: Path) -> None:
             temporary.mkdir()
             _ensure_root_index(git_root)
             (temporary / "config.toml").write_bytes(b"")
-            for name, content in _encode_state(RuntimeState.empty()).items():
+            for name, content in encode_state(RuntimeState.empty()).items():
                 (temporary / name).write_bytes(content)
-            _ensure_runtime_ignores(git_root)
+            ensure_runtime_ignores(git_root)
             if workspace.exists() and (not workspace.is_dir() or any(workspace.iterdir())):
                 raise FileExistsError(workspace)
             workspace_sync_started = True
@@ -99,23 +115,10 @@ def _ensure_root_index(git_root: Path) -> None:
         atomic_write_bytes(path, updated.encode(), store="runtime", phase="initialize")
 
 
-def _ensure_runtime_ignores(git_root: Path) -> None:
-    gitignore = git_root / ".gitignore"
-    try:
-        current = gitignore.read_text() if gitignore.exists() else ""
-    except OSError as exc:
-        raise StoreFailure(store="runtime", phase="initialize", state_path=gitignore) from exc
-    lines = current.splitlines()
-    additions = [path for path in RUNTIME_IGNORE_PATHS if path not in lines]
-    if not additions:
-        return
-    content = "\n".join([*lines, *additions]) + "\n"
-    atomic_write_bytes(gitignore, content.encode(), store="runtime", phase="initialize")
-
-
 __all__ = [
     "GitRootUnresolved",
     "InitResult",
     "WorkspaceInitializeFailed",
+    "ensure_runtime_ignores",
     "initialize",
 ]

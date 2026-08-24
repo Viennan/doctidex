@@ -48,6 +48,8 @@ class JournalEntry:
     backup: str
 
     def to_json(self) -> dict[str, str | None]:
+        """Return the journal entry as its persisted representation."""
+
         return {
             "target": self.target,
             "old-sha256": self.old_sha256,
@@ -67,6 +69,8 @@ class TransactionJournal:
 
     @classmethod
     def from_json(cls, value: object, *, journal_path: Path) -> TransactionJournal:
+        """Reconstruct a TransactionJournal from one persisted journal value."""
+
         if not isinstance(value, dict):
             raise RecoveryRequired(store="runtime", phase="recovery", state_path=journal_path)
         transaction_id = value.get("transaction-id")
@@ -88,6 +92,8 @@ class TransactionJournal:
         return cls(transaction_id=transaction_id, state=state, entries=parsed)
 
     def to_json(self) -> dict[str, object]:
+        """Return the TransactionJournal as its persisted representation."""
+
         return {
             "version": 1,
             "transaction-id": self.transaction_id,
@@ -97,6 +103,8 @@ class TransactionJournal:
         }
 
     def with_state(self, state: JournalState) -> TransactionJournal:
+        """Return a copy of this journal at the requested state."""
+
         return TransactionJournal(transaction_id=self.transaction_id, state=state, entries=self.entries)
 
 
@@ -141,6 +149,15 @@ class RuntimeStore:
         with self.read_only_transaction() as transaction:
             return transaction.state
 
+    def clean_journal(self, directory: Path, *, phase: str = "recovery") -> None:
+        """Remove one transaction journal directory and sync its parent."""
+
+        try:
+            shutil.rmtree(directory)
+            fsync_directory(self.transactions_path, store="runtime", phase=phase)
+        except OSError as exc:
+            raise StoreFailure(store="runtime", phase=phase, state_path=directory) from exc
+
     def _load_state(self) -> RuntimeState:
         documents: dict[str, object] = {}
         for name in STATE_FILES:
@@ -173,7 +190,7 @@ class RuntimeStore:
         journals = self._pending_journals()
         for journal in journals:
             if journal.state == "committed":
-                observed = tuple(_observe_entry(self.workspace_path, entry) for entry in journal.entries)
+                observed = tuple(observe_entry(self.workspace_path, entry) for entry in journal.entries)
                 if not all(state == "new" for state in observed):
                     raise RecoveryRequired(
                         store="runtime",
@@ -183,13 +200,6 @@ class RuntimeStore:
                     )
         return journals
 
-    def _clean_journal(self, directory: Path, *, phase: str = "recovery") -> None:
-        try:
-            shutil.rmtree(directory)
-            fsync_directory(self.transactions_path, store="runtime", phase=phase)
-        except OSError as exc:
-            raise StoreFailure(store="runtime", phase=phase, state_path=directory) from exc
-
     def _commit(
         self,
         *,
@@ -198,7 +208,7 @@ class RuntimeStore:
         directory: Path,
         transaction_id: str,
     ) -> None:
-        new_documents = _encode_state(state)
+        new_documents = encode_state(state)
         entries = tuple(
             JournalEntry(
                 target=name,
@@ -211,7 +221,7 @@ class RuntimeStore:
             if _sha256(content) != snapshot_hashes[name]
         )
         if not entries:
-            self._clean_journal(directory, phase="commit")
+            self.clean_journal(directory, phase="commit")
             return
 
         journal = TransactionJournal(transaction_id=transaction_id, state="prepared", entries=entries)
@@ -250,7 +260,7 @@ class RuntimeStore:
                     ) from exc
             journal = journal.with_state("committed")
             self._write_journal(directory, journal, phase="commit")
-            self._clean_journal(directory, phase="commit")
+            self.clean_journal(directory, phase="commit")
         except StoreFailure:
             raise
         except OSError as exc:
@@ -303,6 +313,20 @@ class RuntimeTransaction:
             raise
         return self
 
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> bool:
+        try:
+            self._before_exit(exc_type)
+        finally:
+            self.store._lock.release()
+        return False
+
+    def model_view(self):
+        """Return the read-only work-model view for this transaction."""
+
+        from .model_view import RuntimeModelView
+
+        return RuntimeModelView(self)
+
     def _after_enter(self) -> None:
         """Allow write transactions to persist their transaction marker."""
 
@@ -335,22 +359,8 @@ class RuntimeTransaction:
         for point in self._boundary_points:
             self._boundary_points_by_path.setdefault(point.path, point)
 
-    def __exit__(self, exc_type: object, exc: object, traceback: object) -> bool:
-        try:
-            self._before_exit(exc_type)
-        finally:
-            self.store._lock.release()
-        return False
-
     def _before_exit(self, exc_type: object) -> None:
         """Complete or discard transaction-specific work before releasing the lock."""
-
-    def model_view(self):
-        """Return the read-only work-model view for this transaction."""
-
-        from .model_view import RuntimeModelView
-
-        return RuntimeModelView(self)
 
 
 class RuntimeReadOnlyTransaction(RuntimeTransaction):
@@ -396,6 +406,13 @@ class RuntimeDiagnosticTransaction(RuntimeTransaction):
         self._set_state(self.store._load_state())
         self._snapshot_hashes = self.store._snapshot_hashes()
 
+    def repair_model_view(self):
+        """Return the narrow repair view for this diagnostic transaction."""
+
+        from .model_view import RuntimeRepairModelView
+
+        return RuntimeRepairModelView(self)
+
     def _replace_refs_for_repair(self, refs: tuple[Ref, ...]) -> None:
         """Publish repair's narrowed Ref cleanup without opening a business journal."""
 
@@ -410,13 +427,6 @@ class RuntimeDiagnosticTransaction(RuntimeTransaction):
         self._set_state(replace(self.state, refs=refs))
         self._snapshot_hashes = self.store._snapshot_hashes()
 
-    def repair_model_view(self):
-        """Return the narrow repair view for this diagnostic transaction."""
-
-        from .model_view import RuntimeRepairModelView
-
-        return RuntimeRepairModelView(self)
-
 
 class RuntimeWriteTransaction(RuntimeTransaction):
     """A RuntimeStore transaction whose existence is journaled as soon as it opens."""
@@ -426,6 +436,19 @@ class RuntimeWriteTransaction(RuntimeTransaction):
         self._changed = False
         self._transaction_id: str | None = None
         self._directory: Path | None = None
+
+    def replace_state(self, state: RuntimeState) -> None:
+        """Replace the transaction state and mark it for publication."""
+
+        self._set_state(state)
+        self._changed = True
+
+    def write_model_view(self):
+        """Return the write view for this transaction."""
+
+        from .model_view import RuntimeWriteModelView
+
+        return RuntimeWriteModelView(self)
 
     def _after_enter(self) -> None:
         transaction_id = uuid.uuid4().hex
@@ -449,17 +472,6 @@ class RuntimeWriteTransaction(RuntimeTransaction):
         fsync_directory(self.store.transactions_path, store="runtime", phase="prepare")
         self._transaction_id = transaction_id
         self._directory = directory
-
-    def replace_state(self, state: RuntimeState) -> None:
-        self._set_state(state)
-        self._changed = True
-
-    def write_model_view(self):
-        """Return the write view for this transaction."""
-
-        from .model_view import RuntimeWriteModelView
-
-        return RuntimeWriteModelView(self)
 
     def _replace_collections(
         self,
@@ -493,7 +505,24 @@ class RuntimeWriteTransaction(RuntimeTransaction):
                 transaction_id=transaction_id,
             )
         else:
-            self.store._clean_journal(directory, phase="rollback")
+            self.store.clean_journal(directory, phase="rollback")
+
+
+def observe_entry(workspace: Path, entry: JournalEntry) -> Literal["old", "new", "unknown"]:
+    """Classify one journal entry against the current on-disk target."""
+
+    observed = file_sha256(workspace / entry.target)
+    if observed == entry.new_sha256:
+        return "new"
+    if observed == entry.old_sha256:
+        return "old"
+    return "unknown"
+
+
+def encode_state(state: RuntimeState) -> dict[str, bytes]:
+    """Return the encoded state documents keyed by artifact name."""
+
+    return {name: _encode_json(document) for name, document in state.to_documents().items()}
 
 
 def _provisional_new_hash(old_hash: str | None) -> str:
@@ -531,19 +560,6 @@ def _load_journal(path: Path) -> TransactionJournal:
         return TransactionJournal.from_json(document, journal_path=path)
     except ModelFormatError as exc:
         raise RecoveryRequired(store="runtime", phase="recovery", state_path=path) from exc
-
-
-def _observe_entry(workspace: Path, entry: JournalEntry) -> Literal["old", "new", "unknown"]:
-    observed = file_sha256(workspace / entry.target)
-    if observed == entry.new_sha256:
-        return "new"
-    if observed == entry.old_sha256:
-        return "old"
-    return "unknown"
-
-
-def _encode_state(state: RuntimeState) -> dict[str, bytes]:
-    return {name: _encode_json(document) for name, document in state.to_documents().items()}
 
 
 def _decode_json(content: bytes, *, artifact: str) -> object:

@@ -120,12 +120,6 @@ def remove(
             _remove_custom_ignore(store.git_root, selected_path)
         view.remove_worktrees((selected_path,))
 
-
-def _read_installation(store: RuntimeStore, install_id: str):
-    with store.read_only_transaction() as transaction:
-        return transaction.model_view().installation(install_id)
-
-
 def query(store: RuntimeStore, *, work_path: str) -> Worktree:
     """Return the recorded Worktree for one repository-internal path."""
 
@@ -135,6 +129,98 @@ def query(store: RuntimeStore, *, work_path: str) -> Worktree:
     if record is None:
         raise _not_found_failure(selected_path, operation="query")
     return record
+
+
+def ensure_worktree_commit(
+    repository: Path,
+    git_url: str,
+    commit_hash: str,
+    *,
+    work_path: str,
+    selector_kind: str,
+    selector_value: str,
+) -> None:
+    """Fail as a structured command error if the worktree commit is unavailable."""
+
+    try:
+        ensure_commit_available(repository, git_url, commit_hash)
+    except GitCommitUnavailable as exc:
+        if selector_kind == "install-id":
+            raise _source_failure(work_path, install_id=selector_value) from exc
+        raise _revision_failure(git_url, selector_kind, selector_value) from exc
+
+
+def create_git_worktree(
+    repository: Path,
+    target: Path,
+    revision: str,
+    work_path: str,
+    git_url: str,
+    install_id: str | None,
+) -> None:
+    """Create one detached Git worktree for a managed worktree path."""
+
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise _target_failure(work_path, occupant="unavailable-path") from exc
+    try:
+        subprocess.run(
+            ["git", "-C", str(repository), "worktree", "prune"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repository), "worktree", "add", "--detach", str(target), revision],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise _source_failure(work_path, install_id=install_id, git_url=git_url) from exc
+
+
+def align_custom_ignores(git_root: Path, work_paths: tuple[str, ...]) -> None:
+    """Keep only tool-marked ignore pairs required by the current Worktree records."""
+
+    desired = set(work_paths)
+    gitignore = git_root / ".gitignore"
+    try:
+        content = gitignore.read_text() if gitignore.exists() else ""
+        lines = content.splitlines()
+        updated: list[str] = []
+        retained: set[str] = set()
+        index = 0
+        while index < len(lines):
+            marker = lines[index]
+            if marker.startswith(_IGNORE_MARKER_PREFIX) and index + 1 < len(lines):
+                candidate = marker.removeprefix(_IGNORE_MARKER_PREFIX)
+                expected_marker, expected_rule = _ignore_entry(candidate)
+                if marker == expected_marker and lines[index + 1] == expected_rule:
+                    if candidate in desired:
+                        updated.extend((marker, lines[index + 1]))
+                        retained.add(candidate)
+                    index += 2
+                    continue
+            updated.append(marker)
+            index += 1
+        for work_path in sorted(desired - retained):
+            updated.extend(_ignore_entry(work_path))
+        if updated != lines:
+            atomic_write_bytes(
+                gitignore,
+                ("\n".join(updated) + ("\n" if updated else "")).encode(),
+                store="runtime",
+                phase="worktree-ignore",
+            )
+    except (OSError, StoreFailure) as exc:
+        raise _ignore_failure("/.gitignore", operation="repair", gitignore=gitignore) from exc
+
+
+def _read_installation(store: RuntimeStore, install_id: str):
+    with store.read_only_transaction() as transaction:
+        return transaction.model_view().installation(install_id)
 
 
 def _create_from_repository(
@@ -154,7 +240,7 @@ def _create_from_repository(
         work_path = _select_work_path(view, store.git_root, source_url, explicit_work_path, tree_name)
         target = repo_path_to_fs(store.git_root, work_path)
         _ensure_available_target(view, target, work_path)
-        _ensure_worktree_commit(
+        ensure_worktree_commit(
             repository,
             source_url,
             base_commit_hash,
@@ -167,7 +253,7 @@ def _create_from_repository(
         if not _is_default_work_path(work_path):
             ignored = _add_custom_ignore(store.git_root, work_path)
         try:
-            _create_git_worktree(repository, target, base_commit_hash, work_path, source_url, install_id)
+            create_git_worktree(repository, target, base_commit_hash, work_path, source_url, install_id)
         except CommandFailure:
             if ignored:
                 _remove_custom_ignore(store.git_root, work_path)
@@ -244,23 +330,6 @@ def _resolve_revision(repository: Path, git_url: str, selector_kind: str, select
         raise _revision_failure(git_url, selector_kind, selector_value) from exc
 
 
-def _ensure_worktree_commit(
-    repository: Path,
-    git_url: str,
-    commit_hash: str,
-    *,
-    work_path: str,
-    selector_kind: str,
-    selector_value: str,
-) -> None:
-    try:
-        ensure_commit_available(repository, git_url, commit_hash)
-    except GitCommitUnavailable as exc:
-        if selector_kind == "install-id":
-            raise _source_failure(work_path, install_id=selector_value) from exc
-        raise _revision_failure(git_url, selector_kind, selector_value) from exc
-
-
 def _revision_failure(git_url: str, selector_kind: str, selector_value: str) -> CommandFailure:
     return CommandFailure(
         code="revision.unresolvable",
@@ -283,35 +352,6 @@ def _ensure_available_target(view: RuntimeWriteModelView, target: Path, work_pat
         raise _target_failure(work_path, occupant="managed-worktree")
     if target.exists() or target.is_symlink():
         raise _target_failure(work_path, occupant="existing-path")
-
-
-def _create_git_worktree(
-    repository: Path,
-    target: Path,
-    revision: str,
-    work_path: str,
-    git_url: str,
-    install_id: str | None,
-) -> None:
-    try:
-        target.parent.mkdir(parents=True, exist_ok=True)
-    except OSError as exc:
-        raise _target_failure(work_path, occupant="unavailable-path") from exc
-    try:
-        subprocess.run(
-            ["git", "-C", str(repository), "worktree", "prune"],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        subprocess.run(
-            ["git", "-C", str(repository), "worktree", "add", "--detach", str(target), revision],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-    except (OSError, subprocess.CalledProcessError) as exc:
-        raise _source_failure(work_path, install_id=install_id, git_url=git_url) from exc
 
 
 def _remove_block_reason(target: Path) -> str | None:
@@ -381,43 +421,6 @@ def _remove_custom_ignore(git_root: Path, work_path: str) -> None:
             )
     except (OSError, StoreFailure) as exc:
         raise _ignore_failure(work_path, operation="remove", gitignore=gitignore) from exc
-
-
-def _align_custom_ignores(git_root: Path, work_paths: tuple[str, ...]) -> None:
-    """Keep only tool-marked ignore pairs required by the current Worktree records."""
-
-    desired = set(work_paths)
-    gitignore = git_root / ".gitignore"
-    try:
-        content = gitignore.read_text() if gitignore.exists() else ""
-        lines = content.splitlines()
-        updated: list[str] = []
-        retained: set[str] = set()
-        index = 0
-        while index < len(lines):
-            marker = lines[index]
-            if marker.startswith(_IGNORE_MARKER_PREFIX) and index + 1 < len(lines):
-                candidate = marker.removeprefix(_IGNORE_MARKER_PREFIX)
-                expected_marker, expected_rule = _ignore_entry(candidate)
-                if marker == expected_marker and lines[index + 1] == expected_rule:
-                    if candidate in desired:
-                        updated.extend((marker, lines[index + 1]))
-                        retained.add(candidate)
-                    index += 2
-                    continue
-            updated.append(marker)
-            index += 1
-        for work_path in sorted(desired - retained):
-            updated.extend(_ignore_entry(work_path))
-        if updated != lines:
-            atomic_write_bytes(
-                gitignore,
-                ("\n".join(updated) + ("\n" if updated else "")).encode(),
-                store="runtime",
-                phase="worktree-ignore",
-            )
-    except (OSError, StoreFailure) as exc:
-        raise _ignore_failure("/.gitignore", operation="repair", gitignore=gitignore) from exc
 
 
 def _ignore_entry(work_path: str) -> tuple[str, str]:

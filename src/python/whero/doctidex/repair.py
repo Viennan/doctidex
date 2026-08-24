@@ -10,12 +10,12 @@ from whero.doctidex import imports as import_workflow
 from whero.doctidex import worktree as worktree_workflow
 from whero.doctidex.errors import CommandFailure
 from whero.doctidex.git_cache import GitCache, GitCacheWriteTransaction
-from whero.doctidex.initialization import _ensure_runtime_ignores
+from whero.doctidex.initialization import ensure_runtime_ignores
 from whero.doctidex.model_view import scan_managed_symlinks
 from whero.doctidex.paths import repo_path_to_fs
 from whero.doctidex.store.files import StoreFailure, atomic_write_bytes, file_sha256, fsync_directory, read_bytes
 from whero.doctidex.store.model_view import RuntimeRepairModelView
-from whero.doctidex.store.runtime import RecoveryRequired, RuntimeStore, TransactionJournal, _observe_entry
+from whero.doctidex.store.runtime import RecoveryRequired, RuntimeStore, TransactionJournal, observe_entry
 
 
 def repair(store: RuntimeStore, cache: GitCache) -> None:
@@ -42,8 +42,8 @@ def repair_core(
         transaction.reload_state()
         model = transaction.repair_model_view()
         if requires_physical_repair:
-            _ensure_runtime_ignores(store.git_root)
-            worktree_workflow._align_custom_ignores(
+            ensure_runtime_ignores(store.git_root)
+            worktree_workflow.align_custom_ignores(
                 store.git_root,
                 tuple(
                     item.work_path
@@ -83,7 +83,7 @@ def _recover_pending_journals(store: RuntimeStore, journals: tuple[TransactionJo
     requires_physical_repair = not journals
     for journal in journals:
         directory = store.transactions_path / journal.transaction_id
-        observed = tuple(_observe_entry(store.workspace_path, entry) for entry in journal.entries)
+        observed = tuple(observe_entry(store.workspace_path, entry) for entry in journal.entries)
         if journal.state == "committed":
             if not all(state == "new" for state in observed):
                 raise RecoveryRequired(
@@ -145,26 +145,26 @@ def _clean_recovered_journals(store: RuntimeStore, journals: tuple[TransactionJo
     """Remove only journals whose JSON and physical repair completed in this invocation."""
 
     for journal in journals:
-        store._clean_journal(store.transactions_path / journal.transaction_id, phase="repair")
+        store.clean_journal(store.transactions_path / journal.transaction_id, phase="repair")
 
 
 def _align_installation(store: RuntimeStore, repository: Path, installation) -> None:
     target = repo_path_to_fs(store.git_root, installation.install_path)
-    import_workflow._ensure_install_commit(
+    import_workflow.ensure_install_commit(
         repository,
         installation.git_url,
         "commit",
         installation.commit_hash,
         installation.commit_hash,
     )
-    if not import_workflow._prepare_install_path(
+    if not import_workflow.prepare_install_path(
         repository,
         target,
         git_url=installation.git_url,
         commit_hash=installation.commit_hash,
         install_path=installation.install_path,
     ):
-        import_workflow._create_worktree(
+        import_workflow.create_worktree(
             repository,
             target,
             installation.commit_hash,
@@ -225,7 +225,7 @@ def _create_missing_worktree(store: RuntimeStore, repository: Path, worktree) ->
     target = repo_path_to_fs(store.git_root, worktree.work_path)
     selector_kind = "install-id" if worktree.install_id is not None else "commit"
     selector_value = worktree.install_id or worktree.base_commit_hash
-    worktree_workflow._ensure_worktree_commit(
+    worktree_workflow.ensure_worktree_commit(
         repository,
         worktree.url,
         worktree.base_commit_hash,
@@ -233,7 +233,7 @@ def _create_missing_worktree(store: RuntimeStore, repository: Path, worktree) ->
         selector_kind=selector_kind,
         selector_value=selector_value,
     )
-    worktree_workflow._create_git_worktree(
+    worktree_workflow.create_git_worktree(
         repository,
         target,
         worktree.base_commit_hash,

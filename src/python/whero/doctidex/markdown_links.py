@@ -31,6 +31,8 @@ class MarkdownLink:
     ref: Ref | None
 
     def reference_details(self) -> dict[str, object]:
+        """Return the source location of this link for diagnostics."""
+
         return {"path": self.path, "line": self.line, "link-path": self.link_path}
 
 
@@ -40,6 +42,8 @@ def scan_markdown_links(
     *,
     scope: str = "/",
 ) -> tuple[MarkdownLink, ...]:
+    """Scan Markdown under ``scope`` and associate each local link with its boundary."""
+
     scope = normalize_repo_path(scope, parameter="scope")
     root = repo_path_to_fs(git_root, scope)
     candidates: list[tuple[str, _LocalLink, str | None]] = []
@@ -85,6 +89,8 @@ def scan_markdown_links(
 
 
 def resolve_local_link(document_path: str, link_path: str) -> str | None:
+    """Resolve one local Markdown link to a normalized repository path."""
+
     parsed = urlsplit(link_path)
     if parsed.scheme or parsed.netloc:
         return None
@@ -97,6 +103,8 @@ def resolve_local_link(document_path: str, link_path: str) -> str | None:
 
 
 def parse_inline_annotation(content: str, position: int) -> InlineAnnotation | None:
+    """Parse the doctidex annotation immediately following ``position``."""
+
     index = position
     while True:
         while index < len(content) and content[index].isspace():
@@ -112,26 +120,13 @@ def parse_inline_annotation(content: str, position: int) -> InlineAnnotation | N
         index = end + len("-->")
 
 
-def _parse_annotation_block(block: str) -> InlineAnnotation | None:
-    payload = block.lstrip()
-    prefix = "doctidex:"
-    if not payload.startswith(prefix):
-        return None
-    try:
-        value = yaml.safe_load(payload.removeprefix(prefix))
-    except yaml.YAMLError:
-        return None
-    cross_boundary_point = value.get("cross-boundary-point") if isinstance(value, dict) else None
-    if not isinstance(cross_boundary_point, str):
-        return None
-    return InlineAnnotation(cross_boundary_point=cross_boundary_point)
-
-
 def resolve_inline_annotation_boundary(
     document_path: str,
     link_path: str,
     annotation: InlineAnnotation,
 ) -> str | None:
+    """Resolve a cross-boundary annotation to its repository-internal path."""
+
     link = urlsplit(link_path)
     annotation_path = urlsplit(annotation.cross_boundary_point)
     if (
@@ -145,6 +140,21 @@ def resolve_inline_annotation_boundary(
     ):
         return None
     return resolve_local_link(document_path, annotation.cross_boundary_point)
+
+
+def _parse_annotation_block(block: str) -> InlineAnnotation | None:
+    payload = block.lstrip()
+    prefix = "doctidex:"
+    if not payload.startswith(prefix):
+        return None
+    try:
+        value = yaml.safe_load(payload.removeprefix(prefix))
+    except yaml.YAMLError:
+        return None
+    cross_boundary_point = value.get("cross-boundary-point") if isinstance(value, dict) else None
+    if not isinstance(cross_boundary_point, str):
+        return None
+    return InlineAnnotation(cross_boundary_point=cross_boundary_point)
 
 
 def _path_prefix(prefix: str, path: str) -> bool:

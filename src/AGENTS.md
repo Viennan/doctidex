@@ -21,6 +21,11 @@ The active implementation is Python code under `src/python/`. Read [docs/dev/arc
 - Use type annotations. When a parameter accepts multiple custom structural types, annotate it with a `Protocol`.
 - After annotating with a `Protocol`, do not recover the original type with `isinstance` or similar checks; operate only through the Protocol.
 - Resolve circular imports by refactoring, extracting a module, or merging modules; do not use local imports.
+- Call a private method only from the module or class that defines it.
+- When promoting a private method to public, remove its `_` or `__` prefix and update every call site.
+- Give every public method a docstring, and maintain it together with the method.
+- Begin every module with a docstring that states the module's semantic responsibility, and maintain it together with the module.
+- Within a module or class, place public methods before private methods, and group methods with closely related responsibilities.
 
 ## Code style
 
