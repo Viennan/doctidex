@@ -4,13 +4,13 @@ Use these examples to identify the governing principle, not as text templates. �
 
 ## Preserve every factual clause
 
-**Original:** “The coordinator carefully serializes writes per session, flushes buffered events before disposal resolves, and reports backend failures to the caller.”
+**Original:** “The repair command carefully aligns JSON records, recreates missing Installations, and removes stale managed links.”
 
-**Over-trimmed:** “The coordinator serializes persistence.”
+**Over-trimmed:** “The repair command fixes state.”
 
-**Balanced:** “The coordinator serializes writes per session, flushes buffered events before disposal resolves, and reports backend failures to the caller.”
+**Balanced:** “The repair command aligns JSON records, recreates missing Installations, and removes stale managed links.”
 
-Remove decoration and repetition, not propositions. Actor, per-session scope, disposal ordering, and failure visibility are separate facts.
+Remove decoration and repetition, not propositions. The model baseline, Installation recovery, and managed-link cleanup are separate facts.
 
 ## Explicit skill scope is functional
 
@@ -18,150 +18,92 @@ Remove decoration and repetition, not propositions. Actor, per-session scope, di
 
 **Balanced:** “This skill is guidance, not a complete checklist. Use judgment beyond the named checks; documented requirements still apply.”
 
-**Over-detailed:** Several paragraphs defending why lists cannot replace independent reasoning.
-
 Keep the explicit limitation because it changes how an agent applies the workflow. Trim repeated persuasion, not the guardrail.
 
 ## A cookbook keeps action and verification
 
-**Over-trimmed:** “Add tests for the tool.”
+**Over-trimmed:** “Add tests for the command.”
 
-**Balanced:** “Test registration and disposal at unit level, exercise the tool through the real loader path, and add a snapshot when its rendered output changes. Verify the assertion observes the external result rather than the model's report.”
+**Balanced:** “Test cache hit and cache miss paths through `StoreCoordinator.with_repository`, then verify that a `preparing` record is cleaned on the next transaction.”
 
-**Over-detailed:** A walkthrough of every fixture file and assertion already visible in the example code.
+**Over-detailed:** A walkthrough of every fixture and assertion already visible in the test code.
 
-Keep the test tiers, required action, real entry path, and observable verification. Remove fixture narration.
+Keep the required action and observable verification. Remove fixture narration.
 
 ## Preserve ownership and timing
 
-**Over-trimmed:** “Provider work is cancelled during teardown.”
+**Over-trimmed:** “Cache work is recovered during startup.”
 
-**Balanced:** “The runtime requests provider cancellation before releasing the child scope; the provider remains responsible for joining its workers before disposal resolves.”
+**Balanced:** “CacheStore removes interrupted `preparing` records before exposing records to a transaction.”
 
-**Over-detailed:** A chronological account of every promise and callback used to implement teardown.
+The actor, timing, and recovery boundary are separate factual clauses.
 
-The actor, ordering, point where ownership changes, and completion guarantee are separate factual clauses.
+## Public API documentation includes failures
 
-## Event JSDoc preserves boundary timing
+**Over-trimmed:** “Returns the cached repository.”
 
-**Over-trimmed:** “Composes and caches the session prefix.”
+**Balanced:** “Returns the published cached repository. Raises `cache.repository.unavailable` when the Git URL has no usable cache record.”
 
-**Balanced:** “Composes the session prefix once before the first pre-step and model request. Listener appends join the current request, and pre-step pressure accounting receives the composed prefix.”
-
-**Over-detailed:** A walkthrough of the loop helpers, cache fields, and promise callbacks that implement the ordering.
-
-Event order and its current-request consequence are caller-visible behavior, not implementation narration.
+Failure states and preconditions are caller-visible contract facts.
 
 ## Orient complicated code without narrating it
 
-**Over-trimmed:** “Worker realm support.”
+**Over-trimmed:** “RuntimeStore support.”
 
-**Balanced:** “Owns the worker realm and its host bridge. Realm initialization is single-shot; disposal terminates the worker and rejects later calls. See the worker-isolation Agent Note for the protocol rationale.”
+**Balanced:** “Owns journaled publication of the four state projection files. Write transactions mark themselves prepared before publishing; repair reconciles residual journals.”
 
-**Over-detailed:** A paragraph-by-paragraph preview of the classes and helper functions below.
-
-Keep the module's role, dependencies, responsibilities, and non-obvious lifecycle behavior. Link architecture rationale and let the code show local control flow.
-
-## Public JSDoc includes failures
-
-**Over-trimmed:** “Returns the realm global.”
-
-**Balanced:** “Returns the initialized realm global. Throws if initialization has not completed or the realm has already been disposed.”
-
-**Over-detailed:** The internal state-machine branches and exact helper calls that lead to each throw.
-
-Throws and state preconditions are caller-visible contract facts.
-
-## Keep a concise implementation mapping
-
-**Over-trimmed:** “Search provider backed by an external API.”
-
-**Balanced:** “Maps each provider result to the shared search-result fields, preserving the title, URL, and text while omitting provider-only ranking metadata.”
-
-**Over-detailed:** A field-by-field restatement of the mapping code, including fields with identical names and obvious assignments.
-
-Keep mapping details that explain where an adapter drops or changes information.
+Keep the module's role and non-obvious lifecycle behavior. Let code show local control flow.
 
 ## Link rationale while keeping the local contract
 
-**Over-trimmed:** “Disposal is documented in the lifecycle Agent Note.”
+**Over-trimmed:** “Transactions are documented in the architecture.”
 
-**Balanced:** “Disposal aborts the run and waits for provider quiescence. See the lifecycle Agent Note for ownership and race handling.”
+**Balanced:** “RuntimeStore writes are journaled and retried through `StoreCoordinator`. See the stores-and-transactions architecture for recovery details.”
 
-**Over-detailed:** Repeating the Agent Note's promise choreography and rejected ownership models beside every disposer.
+Keep the behavior where callers need it. Link aggressively for rationale; a link cannot replace the local contract.
 
-Keep the behavior and completion guarantee where callers need them. Link aggressively for the algorithm and rationale; a link cannot replace the local contract.
+## Implemented Issue Notes retain verification contracts
 
-## Implemented Agent Notes retain verification contracts
+**Over-trimmed:** Deleting the testing section because the Issue Note has shipped.
 
-**Over-trimmed:** Deleting the entire Testing section because the Agent Note has already shipped.
+**Balanced:** “Tests cover cache hits, cache misses, interrupted cache publication, and RuntimeStore recovery. The real workflow path is exercised; snapshot coverage is deferred where transport is process-specific.”
 
-**Balanced:** “Unit tests cover cancellation before and after publication, disposal quiescence, and provider reload. A built-entry smoke covers the real loader path; snapshot coverage is deferred because the transport is process-specific.”
-
-**Over-detailed:** A file-by-file walkthrough of fixtures and assertions with no additional behavioral distinction.
-
-Remove migration tasks and test narration. Keep the tiers, behaviors they pin, real entry path, and named coverage gaps.
-
-## A security boundary may need one concrete example
-
-**Over-trimmed:** “Mounted plugins share the host's authority.”
-
-**Balanced:** “Mounted plugins share the host's authority; for example, access to `ctx.shell` permits commands with the host executor's privileges.”
-
-**Over-detailed:** A list of every service a plugin could misuse and every hypothetical exploit.
-
-Keep one example when it makes an otherwise abstract security limit operationally clear.
+Remove migration tasks and test narration. Keep the behaviors the tests pin and the named gaps.
 
 ## Delete reasoning transcripts entirely
 
-**Over-detailed:** “First the loop checks whether the value is absent. If it is absent, the next branch returns early. Otherwise it continues, which is why the final assertion is safe.”
+**Over-detailed:** “First the loop checks whether the path exists. If it does not exist, the next branch returns early. Otherwise it continues, which is why the final check is safe.”
 
 **Balanced:** No comment when the code already expresses those branches. If the early return protects a non-obvious invariant, state only that invariant.
 
-Do not compress a reasoning transcript into shorter narration; remove it.
-
 ## Configuration comments explain what the tree cannot
 
-**Over-detailed:** “This entry loads the local filesystem provider, followed by the policy plugin, followed by the read, write, and edit tools,” when the adjacent entries already show that order.
+**Over-detailed:** “This entry loads the local cache, followed by the repair rule, followed by the validate rule.”
 
-**Balanced:** “Load policy before the model-facing tools so their write and edit calls pass through the read-before-mutation gate.”
+**Balanced:** “Load repair before validation so residual journals are reconciled before the tree is scanned.”
 
-Keep the consequence of order, a surprising scope rule, or a security boundary. Let the configuration show its own inventory.
-
-## Do not trim for word count alone
-
-**Current:** “The adapter converts provider errors into the shared error type so callers can handle authentication, rate-limit, and transient failures uniformly.”
-
-**Shorter but worse:** “The adapter normalizes provider errors.”
-
-**Balanced decision:** Keep the current sentence unless a link or surrounding contract already lists the failure categories. The shorter version loses the consequence and distinctions without improving structure.
+Keep the consequence of order or a security boundary. Let configuration show its own inventory.
 
 ## Model-visible text follows ownership
 
-**Over-trimmed:** “The tool returns errors when a call fails.”
+**Over-trimmed:** “The command returns errors when a call fails.”
 
-**Over-detailed:** Copying another package's schema and renderer strings into this backend's README.
+**Balanced:** “Quote stable CLI result and error text owned by this command. Link generated schemas and reference text owned elsewhere.”
 
-**Balanced:** Quote stable prompt, result, and error text owned by this package. Link the generated tool catalog for schemas and the consumer README for text another package owns; state only this package's conditions or deltas locally.
-
-Wording that reaches a model is behavior, but duplication still drifts. Exactness belongs at the owner.
+Wording that reaches a user or model is behavior, but duplication still drifts. Exactness belongs at the owner.
 
 ## Generated summaries must stand alone
 
-**Over-trimmed:** “Approval request and policy service.” The owner explains policy order and audit logging later, but the catalog exports only its first sentence.
+**Over-trimmed:** “Installation record.” The owner explains revision and tracking later, but the generated catalog exports only the first sentence.
 
-**Over-detailed:** Moving the service's full lifecycle and prompt-notice behavior into the extracted sentence.
-
-**Balanced:** “Approval service that applies session policy before answerers and logs every ask/outcome pair to the requesting session.” Keep non-catalog detail in later sentences.
+**Balanced:** “Installation record that fixes one Git URL at one commit and one install path.” Keep non-catalog detail in later sentences.
 
 Know what the generator extracts. That fragment must preserve the contract needed on its generated output.
 
 ## Limitations are contracts, not debt inventories
 
-**Over-trimmed:** Omitting a process-lifetime cache that makes configuration changes require plugin reload.
+**Over-trimmed:** Omitting a process-lifetime cache that makes configuration changes require a new command run.
 
-**Over-detailed:** Listing private helper cleanup and unused test-only accessors with no caller or maintainer consequence.
+**Balanced:** “Cache configuration is read when `GitCache` is constructed; changing `cache-path` requires a new command process.”
 
-**Balanced:** “Provider selection is cached for the plugin lifetime; installing or repairing a provider requires reload.” Keep ordinary cleanup in its TODO or Agent Note.
-
-Retain gaps and non-obvious constraints that affect use or safe maintenance. A package README is not a backlog dump.
+Retain gaps and non-obvious constraints that affect use or safe maintenance. Do not turn a document into a backlog dump.

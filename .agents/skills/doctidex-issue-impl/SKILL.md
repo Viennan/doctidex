@@ -42,6 +42,7 @@ Follow the code conventions in [src/AGENTS.md](../../../src/AGENTS.md).
 - Cover the functional behavior of every public interface.
 - Test complex internal implementation units only when necessary; do not test simple or self-evident internal interfaces.
 - Raise coverage through more complete public-interface tests; never add tests for small internal interfaces merely to increase coverage.
+- Organize tests by design architecture, product feature, and module; do not bloat them into one undifferentiated test file.
 
 ### Keep a global perspective across phases
 

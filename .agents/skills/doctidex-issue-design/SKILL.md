@@ -19,7 +19,7 @@ Authorization to produce a design does not authorize using [doctidex-issue-impl]
 
 ### Gather context before designing
 
-- Search related active `implemented/` and `developing/` issues based on the proposal.
+- Search related or affected active `implemented/` and `developing/` issues based on the proposal.
 - Read the relevant documentation under `docs/user/`, `docs/architecture/`, and `docs/dev/`.
 - Read the relevant code to understand the actual implementation details.
 
@@ -29,7 +29,8 @@ Identify the affected:
 
 - user surface;
 - architecture;
-- code implementation.
+- code implementation;
+- active Issue Notes that may be affected.
 
 ### Design from existing design
 

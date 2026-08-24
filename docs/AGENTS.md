@@ -20,4 +20,4 @@ This file defines document structure, Markdown tiers, writing rules. Use [doctid
 
 ## Maintenance routing
 
-Use [doctidex-doc-maintenance](../.agents/skills/doctidex-doc-maintenance/SKILL.md) for common and document-type-specific maintenance rules. Use [doctidex-prose-standard](../.agents/skills/doctidex-prose-standard/SKILL.md) for prose wording.
+When creating or revising a document, use [doctidex-doc-maintenance](../.agents/skills/doctidex-doc-maintenance/SKILL.md) to choose its type, scope, and tree location. When wording or reviewing prose, use [doctidex-prose-standard](../.agents/skills/doctidex-prose-standard/SKILL.md) to calibrate wording.

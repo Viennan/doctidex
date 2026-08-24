@@ -1,50 +1,44 @@
 ---
 name: doctidex-prose-standard
-description: Use when writing, reviewing, restoring, trimming, or auditing prose in the Doctidex repository, including deciding where documentation or comments are required across Markdown, code comments and source-level documentation, test comments, prompts, descriptions, diagnostics, CLI or UI strings, and scaffolding documentation.
+description: Use when writing, reviewing, restoring, trimming, or auditing prose in the Doctidex repository, including deciding where documentation or comments are required across Markdown, code comments and source-level documentation, test comments, prompts, descriptions, diagnostics, CLI or UI strings, and agent scaffolding documentation such as AGENTS.md and skill files.
 ---
 
 # Doctidex Prose Standard
 
-Write enough to preserve the contract, then remove reasoning transcripts, repetition, and decoration. A contract is an obligation, invariant, precondition, postcondition, or compatibility promise that a caller, callee, implementer, producer, or consumer relies on. This skill owns editorial judgment and required prose coverage. It is guidance, not a script.
+This skill is the repository's natural-language writing and wording standard. It is to prose what a code-style guide is to code: general rules apply everywhere, while scenario-specific rules add tighter requirements for each prose location.
 
-Treat `contract`, `boundary`, `shape`, `surface`, `seam`, `gate`, and `vocabulary` as terms to check before use, not banned words. First ask whether the exact rule, API, field set, type, validation, timing point, component split, or failure states the fact better. Keep a term when it names the exact technical subject, including caller/callee contracts and security/process boundaries.
+## General rules
 
-Comments describe non-obvious contracts or rationale that code cannot express; they do not restate what code already implies.
+**Preserve the contract.** Write enough to preserve the contract, then remove reasoning transcripts, repetition, and decoration. A contract is an obligation, invariant, precondition, postcondition, or compatibility promise that a caller, callee, implementer, producer, or consumer relies on.
 
-## Inputs and exclusions
+**Use precise terms.** Treat `contract`, `boundary`, `shape`, `surface`, `seam`, `gate`, and `vocabulary` as terms to check before use, not banned words. First ask whether the exact rule, API, field set, type, validation, timing point, component split, or failure states the fact better. Keep a term when it names the exact technical subject, including caller/callee contracts and security/process boundaries.
 
-Require an explicit `scope`. If it is missing, report the required input and stop; do not infer a repository-wide scope or begin an interview.
+**Comment for non-obvious contracts.** Comments describe non-obvious contracts or rationale that code cannot express; they do not restate what code already implies.
 
-Accept `mode: automatic | interactive`; default to `automatic`. Enter interactive mode only when the user explicitly requests questions or calibration.
+**Preserve every proposition.** Before editing, identify every proposition in the passage. Preserve each relevant:
 
-`mode` controls questions, not write authority. Review and audit tasks report findings without editing; explicitly requested write, fix, or trim tasks apply clear changes.
+- **Actor and action.** actor and action;
+- **Condition and timing.** condition, timing, and ordering;
+- **Modality.** modality such as must, may, or never;
+- **Negative guarantee and exception.** negative guarantee and exception;
+- **Ownership and consequence.** ownership, side effect, failure mode, and consequence.
 
-Treat generated catalogs, snapshots, and fixtures as derivative. Edit the owning source or scenario first, then regenerate the artifact. When a generator extracts a summary from owner prose, make the extracted sentence complete for that surface.
+**Keep a local contract.** Keep a complete local contract at the point of use: behavior, failure, ownership, and consequence that a caller or maintainer needs there.
 
-## Preserve the complete proposition
+**Write concisely and accurately.** Write in a lean, precise, non-wordy way without violating **Preserve every proposition** or **Keep a local contract**. A smaller word count alone is not an improvement.
 
-Before editing, identify every proposition in the passage. Preserve each relevant:
+**One explanation, one home.** Aggressively link to the owning document for architecture, rationale, algorithms, history, or extended examples. One explanation has one home; essential contract facts may repeat locally. Use path-plus-fragment links to provide precise reference locations for concepts and local information.
 
-- actor and action;
-- condition, timing, and ordering;
-- modality such as must, may, or never;
-- negative guarantee and exception;
-- ownership, side effect, failure mode, and consequence.
+**Keep non-obvious rationale.** Keep non-obvious rationale when omitting it could plausibly cause misuse or an incorrect simplification. Otherwise state the consequence and link the rationale home.
 
-Remove adjectives, repetition, and narration only when every factual clause survives and the result is clearer. A smaller word count alone is not an improvement.
+### Expression modes
 
-Keep a complete local contract at the point of use: behavior, failure, ownership, and consequence that a caller or maintainer needs there. Aggressively link to the owning document for architecture, rationale, algorithms, history, or extended examples. One explanation has one home; essential contract facts may repeat locally. Use path-plus-fragment links to provide precise reference locations for concepts and local information.
+- **Prefer efficient expression modes.** Prefer diagrams, tables, code blocks, and similar non-prose forms when they reduce explanatory text and improve comprehension, logical clarity, or brevity.
+- **Keep prose as the primary carrier.** Keep prose as the primary carrier of logic and content organization.
+- **Use non-prose only when it helps.** Use non-prose forms only when they lower the reader's burden.
+- **Avoid HTML-like complexity.** Do not construct complex, HTML-like markup that makes the passage harder to understand.
 
-Keep non-obvious rationale when omitting it could plausibly cause misuse or an incorrect simplification. Otherwise state the consequence and link the rationale home.
-
-## Expression modes
-
-- Prefer diagrams, tables, code blocks, and similar non-prose forms when they reduce explanatory text and improve comprehension, logical clarity, or brevity.
-- Keep prose as the primary carrier of logic and content organization.
-- Use non-prose forms only when they lower the reader's burden.
-- Do not construct complex, HTML-like markup that makes the passage harder to understand.
-
-## Required coverage by prose location
+## Scenario-specific rules
 
 This is not a one-way shortening pass. Add or restore prose when code, types, and structure do not communicate a required contract below. Do not add a comment when those facts are already obvious locally.
 
@@ -61,13 +55,17 @@ This is not a one-way shortening pass. Add or restore prose when code, types, an
 
 Preserve searchable mechanism names and meaningful modal, temporal, or negative emphasis. Normalize decorative emphasis only.
 
+## Operational input
+
+Require an explicit `scope`; do not infer or expand to a repository-wide scope. By default, apply edits. Optionally use `interactive` mode to iterate without writing until the user explicitly authorizes changes.
+
 ## Workflow
 
 1. Confirm the scope, mode, current branch or PR base, and applicable `AGENTS.md` files. Do not inspect unrelated branches.
 2. Read the applicable `AGENTS.md` guidance and the owning code or document before judging a passage. For calibration or unfamiliar cases, read [the distilled examples](references/examples.md).
 3. Inspect the requested scope, not only the largest files. Use searches and word counts to find candidates, then judge passages semantically.
 4. Classify each candidate as keep, add, trim, restore, restructure, or defer. Apply clear changes only when the task authorizes edits; do not manufacture edits to satisfy a deletion target.
-5. Update the owner before derivative artifacts. Re-check analogous passages after learning a new rule.
+5. Update the owner before derivative artifacts. Treat generated catalogs, snapshots, and fixtures as derivative: edit the owning source or scenario first, then regenerate the artifact; when a generator extracts a summary from owner prose, make the extracted sentence complete for that surface. Re-check analogous passages after learning a new rule.
 6. Run the narrow relevant checks, applicable documentation gates, `git diff --check`, and behavior tests for visible strings.
 7. Report the inspected scope, clear changes, deliberate keeps, deferred cases, and checks actually run.
 

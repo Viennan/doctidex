@@ -4,7 +4,7 @@ This **scoped-AGENTS.md** applies to code under `src/`. The root [AGENTS.md](../
 
 ## Scope
 
-The active implementation is Python code under `src/python/`. Read `docs/dev/architecture/` before changing behavior.
+The active implementation is Python code under `src/python/`. Read [docs/dev/architecture/overview.md](../docs/dev/architecture/overview.md) before changing behavior.
 
 ## Common code conventions
 
@@ -38,6 +38,6 @@ The active implementation is Python code under `src/python/`. Read `docs/dev/arc
 
 ## Design authority
 
-Architecture documents are the current-design authority. Do not let existing implementation idioms narrow the design. When code appears to conflict with design, re-read `docs/dev/architecture/` and resolve from design semantics.
+Architecture documents are the current-design authority. Do not let existing implementation idioms narrow the design. When code appears to conflict with design, re-read [docs/dev/architecture/overview.md](../docs/dev/architecture/overview.md) and resolve from design semantics.
 
-Use [doctidex-issue-design](../.agents/skills/doctidex-issue-design/SKILL.md) for design decisions and [doctidex-issue-impl](../.agents/skills/doctidex-issue-impl/SKILL.md) for implementation planning and execution.
+When a code change needs a design decision, use [doctidex-issue-design](../.agents/skills/doctidex-issue-design/SKILL.md) before implementation. After design is explicitly authorized for implementation planning, use [doctidex-issue-impl](../.agents/skills/doctidex-issue-impl/SKILL.md) to create the plan and follow execution rules.

@@ -1,6 +1,6 @@
 ---
 name: doctidex-doc-maintenance
-description: Maintain Doctidex documentation by document type, including common rules and type-specific requirements. Use when writing, reorganizing, or reviewing docs under docs/, and when a non-trivial repository change, an issue being implemented.
+description: Maintain Doctidex documentation by document type, including common rules and type-specific requirements. Use when writing, reorganizing, or reviewing docs under docs/, and when a non-trivial repository change is being implemented through an Issue Note.
 ---
 
 # Doctidex Doc Maintenance

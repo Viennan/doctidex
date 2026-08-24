@@ -28,7 +28,6 @@ Version 2.x.x is the active development line.
 
 Scoped `AGENTS.md` files:
 
-- `AGENTS.md`
 - `docs/AGENTS.md`
 - `docs/dev/issues/AGENTS.md`
 - `src/AGENTS.md`
