@@ -4,6 +4,8 @@
 
 See [common.md](common.md) for shared interface and errors.
 
+Installation directories are read-only. Use [`worktree create`](worktree.md) when you need to branch, modify, or commit from an Installation's recorded commit.
+
 ## Install
 
 ```bash

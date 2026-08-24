@@ -149,6 +149,8 @@ def _clean_recovered_journals(store: RuntimeStore, journals: tuple[TransactionJo
 
 
 def _align_installation(store: RuntimeStore, repository: Path, installation) -> None:
+    """Align one Installation to its recorded commit, discarding any dirty changes."""
+
     target = repo_path_to_fs(store.git_root, installation.install_path)
     import_workflow.ensure_install_commit(
         repository,

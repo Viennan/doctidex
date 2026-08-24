@@ -260,3 +260,58 @@ def test_worktree_create_rejects_occupied_paths_and_unknown_installation(
     )
     assert unavailable.code == 2
     assert unavailable.payload["message"]["code"] == "worktree.source.unavailable"
+
+
+def test_worktree_create_rejects_installation_path_as_worktree(
+    initialized_root: Path,
+    source_repository: Path,
+    cache_home: Path,
+    cli: CliRunner,
+) -> None:
+    installed = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "install",
+        "--tracked",
+        "--url",
+        str(source_repository),
+        "--branch",
+        "main",
+    )
+    install_path = installed.payload["install-path"]
+    install_root = initialized_root / install_path.lstrip("/")
+
+    existing = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "worktree",
+        "create",
+        "--url",
+        str(source_repository),
+        "--branch",
+        "main",
+        "--work-path",
+        install_path,
+    )
+    assert existing.code == 2
+    assert existing.payload["message"]["code"] == "worktree.target.unavailable"
+    assert existing.payload["message"]["details"] == {"operation": "create", "occupant": "installation-path"}
+
+    shutil.rmtree(install_root)
+    absent = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "worktree",
+        "create",
+        "--url",
+        str(source_repository),
+        "--branch",
+        "main",
+        "--work-path",
+        install_path,
+    )
+    assert absent.code == 2
+    assert absent.payload["message"]["code"] == "worktree.target.unavailable"
+    assert absent.payload["message"]["details"] == {"operation": "create", "occupant": "installation-path"}
+    assert not install_root.exists()

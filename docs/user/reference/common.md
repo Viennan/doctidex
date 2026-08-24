@@ -31,7 +31,7 @@ The cache stores bare Git repositories. It is not the authority for Installation
 
 When the selected Git root is inside a managed Installation, the CLI runs in Installation context rather than ordinary repository context.
 
-Detection walks ancestor directories for a `.doctidex-git` directory. If exactly one owner is found, the current path belongs to that owner's Installation. If multiple owners are found, the command fails with `installation.owner.ambiguous`.
+Detection walks ancestor directories for a `.doctidex-git` directory. A selected root that matches a recorded `Worktree.work_path` is an ordinary repository path, not Installation context. Otherwise, if exactly one owner is found, the current path belongs to that owner's Installation. If multiple owners are found, the command fails with `installation.owner.ambiguous`.
 
 ### Allowed commands
 

@@ -2,7 +2,129 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from conftest import CliRunner, commit_file, git, make_git_repository, read_json, write_json
+from conftest import (
+    CliRunner,
+    commit_file,
+    git,
+    make_git_repository,
+    read_json,
+    write_json,
+    write_residual_journal,
+)
+
+
+def test_default_worktree_path_is_not_installation_context(
+    initialized_root: Path,
+    source_repository: Path,
+    cache_home: Path,
+    cli: CliRunner,
+) -> None:
+    created = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "worktree",
+        "create",
+        "--url",
+        str(source_repository),
+        "--branch",
+        "main",
+        "--tree-name",
+        "managed",
+    )
+    worktree_root = initialized_root / created.payload["work-path"].lstrip("/")
+
+    initialized = cli.run("--repos-path", str(worktree_root), "init")
+
+    assert initialized.code == 0
+    assert (worktree_root / ".doctidex-git").is_dir()
+
+
+def test_custom_worktree_under_workspace_is_not_installation_context(
+    initialized_root: Path,
+    source_repository: Path,
+    cache_home: Path,
+    cli: CliRunner,
+) -> None:
+    created = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "worktree",
+        "create",
+        "--url",
+        str(source_repository),
+        "--branch",
+        "main",
+        "--work-path",
+        "/.doctidex-git/custom-work",
+    )
+    worktree_root = initialized_root / created.payload["work-path"].lstrip("/")
+
+    initialized = cli.run("--repos-path", str(worktree_root), "init")
+
+    assert initialized.code == 0
+    assert (worktree_root / ".doctidex-git").is_dir()
+
+
+def test_worktree_path_with_invalid_owner_model_fails_without_initializing(
+    initialized_root: Path,
+    source_repository: Path,
+    cache_home: Path,
+    cli: CliRunner,
+) -> None:
+    created = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "worktree",
+        "create",
+        "--url",
+        str(source_repository),
+        "--branch",
+        "main",
+        "--tree-name",
+        "invalid-owner",
+    )
+    worktree_root = initialized_root / created.payload["work-path"].lstrip("/")
+    (initialized_root / ".doctidex-git" / "runtime.json").unlink()
+
+    failed = cli.run("--repos-path", str(worktree_root), "init")
+
+    assert failed.code == 2
+    assert failed.payload["message"]["code"] == "work-model.invalid"
+    assert failed.payload["message"]["details"] == {
+        "owner-path": str(initialized_root),
+        "reason": "owner-work-model-invalid",
+        "artifact": "runtime.json",
+        "expected": "a required state file",
+    }
+    assert not (worktree_root / ".doctidex-git").exists()
+
+
+def test_worktree_path_with_pending_owner_journal_fails_without_initializing(
+    initialized_root: Path,
+    source_repository: Path,
+    cache_home: Path,
+    cli: CliRunner,
+) -> None:
+    created = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "worktree",
+        "create",
+        "--url",
+        str(source_repository),
+        "--branch",
+        "main",
+        "--tree-name",
+        "pending-owner",
+    )
+    worktree_root = initialized_root / created.payload["work-path"].lstrip("/")
+    write_residual_journal(initialized_root, state="prepared")
+
+    failed = cli.run("--repos-path", str(worktree_root), "init")
+
+    assert failed.code == 2
+    assert failed.payload["message"]["code"] == "store.transaction.unavailable"
+    assert not (worktree_root / ".doctidex-git").exists()
 
 
 def test_installation_context_rejects_forbidden_commands_and_allows_read_only_commands(

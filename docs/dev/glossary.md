@@ -10,9 +10,9 @@ Quick lookup for development and design terms. Each entry links to its authorita
 | BoundarySet | The set of escape directories for the current doctidex tree. | [directory-tree-spec.md](architecture/directory-tree-spec.md#boundary-semantics) |
 | BoundaryPoint | One directory in the BoundarySet. | [directory-tree-spec.md](architecture/directory-tree-spec.md#boundary-semantics) |
 | StructuredLinkAnnotation | A `doctidex` HTML-comment YAML block attached to one Markdown link. | [directory-tree-spec.md](architecture/directory-tree-spec.md#link-semantics) |
-| Installation | An external Git source at one fixed commit and one install path. | [overview.md](architecture/overview.md#installation) |
+| Installation | An external Git source at one fixed commit and one read-only install path. | [overview.md](architecture/overview.md#installation) |
 | Ref | A managed symbolic link from a repository path into an Installation. | [overview.md](architecture/overview.md#ref) |
-| Worktree | A managed, untracked editable Git worktree. | [overview.md](architecture/overview.md#worktree) |
+| Worktree | A managed, untracked editable Git worktree based on a recorded base commit. | [overview.md](architecture/overview.md#worktree) |
 | CustomBoundaryPoint | A tracked boundary declared directly by `boundary-set add`. | [overview.md](architecture/overview.md#boundary-points) |
 | InlineAnnotation | Structured metadata on one Markdown link. | [overview.md](architecture/overview.md#domain-model) |
 | CacheItem | A cached bare repository identity and publication state. | [overview.md](architecture/overview.md#domain-model) |
