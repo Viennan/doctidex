@@ -24,7 +24,7 @@ Commands behave differently when the selected Git root is inside a managed Insta
 
 ### Context detection
 
-`resolve_installation_context` walks ancestors for a `.doctidex-git` directory. If one owner is found, the current path is inside that owner's Installation. If multiple owners are found, the path is ambiguous and the command fails before any mutation.
+`resolve_installation_context` walks ancestors for a `.doctidex-git` owner and then consults the owner's RuntimeState. If the selected root matches a recorded `Worktree.work_path`, it is an ordinary repository path rather than an Installation. If one owner is found and no Worktree match exists, the current path is inside that owner's Installation. If multiple owners are found, the path is ambiguous and the command fails before any mutation.
 
 An `InstallationContext` records:
 
@@ -61,7 +61,7 @@ An `InstallationRuntimeModelView` exposes Installation-local records while mappi
 
 | Aggregate or value object | Meaning |
 |---|---|
-| **Installation** | One external Git source at one fixed commit and one install path. |
+| **Installation** | One external Git source at one fixed commit and one read-only install path. |
 | **Ref** | A managed symbolic link from a repository path into an Installation. |
 | **Worktree** | A managed, untracked editable Git worktree. |
 | **CustomBoundaryPoint** | A tracked boundary declared directly by `boundary-set add`. |
@@ -71,7 +71,7 @@ An `InstallationRuntimeModelView` exposes Installation-local records while mappi
 
 ### Installation
 
-An Installation remains addressable by `install-id` even when its physical worktree is absent. A tracked Installation is stored in `imports.json`; an untracked Installation is stored in `runtime.json`.
+An Installation remains addressable by `install-id` even when its physical worktree is absent. A tracked Installation is stored in `imports.json`; an untracked Installation is stored in `runtime.json`. An Installation is read-only: validation reports uncommitted changes, and repair discards them to restore the recorded commit.
 
 Revision selectors are resolution inputs, not live tracking relationships. A branch or tag resolves once to `commit-hash`; a direct commit is reused by URL and commit.
 
@@ -81,7 +81,7 @@ A Ref links a `target-dir` to the root or a `src-sub-dir` of one tracked Install
 
 ### Worktree
 
-A Worktree records origin and creation base but does not track later commits. Default paths live under `/.doctidex-git/worktrees/`; a custom path receives tool-managed Git ignore rules. Removing a dirty recorded worktree requires `--force`.
+A Worktree records origin and creation base but does not track later commits. It may branch, modify, and commit freely from its base commit, and it is not read-only. Default paths live under `/.doctidex-git/worktrees/`; a custom path receives tool-managed Git ignore rules. Removing a dirty recorded worktree requires `--force`. `worktree create --work-path` rejects a recorded Installation path, including when that physical path is absent.
 
 ### Boundary points
 
@@ -126,13 +126,13 @@ Commands: `worktree create`, `worktree remove`, `worktree query`
 
 Commands: `validate`
 
-`validate` is read-only. It checks the work model first because an untrustworthy model cannot drive a complete Markdown scan. Full validation covers root identity, state projections, physical Installations, Refs, Worktrees, ignore protection, local link targets, cross-boundary annotations, and tracked-Installation requirements. It does not scan `.doctidex-git` or paths below a BoundaryPoint.
+`validate` is read-only. It checks the work model first because an untrustworthy model cannot drive a complete Markdown scan. Full validation covers root identity, state projections, physical Installations, Refs, Worktrees, ignore protection, local link targets, cross-boundary annotations, and tracked-Installation requirements. It reports dirty Installations and dirty Worktrees. It does not scan `.doctidex-git` or paths below a BoundaryPoint.
 
 ### Repair service
 
 Commands: `repair`
 
-`repair` aligns JSON records and managed physical objects. It recovers residual journals, restores missing or inconsistent Installations, Refs, and Worktrees, removes unrecorded links, and reconciles ignore rules. It is maintenance, not history rollback, and does not modify Markdown link content.
+`repair` aligns JSON records and managed physical objects. It recovers residual journals, restores missing or inconsistent Installations, Refs, and Worktrees, removes unrecorded links, and reconciles ignore rules. For a dirty Installation, it discards the dirty changes and restores the recorded commit; it does not discard Worktree changes. It is maintenance, not history rollback, and does not modify Markdown link content.
 
 ## Store and coordination services
 

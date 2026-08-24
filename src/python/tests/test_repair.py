@@ -3,7 +3,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from conftest import CliRunner, read_json, write_json
+from conftest import CliRunner, git_head, git_status, read_json, write_json
 
 
 def _install_tracked(cli: CliRunner, root: Path, source: Path) -> dict[str, object]:
@@ -148,3 +148,22 @@ def test_repair_removes_a_ref_without_an_installation(initialized_root: Path, ca
     assert cli.run("--repos-path", str(initialized_root), "repair").code == 0
     assert not (initialized_root / "obsolete").exists()
     assert read_json(initialized_root / ".doctidex-git" / "import-refs.json") == []
+
+
+def test_repair_discards_dirty_installation(
+    initialized_root: Path,
+    source_repository: Path,
+    cache_home: Path,
+    cli: CliRunner,
+) -> None:
+    installed = _install_tracked(cli, initialized_root, source_repository)
+    install_root = initialized_root / installed["install-path"].lstrip("/")
+    expected_commit = git_head(source_repository)
+    (install_root / "readme.md").write_text("dirty tracked\n")
+    (install_root / "dirty-extra.md").write_text("dirty untracked\n")
+
+    assert cli.run("--repos-path", str(initialized_root), "repair").code == 0
+
+    assert git_head(install_root) == expected_commit
+    assert git_status(install_root) == ""
+    assert not (install_root / "dirty-extra.md").exists()

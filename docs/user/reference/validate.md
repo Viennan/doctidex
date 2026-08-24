@@ -49,6 +49,7 @@ Diagnostics are not execution failures. `validate` returns `status: "ok"` with `
 | `link.annotation.required` | Cross-boundary link lacks a matching annotation. |
 | `import.link.tracked` | Link crosses an untracked Installation. |
 | `worktree.clean` | Managed Worktree has uncommitted changes. |
+| `installation.worktree.dirty` | An Installation has uncommitted changes; reported inside `work-model.valid`. |
 
 When a tracked Installation's physical directory is absent, validation does not restore it or require its link targets. This is expected after cloning tracked metadata.
 

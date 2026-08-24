@@ -352,6 +352,15 @@ def _model_violations(git_root: Path, state: RuntimeState) -> list[dict[str, obj
                     },
                 }
             )
+        elif target.exists() and _git_worktree_dirty(target):
+            violations.append(
+                {
+                    "code": "installation.worktree.dirty",
+                    "path": item.install_path,
+                    "message": "An installation directory contains uncommitted changes.",
+                    "details": {"install-id": item.install_id, "install-path": item.install_path},
+                }
+            )
     for reference in state.refs:
         installation = installations.get(reference.install_id)
         if installation is None:
@@ -431,6 +440,21 @@ def _worktree_matches(target: Path, git_url: str) -> bool:
         return _git_output(target, "remote", "get-url", "origin") == git_url
     except (OSError, subprocess.CalledProcessError):
         return False
+
+
+def _git_worktree_dirty(target: Path) -> bool:
+    """Return whether a Git worktree has tracked or untracked uncommitted changes."""
+
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(target), "status", "--porcelain", "--untracked-files=all"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return False
+    return bool(result.stdout.strip())
 
 
 def _git_output(target: Path, *arguments: str) -> str:
@@ -572,27 +596,15 @@ def _content_diagnostics(git_root: Path, model: RuntimeModelView, scope: str) ->
         if not _within(scope, worktree.work_path):
             continue
         target = repo_path_to_fs(git_root, worktree.work_path)
-        if target.exists() and _is_git_worktree(target):
-            try:
-                dirty = bool(
-                    subprocess.run(
-                        ["git", "-C", str(target), "status", "--porcelain", "--untracked-files=all"],
-                        check=True,
-                        capture_output=True,
-                        text=True,
-                    ).stdout.strip()
+        if target.exists() and _is_git_worktree(target) and _git_worktree_dirty(target):
+            diagnostics.append(
+                _diagnostic(
+                    "worktree.clean",
+                    worktree.work_path,
+                    "A managed worktree contains uncommitted changes.",
+                    {"work-path": worktree.work_path},
                 )
-            except (OSError, subprocess.CalledProcessError):
-                dirty = False
-            if dirty:
-                diagnostics.append(
-                    _diagnostic(
-                        "worktree.clean",
-                        worktree.work_path,
-                        "A managed worktree contains uncommitted changes.",
-                        {"work-path": worktree.work_path},
-                    )
-                )
+            )
     return diagnostics
 
 

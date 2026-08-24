@@ -48,9 +48,9 @@ doctidex-git validate
 |---|---|
 | Git root | The boundary for one command and the root of repository-internal `/...` paths. |
 | Workspace | `.doctidex-git/` under the Git root. |
-| Installation | One external Git URL fixed at one commit and installed at one path. |
+| Installation | One external Git URL fixed at one commit and installed at one read-only path. |
 | Ref | A managed symbolic link into an Installation. |
-| Worktree | An editable Git worktree whose base commit is recorded. |
+| Worktree | An editable Git worktree whose base commit is recorded; it may branch, modify, and commit freely. |
 | BoundaryPoint | A path where the current doctidex tree's rules stop. |
 
 ## Installation context
@@ -86,6 +86,6 @@ See [common.md](reference/common.md#installation-context) for the complete behav
 
 ## Usage boundaries
 
-Do not edit state JSON under `.doctidex-git/` by hand. Do not commit managed Installation or Worktree directories. Use `validate` to observe problems and `repair` to align recoverable physical state.
+Do not edit state JSON under `.doctidex-git/` by hand. Do not commit managed Installation or Worktree directories. Installation directories are read-only; create a Worktree when you need to modify or commit from a fixed revision. Use `validate` to observe problems and `repair` to align recoverable physical state.
 
-`doctidex-git` coordinates only `doctidex-git` processes that follow its lock and transaction protocol. It does not guarantee race safety against direct external edits and cannot undo Git fetches or user commits.
+`doctidex-git` coordinates only `doctidex-git` processes that follow its lock and transaction protocol. It does not guarantee race safety against direct external edits, and it never rewrites Git history or undoes commits. `repair` may discard uncommitted Installation changes but never Worktree changes or commit history; see [repair.md](reference/repair.md#what-repair-does-not-do).

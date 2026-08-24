@@ -8,8 +8,9 @@ from typing import Self
 
 from whero.doctidex import imports as import_workflow
 from whero.doctidex.errors import CommandFailure
-from whero.doctidex.model import BoundaryPoint, Installation, Ref, RuntimeState, Worktree
+from whero.doctidex.model import BoundaryPoint, Installation, ModelFormatError, Ref, RuntimeState, Worktree
 from whero.doctidex.paths import fs_path_to_repo_path, repo_path_to_fs
+from whero.doctidex.store.files import StoreFailure
 from whero.doctidex.store.runtime import RuntimeStore
 
 
@@ -36,6 +37,9 @@ def resolve_installation_context(root: Path) -> InstallationContext | None:
         return None
 
     owner = owners[0]
+    if _inside_managed_worktree(owner, root):
+        return None
+
     install_path = fs_path_to_repo_path(owner, root)
     return InstallationContext(owner_root=owner, install_path=install_path)
 
@@ -351,6 +355,39 @@ def _current_exc_info():
     import sys
 
     return sys.exc_info()
+
+
+def _inside_managed_worktree(owner: Path, root: Path) -> bool:
+    """Return whether ``root`` is the physical path of a recorded owner Worktree."""
+
+    store = RuntimeStore(owner)
+    try:
+        with store.diagnostic_transaction() as transaction:
+            if any(journal.state in {"prepared", "publishing"} for journal in transaction.pending_journals):
+                raise StoreFailure(
+                    store="runtime",
+                    phase="recovery",
+                    state_path=store.transactions_path,
+                    details={"reason": "pending-transaction", "owner-path": str(owner)},
+                )
+            worktrees = transaction.model_view().worktrees
+    except ModelFormatError as exc:
+        raise CommandFailure(
+            code="work-model.invalid",
+            summary="The Installation owner's work model cannot be read.",
+            subject={"kind": "workspace", "path": "/.doctidex-git"},
+            details={
+                "owner-path": str(owner),
+                "reason": "owner-work-model-invalid",
+                "artifact": exc.artifact,
+                "expected": exc.expected_shape,
+            },
+        ) from exc
+    resolved_root = root.resolve()
+    return any(
+        repo_path_to_fs(owner, worktree.work_path).resolve() == resolved_root
+        for worktree in worktrees
+    )
 
 
 def _owner_roots(root: Path) -> tuple[Path, ...]:

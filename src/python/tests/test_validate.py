@@ -152,3 +152,40 @@ def test_validate_reports_missing_workspace_artifact(initialized_root: Path, cli
     assert result.code == 1
     violations = result.payload["diagnostics"][0]["details"]["violations"]
     assert any(item["code"] == "workspace.artifact.missing" for item in violations)
+
+
+def test_validate_reports_dirty_installation(
+    initialized_root: Path,
+    source_repository: Path,
+    cache_home: Path,
+    cli: CliRunner,
+) -> None:
+    installed = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "install",
+        "--tracked",
+        "--url",
+        str(source_repository),
+        "--branch",
+        "main",
+    )
+    install_root = initialized_root / installed.payload["install-path"].lstrip("/")
+    (install_root / "readme.md").write_text("dirty tracked\n")
+    (install_root / "dirty-extra.md").write_text("dirty untracked\n")
+
+    result = cli.run("--repos-path", str(initialized_root), "validate", "--model-structure")
+
+    assert result.code == 1
+    violations = [
+        item
+        for diagnostic in result.payload["diagnostics"]
+        if diagnostic["rule"] == "work-model.valid"
+        for item in diagnostic["details"]["violations"]
+    ]
+    dirty = next(item for item in violations if item["code"] == "installation.worktree.dirty")
+    assert dirty["details"] == {
+        "install-id": installed.payload["install-id"],
+        "install-path": installed.payload["install-path"],
+    }

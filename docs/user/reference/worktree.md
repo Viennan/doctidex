@@ -18,6 +18,8 @@ doctidex-git worktree create \
 
 Default paths use `/.doctidex-git/worktrees/<domain>/<repository-path>/<tree-name>`. Without `--tree-name`, a short random final directory name is generated. Explicit path or tree-name collisions are errors.
 
+A Worktree may branch, modify, and commit from its recorded base commit. `worktree create --work-path` must not reuse a recorded Installation's `install-path`; that request fails even when the Installation directory is absent. `worktree create --install-id` creates an independent Worktree directory.
+
 Success:
 
 ```json
@@ -45,7 +47,7 @@ doctidex-git worktree remove --work-path <REPOSITORY-PATH> [--force]
 |---|---|
 | `revision.unresolvable` | URL selector cannot resolve. |
 | `worktree.source.unavailable` | Source cannot provide the target commit. |
-| `worktree.target.unavailable` | Work path exists, is managed, or cannot be created. |
+| `worktree.target.unavailable` | Work path exists, is an Installation path, is a managed Worktree, or cannot be created. |
 | `worktree.ignore.protection.failed` | Custom ignore rule could not be maintained. |
 | `worktree.not-found` | Query path has no Worktree record. |
 | `worktree.remove.blocked` | Worktree has uncommitted changes or abnormal state; use `--force`. |
@@ -53,4 +55,4 @@ doctidex-git worktree remove --work-path <REPOSITORY-PATH> [--force]
 
 ## Installation context
 
-All `worktree` commands are forbidden when the selected Git root is inside a managed Installation.
+All `worktree` commands are forbidden when the selected Git root is inside a managed Installation. A recorded Worktree is an ordinary repository path and is not Installation context.
