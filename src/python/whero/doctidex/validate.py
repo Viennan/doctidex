@@ -34,15 +34,6 @@ class ValidationResult:
     diagnostics: tuple[dict[str, object], ...]
 
 
-@dataclass(frozen=True, slots=True)
-class _ModelCheck:
-    """The model snapshot and diagnostics shared by validation entry points."""
-
-    model: RuntimeModelView | None
-    diagnostics: tuple[dict[str, object], ...]
-    requires_recovery: bool = False
-
-
 def validate(
     store: RuntimeStore,
     *,
@@ -73,6 +64,15 @@ def validate(
         diagnostics.extend(_content_diagnostics(store.git_root, check.model, scope))
     diagnostics.sort(key=lambda item: (str(item.get("path", "")), int(item.get("line", 0)), str(item["rule"])))
     return ValidationResult(not diagnostics, scope, tuple(diagnostics))
+
+
+@dataclass(frozen=True, slots=True)
+class _ModelCheck:
+    """The model snapshot and diagnostics shared by validation entry points."""
+
+    model: RuntimeModelView | None
+    diagnostics: tuple[dict[str, object], ...]
+    requires_recovery: bool = False
 
 
 def _check_model(store: RuntimeStore, scope: str) -> _ModelCheck:

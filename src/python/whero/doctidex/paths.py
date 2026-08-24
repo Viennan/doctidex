@@ -9,6 +9,8 @@ from whero.doctidex.errors import CommandFailure
 
 
 def normalize_repo_path(value: str, *, parameter: str) -> str:
+    """Validate and normalize one absolute path inside the Git root."""
+
     if not value.startswith("/"):
         raise CommandFailure(
             code="repository-path.invalid",
@@ -48,6 +50,8 @@ def normalize_repo_path(value: str, *, parameter: str) -> str:
 
 
 def repo_path_to_fs(git_root: Path, repo_path: str) -> Path:
+    """Map a repository-internal path to a filesystem path under ``git_root``."""
+
     return git_root / repo_path.lstrip("/")
 
 

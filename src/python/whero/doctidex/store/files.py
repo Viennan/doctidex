@@ -38,6 +38,8 @@ class FileLock:
         self._handle: object | None = None
 
     def acquire(self) -> None:
+        """Take the exclusive advisory lock, creating the lock file as needed."""
+
         handle = None
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -50,6 +52,8 @@ class FileLock:
         self._handle = handle
 
     def release(self) -> None:
+        """Release the held advisory lock, if any."""
+
         if self._handle is None:
             return
         handle = self._handle
@@ -77,6 +81,8 @@ def file_sha256(path: Path, *, store: str = "runtime") -> str | None:
 
 
 def read_bytes(path: Path, *, store: str, phase: str) -> bytes:
+    """Read one store file and translate an OS error into ``StoreFailure``."""
+
     try:
         return path.read_bytes()
     except OSError as exc:

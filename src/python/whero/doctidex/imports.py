@@ -24,15 +24,6 @@ from whero.doctidex.store.model_view import RuntimeModelView
 from whero.doctidex.store.runtime import RuntimeStore
 
 
-@dataclass(frozen=True, slots=True)
-class _ExistingWorktree:
-    """The reusable state of one existing install-path worktree."""
-
-    git_url: str | None
-    detached: bool
-    clean: bool
-
-
 def install(
     store: RuntimeStore,
     coordinator: WorkflowCoordinator,
@@ -44,6 +35,8 @@ def install(
     commit: str,
     keys: list[str],
 ) -> Installation:
+    """Install one Git revision as a tracked or untracked Installation."""
+
     selector_kind, selector_value = _revision_selector(branch=branch, tag=tag, commit=commit)
     resolved_commit: str | None = None
 
@@ -52,7 +45,7 @@ def install(
         if resolved_commit is None:
             resolved_commit = _resolve_revision(repository, git_url, kind=selector_kind, value=selector_value)
         commit_hash = resolved_commit
-        _ensure_install_commit(repository, git_url, selector_kind, selector_value, commit_hash)
+        ensure_install_commit(repository, git_url, selector_kind, selector_value, commit_hash)
         return _install_resolved(
             store,
             repository,
@@ -74,6 +67,8 @@ def restore(
     coordinator: WorkflowCoordinator,
     install_id: str,
 ) -> Installation:
+    """Restore a tracked Installation's physical worktree at its recorded commit."""
+
     installation = coordinator.run(lambda: _read_installation(store, install_id))
     if not installation.tracked:
         raise _installation_failure(
@@ -86,93 +81,9 @@ def restore(
     return coordinator.with_repository(installation.git_url, restore_from_repository)
 
 
-def _install_resolved(
-    store: RuntimeStore,
-    repository: Path,
-    *,
-    tracked: bool,
-    git_url: str,
-    branch: str,
-    tag: str,
-    keys: list[str],
-    selector_kind: str,
-    selector_value: str,
-    commit_hash: str,
-) -> Installation:
-    with store.write_transaction() as transaction:
-        view = transaction.write_model_view()
-        existing = (
-            view.installation_for_selector(git_url, branch=branch, tag=tag)
-            if selector_kind in {"branch", "tag"}
-            else view.installation_for_commit(git_url, commit_hash)
-        )
-        keep_existing = existing is not None and existing.commit_hash == commit_hash
-        install_path = existing.install_path if keep_existing else _install_path(git_url, selector_value)
-        target = repo_path_to_fs(store.git_root, install_path)
-        if not _prepare_install_path(
-            repository,
-            target,
-            git_url=git_url,
-            commit_hash=commit_hash,
-            install_path=install_path,
-        ):
-            _create_worktree(repository, target, commit_hash, install_path=install_path)
-        if keep_existing:
-            return existing
-
-        installation = Installation(
-            tracked=tracked or bool(existing is not None and view.refs_for(existing)),
-            git_url=git_url,
-            commit_hash=commit_hash,
-            install_id=uuid.uuid4().hex,
-            install_path=install_path,
-            keys=tuple(dict.fromkeys((*_default_keys(git_url, branch=branch, tag=tag), *keys))),
-            branch=branch,
-            tag=tag,
-        )
-        if existing is None:
-            view.upsert_installation(installation)
-        else:
-            view.replace_installation(existing, installation)
-        return installation
-
-
-def _read_installation(store: RuntimeStore, install_id: str) -> Installation:
-    with store.read_only_transaction() as transaction:
-        return _find_installation(transaction.model_view(), install_id)
-
-
-def _restore_resolved(store: RuntimeStore, repository: Path, install_id: str) -> Installation:
-    with store.write_transaction() as transaction:
-        view = transaction.write_model_view()
-        current = _find_installation(view, install_id)
-        if not current.tracked:
-            raise _installation_failure(
-                "installation.tracking-state.invalid",
-                current,
-                {"required-tracked": True, "actual-tracked": False},
-            )
-        _ensure_restore_commit(repository, current)
-        target = repo_path_to_fs(store.git_root, current.install_path)
-        try:
-            if not _prepare_install_path(
-                repository,
-                target,
-                git_url=current.git_url,
-                commit_hash=current.commit_hash,
-                install_path=current.install_path,
-            ):
-                _create_worktree(repository, target, current.commit_hash, install_path=current.install_path)
-        except CommandFailure as exc:
-            if exc.code != "installation.target.unavailable":
-                raise
-            raise _installation_failure(
-                "installation.restore.unavailable", current, {"commit-hash": current.commit_hash}
-            ) from exc
-        return current
-
-
 def track(store: RuntimeStore, install_id: str) -> Installation:
+    """Promote an untracked Installation to the tracked projection."""
+
     with store.write_transaction() as transaction:
         view = transaction.write_model_view()
         installation = _find_installation(view, install_id)
@@ -188,6 +99,8 @@ def remove(
     untracked: bool,
     auto: bool,
 ) -> None:
+    """Remove selected Installations after confirming no link or Ref blocks them."""
+
     with store.write_transaction() as transaction:
         view = transaction.write_model_view()
         selected = _select_installations(view, install_id, untracked=untracked, auto=auto)
@@ -209,6 +122,8 @@ def remove(
 
 
 def ref(store: RuntimeStore, install_id: str, src_sub_dir: str, target_dir: str) -> Ref:
+    """Create a managed symbolic reference into one Installation."""
+
     target_dir = normalize_repo_path(target_dir, parameter="--target-dir")
     if src_sub_dir:
         src_sub_dir = normalize_repo_path(src_sub_dir, parameter="--src-sub-dir")
@@ -249,6 +164,8 @@ def ref(store: RuntimeStore, install_id: str, src_sub_dir: str, target_dir: str)
 
 
 def unref(store: RuntimeStore, target_dir: str) -> None:
+    """Remove a managed reference after confirming no Markdown link uses it."""
+
     target_dir = normalize_repo_path(target_dir, parameter="--target-dir")
     with store.write_transaction() as transaction:
         view = transaction.write_model_view()
@@ -287,6 +204,8 @@ def unref(store: RuntimeStore, target_dir: str) -> None:
 def query(
     model: RuntimeModelView, *, install_id: str | None, install_path: str | None, ref_path: str | None, keys: list[str]
 ) -> list[dict[str, object]]:
+    """Return Installations selected by identity, path, Ref, or fuzzy key."""
+
     candidates = _query_installations(
         model,
         install_id=install_id,
@@ -315,6 +234,173 @@ def query(
         }
         for item in candidates
     ]
+
+
+def ensure_install_commit(
+    repository: Path,
+    git_url: str,
+    selector_kind: str,
+    selector_value: str,
+    commit_hash: str,
+) -> None:
+    """Fail as a structured command error if the selected commit is unavailable."""
+
+    try:
+        ensure_commit_available(repository, git_url, commit_hash)
+    except GitCommitUnavailable as exc:
+        raise CommandFailure(
+            code="revision.unresolvable",
+            summary="The requested Git revision could not be resolved.",
+            subject={"kind": "git-source", "git-url": git_url},
+            details={
+                "operation": "fetch",
+                "selector-kind": selector_kind,
+                "selector-value": selector_value,
+            },
+        ) from exc
+
+
+def create_worktree(repository: Path, target: Path, commit_hash: str, *, install_path: str) -> None:
+    """Create one detached Git worktree at the requested install path."""
+
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            ["git", "-C", str(repository), "worktree", "prune"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repository), "worktree", "add", "--detach", str(target), commit_hash],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise _installation_target_failure(install_path, "unavailable-path") from exc
+
+
+def prepare_install_path(
+    repository: Path,
+    target: Path,
+    *,
+    git_url: str,
+    commit_hash: str,
+    install_path: str,
+) -> bool:
+    """Prepare an existing install-path, returning whether it was reused."""
+
+    if not target.exists() and not target.is_symlink():
+        return False
+
+    existing = _inspect_worktree(target, install_path)
+    if existing is None:
+        _remove_install_path(target, install_path)
+        return False
+    if existing.git_url != git_url:
+        raise _installation_target_failure(install_path, "different-git-url")
+    if existing.detached and existing.clean:
+        _checkout_worktree(target, commit_hash, install_path)
+        return True
+
+    _remove_worktree(repository, target, install_path=install_path)
+    return False
+
+
+@dataclass(frozen=True, slots=True)
+class _ExistingWorktree:
+    """The reusable state of one existing install-path worktree."""
+
+    git_url: str | None
+    detached: bool
+    clean: bool
+
+
+def _install_resolved(
+    store: RuntimeStore,
+    repository: Path,
+    *,
+    tracked: bool,
+    git_url: str,
+    branch: str,
+    tag: str,
+    keys: list[str],
+    selector_kind: str,
+    selector_value: str,
+    commit_hash: str,
+) -> Installation:
+    with store.write_transaction() as transaction:
+        view = transaction.write_model_view()
+        existing = (
+            view.installation_for_selector(git_url, branch=branch, tag=tag)
+            if selector_kind in {"branch", "tag"}
+            else view.installation_for_commit(git_url, commit_hash)
+        )
+        keep_existing = existing is not None and existing.commit_hash == commit_hash
+        install_path = existing.install_path if keep_existing else _install_path(git_url, selector_value)
+        target = repo_path_to_fs(store.git_root, install_path)
+        if not prepare_install_path(
+            repository,
+            target,
+            git_url=git_url,
+            commit_hash=commit_hash,
+            install_path=install_path,
+        ):
+            create_worktree(repository, target, commit_hash, install_path=install_path)
+        if keep_existing:
+            return existing
+
+        installation = Installation(
+            tracked=tracked or bool(existing is not None and view.refs_for(existing)),
+            git_url=git_url,
+            commit_hash=commit_hash,
+            install_id=uuid.uuid4().hex,
+            install_path=install_path,
+            keys=tuple(dict.fromkeys((*_default_keys(git_url, branch=branch, tag=tag), *keys))),
+            branch=branch,
+            tag=tag,
+        )
+        if existing is None:
+            view.upsert_installation(installation)
+        else:
+            view.replace_installation(existing, installation)
+        return installation
+
+
+def _read_installation(store: RuntimeStore, install_id: str) -> Installation:
+    with store.read_only_transaction() as transaction:
+        return _find_installation(transaction.model_view(), install_id)
+
+
+def _restore_resolved(store: RuntimeStore, repository: Path, install_id: str) -> Installation:
+    with store.write_transaction() as transaction:
+        view = transaction.write_model_view()
+        current = _find_installation(view, install_id)
+        if not current.tracked:
+            raise _installation_failure(
+                "installation.tracking-state.invalid",
+                current,
+                {"required-tracked": True, "actual-tracked": False},
+            )
+        _ensure_restore_commit(repository, current)
+        target = repo_path_to_fs(store.git_root, current.install_path)
+        try:
+            if not prepare_install_path(
+                repository,
+                target,
+                git_url=current.git_url,
+                commit_hash=current.commit_hash,
+                install_path=current.install_path,
+            ):
+                create_worktree(repository, target, current.commit_hash, install_path=current.install_path)
+        except CommandFailure as exc:
+            if exc.code != "installation.target.unavailable":
+                raise
+            raise _installation_failure(
+                "installation.restore.unavailable", current, {"commit-hash": current.commit_hash}
+            ) from exc
+        return current
 
 
 def _query_installations(
@@ -369,28 +455,6 @@ def _resolve_revision(repository: Path, git_url: str, *, kind: str, value: str) 
     return resolve_revision(repository, git_url, kind=kind, value=value)
 
 
-def _ensure_install_commit(
-    repository: Path,
-    git_url: str,
-    selector_kind: str,
-    selector_value: str,
-    commit_hash: str,
-) -> None:
-    try:
-        ensure_commit_available(repository, git_url, commit_hash)
-    except GitCommitUnavailable as exc:
-        raise CommandFailure(
-            code="revision.unresolvable",
-            summary="The requested Git revision could not be resolved.",
-            subject={"kind": "git-source", "git-url": git_url},
-            details={
-                "operation": "fetch",
-                "selector-kind": selector_kind,
-                "selector-value": selector_value,
-            },
-        ) from exc
-
-
 def _ensure_restore_commit(repository: Path, installation: Installation) -> None:
     try:
         ensure_commit_available(repository, installation.git_url, installation.commit_hash)
@@ -398,52 +462,6 @@ def _ensure_restore_commit(repository: Path, installation: Installation) -> None
         raise _installation_failure(
             "installation.restore.unavailable", installation, {"commit-hash": installation.commit_hash}
         ) from exc
-
-
-def _create_worktree(repository: Path, target: Path, commit_hash: str, *, install_path: str) -> None:
-    try:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(
-            ["git", "-C", str(repository), "worktree", "prune"],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        subprocess.run(
-            ["git", "-C", str(repository), "worktree", "add", "--detach", str(target), commit_hash],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-    except (OSError, subprocess.CalledProcessError) as exc:
-        raise _installation_target_failure(install_path, "unavailable-path") from exc
-
-
-def _prepare_install_path(
-    repository: Path,
-    target: Path,
-    *,
-    git_url: str,
-    commit_hash: str,
-    install_path: str,
-) -> bool:
-    """Prepare an existing install-path, returning whether it was reused."""
-
-    if not target.exists() and not target.is_symlink():
-        return False
-
-    existing = _inspect_worktree(target, install_path)
-    if existing is None:
-        _remove_install_path(target, install_path)
-        return False
-    if existing.git_url != git_url:
-        raise _installation_target_failure(install_path, "different-git-url")
-    if existing.detached and existing.clean:
-        _checkout_worktree(target, commit_hash, install_path)
-        return True
-
-    _remove_worktree(repository, target, install_path=install_path)
-    return False
 
 
 def _inspect_worktree(target: Path, install_path: str) -> _ExistingWorktree | None:

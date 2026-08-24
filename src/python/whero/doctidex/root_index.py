@@ -31,12 +31,6 @@ class RootIndexFrontmatterInvalid(RuntimeError):
     reason: str
 
 
-@dataclass(frozen=True, slots=True)
-class _FrontmatterDocument:
-    metadata: dict[str, object]
-    body: str
-
-
 def root_index_frontmatter(content: str) -> object:
     """Return root frontmatter for validation, or ``None`` when it is unusable."""
 
@@ -105,6 +99,12 @@ def _supplement(mapping: dict[str, object], key: str, expected: object, *, prefi
     if mapping[key] != expected or type(mapping[key]) is not type(expected):
         raise RootIndexFrontmatterConflict(f"{prefix}{key}", expected, mapping[key])
     return False
+
+
+@dataclass(frozen=True, slots=True)
+class _FrontmatterDocument:
+    metadata: dict[str, object]
+    body: str
 
 
 def _parse_frontmatter(content: str) -> _FrontmatterDocument:

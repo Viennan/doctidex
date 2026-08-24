@@ -39,13 +39,6 @@ def resolve_installation_context(root: Path) -> InstallationContext | None:
     install_path = fs_path_to_repo_path(owner, root)
     return InstallationContext(owner_root=owner, install_path=install_path)
 
-
-def _owner_roots(root: Path) -> tuple[Path, ...]:
-    """Return owner roots from ancestor ``.doctidex-git`` directories, nearest first."""
-
-    return tuple(parent.parent for parent in root.parents if parent.name == ".doctidex-git")
-
-
 class InstallationRuntimeStore:
     """A RuntimeStore-shaped adapter backed by one owner work model."""
 
@@ -65,26 +58,40 @@ class InstallationRuntimeStore:
 
     @property
     def git_root(self) -> Path:
+        """Return the owner Git root for this Installation context."""
+
         return self.context.owner_root
 
     @property
     def workspace_path(self) -> Path:
+        """Return the owner workspace path."""
+
         return self.owner_store.workspace_path
 
     @property
     def transactions_path(self) -> Path:
+        """Return the owner transaction directory."""
+
         return self.owner_store.transactions_path
 
     def read_only_transaction(self) -> InstallationReadOnlyTransaction:
+        """Open a read-only transaction over the owner and Installation views."""
+
         return InstallationReadOnlyTransaction(self)
 
     def write_transaction(self) -> InstallationWriteTransaction:
+        """Open an owner-only write transaction for ``import restore``."""
+
         return InstallationWriteTransaction(self)
 
     def diagnostic_transaction(self):
+        """Open the owner's diagnostic transaction."""
+
         return self.owner_store.diagnostic_transaction()
 
     def read_state(self) -> RuntimeState:
+        """Return the owner's current RuntimeState."""
+
         return self.owner_store.read_state()
 
     def restore_import(self, coordinator, install_id: str) -> Installation:
@@ -132,65 +139,101 @@ class InstallationRuntimeModelView:
 
     @property
     def state(self) -> RuntimeState:
+        """Return the Installation-local RuntimeState."""
+
         return self._installation_view.state
 
     @property
     def installations(self) -> tuple[Installation, ...]:
+        """Return Installation-local installations mapped to owner paths."""
+
         return tuple(self._mapped_installation(item) for item in self._installation_view.installations)
 
     @property
     def refs(self) -> tuple[Ref, ...]:
+        """Return the Installation-local refs."""
+
         return self._installation_view.refs
 
     @property
     def worktrees(self) -> tuple[Worktree, ...]:
+        """Return the Installation-local worktrees."""
+
         return self._installation_view.worktrees
 
     @property
     def boundary_points(self) -> tuple[BoundaryPoint, ...]:
+        """Return the Installation-local boundary points."""
+
         return self._installation_view.boundary_points
 
     def installation(self, install_id: str) -> Installation | None:
+        """Return the Installation-local installation mapped to its owner path."""
+
         return self._mapped_installation(self._installation_view.installation(install_id))
 
     def installation_at(self, install_path: str) -> Installation | None:
+        """Return the Installation-local installation at ``install_path`` mapped to its owner path."""
+
         return self._mapped_installation(self._installation_view.installation_at(install_path))
 
     def installation_for_selector(self, git_url: str, *, branch: str, tag: str) -> Installation | None:
+        """Return the Installation matching one source selector, mapped to its owner path."""
+
         return self._mapped_installation(
             self._installation_view.installation_for_selector(git_url, branch=branch, tag=tag)
         )
 
     def installation_for_commit(self, git_url: str, commit_hash: str) -> Installation | None:
+        """Return the Installation matching one commit, mapped to its owner path."""
+
         return self._mapped_installation(
             self._installation_view.installation_for_commit(git_url, commit_hash)
         )
 
     def ref(self, target_dir: str) -> Ref | None:
+        """Return the Installation-local Ref at ``target_dir``."""
+
         return self._installation_view.ref(target_dir)
 
     def refs_for(self, installation: Installation) -> tuple[Ref, ...]:
+        """Return the Installation-local refs for one installation."""
+
         return self._installation_view.refs_for(installation)
 
     def worktree(self, work_path: str) -> Worktree | None:
+        """Return the Installation-local worktree at ``work_path``."""
+
         return self._installation_view.worktree(work_path)
 
     def custom_boundary_point(self, path: str) -> BoundaryPoint | None:
+        """Return the Installation-local custom boundary point at ``path``."""
+
         return self._installation_view.custom_boundary_point(path)
 
     def boundary_point(self, path: str) -> BoundaryPoint | None:
+        """Return the first Installation-local boundary point at ``path``."""
+
         return self._installation_view.boundary_point(path)
 
     def first_boundary(self, path: str) -> BoundaryPoint | None:
+        """Return the first Installation-local boundary ancestor of ``path``."""
+
         return self._installation_view.first_boundary(path)
 
     def first_boundaries(self, paths) -> tuple[BoundaryPoint | None, ...]:
+        """Return the first boundary for each requested path."""
+
         return self._installation_view.first_boundaries(paths)
 
     def ref_for_boundary(self, boundary: BoundaryPoint | None) -> Ref | None:
+        """Return the Ref owned by an Installation-local boundary."""
+
         return self._installation_view.ref_for_boundary(boundary)
 
     def installation_for_boundary(self, boundary: BoundaryPoint | None) -> Installation | None:
+        """Return the Installation owned by an Installation-local boundary."""
+
         return self._installation_view.installation_for_boundary(boundary)
 
     def _mapped_installation(self, local: Installation | None) -> Installation | None:
@@ -245,6 +288,8 @@ class InstallationReadOnlyTransaction:
         return self._owner_transaction.__exit__(exc_type, exc, traceback)
 
     def model_view(self):
+        """Return the transaction's InstallationRuntimeModelView."""
+
         assert self._model_view is not None
         return self._model_view
 
@@ -287,6 +332,8 @@ class InstallationWriteTransaction:
         return self._owner_transaction.__exit__(exc_type, exc, traceback)
 
     def write_model_view(self):
+        """Return the transaction's InstallationRuntimeModelView."""
+
         assert self._model_view is not None
         return self._model_view
 
@@ -304,6 +351,12 @@ def _current_exc_info():
     import sys
 
     return sys.exc_info()
+
+
+def _owner_roots(root: Path) -> tuple[Path, ...]:
+    """Return owner roots from ancestor ``.doctidex-git`` directories, nearest first."""
+
+    return tuple(parent.parent for parent in root.parents if parent.name == ".doctidex-git")
 
 
 __all__ = [

@@ -80,11 +80,6 @@ class GitCacheReadOnlyTransaction(GitCacheTransaction):
 class GitCacheWriteTransaction(GitCacheTransaction):
     """Git cache access that can register and load a bare repository."""
 
-    @property
-    def _write_transaction(self) -> CacheWriteTransaction:
-        assert isinstance(self._transaction, CacheWriteTransaction)
-        return self._transaction
-
     def load(self, git_url: str) -> Path:
         """Reuse or create the CacheItem/repository for ``git_url``."""
 
@@ -114,6 +109,11 @@ class GitCacheWriteTransaction(GitCacheTransaction):
             raise _cache_failure(git_url, operation="load") from exc
         self._write_transaction.replace_records((*records, replace(preparing, status=CacheItemStatus.PUBLISHED)))
         return repository
+
+    @property
+    def _write_transaction(self) -> CacheWriteTransaction:
+        assert isinstance(self._transaction, CacheWriteTransaction)
+        return self._transaction
 
 
 def _configured_cache_path(home: Path) -> Path:

@@ -27,6 +27,8 @@ def scan_managed_symlinks(
     *,
     scope: str = "/",
 ) -> tuple[ManagedSymlink, ...]:
+    """Return repository symlinks that resolve into an Installation under ``scope``."""
+
     scope = normalize_repo_path(scope, parameter="scope")
     root = repo_path_to_fs(git_root, scope)
     installation_roots = tuple((repo_path_to_fs(git_root, item.install_path), item) for item in model.installations)

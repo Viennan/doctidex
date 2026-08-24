@@ -63,9 +63,13 @@ class CliArgumentParser(argparse.ArgumentParser):
     """ArgumentParser that exposes errors through the structured CLI result."""
 
     def error(self, message: str) -> NoReturn:
+        """Raise a structured argument error for an invalid command line."""
+
         raise UsageError(message, parameter=_parameter_from_message(message))
 
     def exit(self, status: int = 0, message: str | None = None) -> NoReturn:
+        """Raise a help or argument error instead of terminating the process."""
+
         if status == 0:
             raise HelpRequested(message)
         raise UsageError(message or "argument parsing failed")

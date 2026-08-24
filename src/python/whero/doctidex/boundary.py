@@ -9,6 +9,8 @@ from whero.doctidex.store.runtime import RuntimeStore
 
 
 def add(store: RuntimeStore, paths: list[str]) -> None:
+    """Record custom boundary points for the normalized repository paths."""
+
     with store.write_transaction() as transaction:
         view = transaction.write_model_view()
         normalized = [normalize_repo_path(path, parameter="--path") for path in paths]
@@ -16,6 +18,8 @@ def add(store: RuntimeStore, paths: list[str]) -> None:
 
 
 def remove(store: RuntimeStore, paths: list[str]) -> None:
+    """Remove custom boundary points unless a path resolves to a derived boundary."""
+
     with store.write_transaction() as transaction:
         view = transaction.write_model_view()
         normalized = [normalize_repo_path(path, parameter="--path") for path in paths]
@@ -33,6 +37,8 @@ def remove(store: RuntimeStore, paths: list[str]) -> None:
 
 
 def parse(store: RuntimeStore, paths: list[str]) -> list[dict[str, object]]:
+    """Return the first boundary point for each requested path."""
+
     with store.read_only_transaction() as transaction:
         view = transaction.model_view()
         normalized = [normalize_repo_path(path, parameter="--path") for path in paths]
