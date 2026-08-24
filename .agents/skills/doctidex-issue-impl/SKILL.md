@@ -39,9 +39,12 @@ Follow the code conventions in [src/AGENTS.md](../../../src/AGENTS.md).
 
 - Implement using Test-Driven Development.
 - Design tests from requirements, not from the current code.
+- Follow [testing.md](../../../docs/dev/testing.md) when constructing normal and robustness cases.
 - Cover the functional behavior of every public interface.
+- Prefer end-to-end tests that observe the user-visible effects of the public interface over small internal-interface tests.
 - Test complex internal implementation units only when necessary; do not test simple or self-evident internal interfaces.
-- Raise coverage through more complete public-interface tests; never add tests for small internal interfaces merely to increase coverage.
+- When a core implementation mechanism is necessary to verify but no realistic end-to-end case can reach it, allow a narrow mock-based test even though the unit is not a user surface or public interface; explain why the real path is infeasible.
+- Raise coverage through more complete user-surface and public-interface tests; never add tests for small internal interfaces merely to increase coverage.
 - Organize tests by design architecture, product feature, and module; do not bloat them into one undifferentiated test file.
 
 ### Keep a global perspective across phases
