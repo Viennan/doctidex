@@ -147,6 +147,7 @@ The stores are not database transactions. Their objective is recoverable model s
 - Path normalization rejects repository escape.
 - Markdown syntax recognition uses `markdown-it-py`; boundary and source-location logic supplements parser-recognized links.
 - Git cache accelerates operations but does not replace RuntimeStore declarations.
+- Coordination is scoped to cooperating `doctidex-git` processes. A command does not protect its state files, managed paths, or cache from external edits, and does not provide safety against non-`doctidex-git` concurrent actors.
 - Python package is `whero.doctidex` under `src/python/whero/doctidex/`.
 
 ## Implementation responsibilities

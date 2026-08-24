@@ -12,6 +12,7 @@ This file defines document structure, Markdown tiers, writing rules. Use [doctid
   - **`architecture/`**: Architecture documentation, organized and written using Domain Driven Design pattern.
   - **`cookbook/`**: Step-by-step how-tos with numbered verification steps; best-practice implementation patterns, recommended coordination patterns across modules, and best practices for implementing features on the existing base architecture.
   - **`issues/`**: Issue documentation. The authoritative home for an issue document is its corresponding **scoped-AGENTS.md**; see [dev/issues/AGENTS.md](dev/issues/AGENTS.md).
+  - **`testing.md`**: Test construction guidance, including normal and robustness case scope and the external-interference boundary; see [dev/testing.md](dev/testing.md).
 
 ## Documentation responsibilities
 
