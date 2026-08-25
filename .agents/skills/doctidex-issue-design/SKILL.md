@@ -19,7 +19,7 @@ Authorization to produce a design does not authorize using [doctidex-issue-impl]
 
 ### Gather context before designing
 
-- Search related or affected active `implemented/` and `developing/` issues based on the proposal.
+- Search active issues for related or affected issues based on the proposal.
 - Read the relevant documentation under `docs/user/`, `docs/architecture/`, and `docs/dev/`.
 - Read the relevant code to understand the actual implementation details.
 
@@ -30,11 +30,11 @@ Identify the affected:
 - user surface;
 - architecture;
 - code implementation;
-- active Issue Notes that may be affected.
+- active issues that may be affected.
 
 ### Design from existing design
 
-Base the solution on the current architecture and absorb accumulated design experience and best practices from `docs/dev/cookbook` and issue docs, including design decisions, trade-offs, and rationale from active implemented issues. Use the same Domain Driven Design language as the architecture documents. The design shapes the architecture; do not let existing code or local implementation conventions reverse that direction.
+Base the solution on the current architecture and absorb accumulated design experience and best practices from `docs/dev/cookbook` and issue docs, including design decisions, trade-offs, and rationale from active issues. Use the same Domain Driven Design language as the architecture documents. The design shapes the architecture; do not let existing code or local implementation conventions reverse that direction.
 
 ### Keep code from narrowing the design
 

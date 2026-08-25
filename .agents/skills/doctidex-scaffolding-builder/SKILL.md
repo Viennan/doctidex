@@ -33,7 +33,7 @@ When an `AGENTS.md` file, including a **scoped-AGENTS.md**, would contain a larg
 
 The root `AGENTS.md` must include a directory-structure diagram. By default, show `docs` and `src` with two levels and brief descriptions; always show every path containing a **scoped-AGENTS.md** or `AGENTS.md` file, without adding a description for those files. The root `AGENTS.md` must also state that a **scoped-AGENTS.md** is the root `AGENTS.md` scoped to that path, and that agents must read every **scoped-AGENTS.md** on the access path.
 
-Skill trigger descriptions in `AGENTS.md` and **scoped-AGENTS.md** must carry more specific information than the Skill's frontmatter `description`. The frontmatter description is broad, high-compression, and wide-coverage; an `AGENTS.md` trigger should bind the Skill to concrete local actions and workflows. Remove trigger wording that only repeats the description. Prefer meaningful orchestration such as: when creating an object, first use Skill A for a required pre-step, then use Skill B to complete creation. This orchestration is meaningful only when the flow is not already built into Skill A or Skill B as a generic workflow belonging to that Skill.
+Attach Skill triggers in `AGENTS.md` and **scoped-AGENTS.md** to concrete local actions or workflows. Each trigger must add detail beyond the Skill's broad, high-compression frontmatter `description`, not restate it. Prefer meaningful orchestration—use Skill A for a required pre-step, then Skill B to create the object—only when that sequence is not already a generic workflow inside Skill A or Skill B.
 
 ## Skills
 

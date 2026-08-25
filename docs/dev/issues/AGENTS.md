@@ -1,12 +1,25 @@
 # Issue Notes: Agent Guide
 
-Read [README.md](README.md) for the directory layout, classification, and in-file format. Use [doctidex-issue-maintenance](../../../.agents/skills/doctidex-issue-maintenance/SKILL.md) for lifecycle, archiving, consolidation, and moving rules, [doctidex-issue-design](../../../.agents/skills/doctidex-issue-design/SKILL.md) for developing-stage design, and [doctidex-issue-impl](../../../.agents/skills/doctidex-issue-impl/SKILL.md) for implementation planning and execution rules.
+Read [README.md](README.md) for the directory layout, classification, and in-file format. Use [doctidex-issue-proposal](../../../.agents/skills/doctidex-issue-proposal/SKILL.md) for proposed-stage discussion, [doctidex-issue-design](../../../.agents/skills/doctidex-issue-design/SKILL.md) for developing-stage design, [doctidex-issue-impl](../../../.agents/skills/doctidex-issue-impl/SKILL.md) for implementation planning and execution, and [doctidex-issue-maintenance](../../../.agents/skills/doctidex-issue-maintenance/SKILL.md) for lifecycle, archiving, consolidation, and moving rules.
+
+## Terminology
+
+**Active issues** are Issue Notes in `proposed/`, `developing/`, `implemented/`, and `rejected/`. A non-deleted `rejected/` note remains active because it records a rejected design decision that can guide new work. `archived/` is sealed history, not active.
+
+## Routing user input
+
+Try to match user input to the active Issue Note it concerns, preferring an issue already active in the session context and falling back to repository search. If a `proposed/` issue matches, use [doctidex-issue-proposal](../../../.agents/skills/doctidex-issue-proposal/SKILL.md); if a `developing/` issue matches, use [doctidex-issue-design](../../../.agents/skills/doctidex-issue-design/SKILL.md).
 
 ## Finding and reviewing
 
-Treat the lifecycle/class folders as the working inventory: browse `proposed/`, `developing/`, `implemented/`, and `rejected/`; treat `archived/` as sealed history.
+While an issue is `proposed/` or `developing/`, search active issues for content-related issues whose decisions may affect it. Prefer active issues already present in the session context; use issue links as one signal, not the only search method. Treat the active lifecycle/class folders as the working inventory.
 
 ## When to use the skill
+
+### Propose or discuss
+
+- Use when a new proposal is created or an existing `proposed/` Issue Note is refined; use [doctidex-issue-proposal](../../../.agents/skills/doctidex-issue-proposal/SKILL.md).
+- Use when a user discusses a proposed issue or comments on code or documents in its context; treat that input as proposal discussion, not repository changes.
 
 ### Write or update
 
@@ -14,8 +27,6 @@ Treat the lifecycle/class folders as the working inventory: browse `proposed/`, 
 - Use when a substantial future-work proposal moves into design and implementation.
 - Use when an existing `implemented/` Issue Note must be updated to track where its existing decision now lives.
 - Use when a decision must be superseded by a new Issue Note rather than rewritten in place.
-
-**Every new implemented Issue triggers a supersession check.** Search the active tree for older issues covering the same decision or mechanism, classify any full or partial supersession with the skill, and archive every qualifying implemented triplet in the same PR. Keep partial supersessions active and cross-linked.
 
 ### Design
 
@@ -42,6 +53,7 @@ Treat the lifecycle/class folders as the working inventory: browse `proposed/`, 
 ### Move between lifecycles
 
 - Use when a note must move between `proposed/`, `developing/`, `implemented/`, `rejected/`, or `archived/`.
+- Use when a note moves into `implemented/`; run the supersession hook described in [doctidex-issue-maintenance](../../../.agents/skills/doctidex-issue-maintenance/SKILL.md).
 
 ### Add a class
 
@@ -50,6 +62,6 @@ Treat the lifecycle/class folders as the working inventory: browse `proposed/`, 
 ## How to use the skill
 
 1. Read [README.md](README.md) for the correct lifecycle, class, and file skeleton.
-2. Match the request to a trigger above.
-3. Use [doctidex-issue-design](../../../.agents/skills/doctidex-issue-design/SKILL.md) for design, [doctidex-issue-impl](../../../.agents/skills/doctidex-issue-impl/SKILL.md) for implementation planning and execution, or [doctidex-issue-maintenance](../../../.agents/skills/doctidex-issue-maintenance/SKILL.md) for lifecycle, archiving, consolidation, and moving.
+2. Match the user input to an active Issue Note using the routing rule above; prefer session-context active issues.
+3. Use [doctidex-issue-proposal](../../../.agents/skills/doctidex-issue-proposal/SKILL.md) for `proposed/`, [doctidex-issue-design](../../../.agents/skills/doctidex-issue-design/SKILL.md) for `developing/` design, [doctidex-issue-impl](../../../.agents/skills/doctidex-issue-impl/SKILL.md) for implementation planning and execution, or [doctidex-issue-maintenance](../../../.agents/skills/doctidex-issue-maintenance/SKILL.md) for lifecycle, archiving, consolidation, and moving.
 4. Run the relevant skill's review checks after the change.

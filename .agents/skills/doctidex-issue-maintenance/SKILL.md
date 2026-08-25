@@ -1,6 +1,6 @@
 ---
 name: doctidex-issue-maintenance
-description: Maintain Issue Notes under docs/dev/issues by creating, updating, archiving, consolidating, and moving them.
+description: Maintain Issue Notes under docs/dev/issues by creating, updating, moving them between lifecycles, archiving, and consolidating them.
 ---
 
 # Doctidex Issue Maintenance
@@ -13,6 +13,18 @@ This is a guide, not a script. It owns the execution rules for Issue Notes under
 - A purely mechanical or local edit with no change to behavior, contracts, structure, process, or rationale is exempt.
 - Do not edit an Issue Note into a *different decision*; supersede it with a new note and keep both notes cross-linked unless fully consolidated later.
 - Editing an `implemented/` Issue Note to track where its existing decision lives is required, not forbidden.
+
+## Linking and dependencies
+
+Consider creating bidirectional Markdown links only when Issue Notes have a strong dependency or a direct design relationship; do not link merely related issues. A parent Issue may create multiple child Issues; add bidirectional parent-child links only when a child's design directly depends on the parent.
+
+Use links to make context search easier, but do not rely on links alone: also search active issues by content and decision impact.
+
+Maintain bidirectionally linked issues together throughout their lifecycles. When one linked issue changes:
+
+- sync affected facts and links in the linked issues;
+- during consolidation, preserve and repair the relationship in the surviving note;
+- during archiving, repair or remove inbound links and update any dependent active issue.
 
 ## Archiving
 
@@ -30,12 +42,27 @@ The removal owner preserves the original motivation, why it no longer justified 
 
 ## Moving between lifecycles
 
-Moving a file means updating the `Status:` line and re-satisfying that folder's skeleton in the same change; otherwise the move is invalid.
+Moving a file means updating the `Status:` line and re-satisfying the target lifecycle's skeleton in the same change; otherwise the move is invalid. The `implemented/` → `archived/` move follows [Archiving](#archiving), not this list.
 
-- `proposed/` → `developing/` expands `## Proposal` into `## Design`, `## Implementation plan`, and `## Progress`.
-- `developing/` → `implemented/` rewrites the design and progress into a present-tense `## Decision`, folds the completed implementation into `## Consequences` (or a present-tense `## Testing`/`## Verification` section for what now pins the behavior), and drops in-flight plans.
-- When moving `developing/` → `implemented/`, sync all affected documents under `docs/` in the same change using [doctidex-doc-maintenance](../doctidex-doc-maintenance/SKILL.md).
-- `proposed/` → `rejected/` only adds the reason to the `Status:` line and freezes the file.
+### `proposed/` → `developing/`
+
+- Set `Status: developing`.
+- Expand `## Proposal` into `## Design`, `## Implementation plan`, and `## Progress`.
+- Bring the rest of the body to the `developing/` skeleton; keep `## Problem` and `## Alternatives considered`.
+
+### `developing/` → `implemented/`
+
+- Set `Status: implemented`.
+- Rewrite the design and progress into a present-tense `## Decision`.
+- Fold the completed implementation into `## Consequences`, or into a present-tense `## Testing`/`## Verification` section when that section now pins the behavior.
+- Drop in-flight plans.
+- In the same change, sync all affected documents under `docs/` using [doctidex-doc-maintenance](../doctidex-doc-maintenance/SKILL.md).
+- Run the supersession hook: search active issues for candidates covering the same decision or mechanism. For `implemented/` candidates, classify any full or partial supersession, archive every qualifying implemented triplet in the same change, and keep partial supersessions active and cross-linked. For `developing/` or `proposed/` candidates, state the reason by default and ask the user before acting.
+
+### `proposed/` → `rejected/`
+
+- Set `Status: rejected — <why, in one line>`.
+- Freeze the file as the proposal; make no other content changes.
 
 ## Adding a class
 
@@ -47,4 +74,5 @@ After maintaining Issue Notes, verify that:
 
 - No centralized `INDEX.md` was introduced; search or browse the tree directly.
 - Cross-references use relative Markdown links, never bare prose or numbers.
+- Bidirectional links are present where a strong dependency or direct design relationship matters, and linked issues were updated across the lifecycle change.
 - Prose is calibrated using [doctidex-prose-standard](../doctidex-prose-standard/SKILL.md).
