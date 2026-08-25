@@ -441,3 +441,61 @@ def test_import_ref_rejects_occupied_target(
 
     assert result.code == 2
     assert result.payload["message"]["code"] == "ref.target.unavailable"
+
+
+def test_import_ref_rejects_managed_directories_and_existing_boundary(
+    initialized_root: Path,
+    source_repository: Path,
+    cache_home: Path,
+    cli: CliRunner,
+) -> None:
+    installed = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "install",
+        "--tracked",
+        "--url",
+        str(source_repository),
+        "--branch",
+        "main",
+    )
+    install_id = installed.payload["install-id"]
+
+    cases = [
+        ("/.doctidex-git/imports/new/path", "managed-imports-directory"),
+        ("/.doctidex-git/worktrees/new/path", "managed-worktrees-directory"),
+    ]
+    for target_dir, reason in cases:
+        rejected = cli.run(
+            "--repos-path",
+            str(initialized_root),
+            "import",
+            "ref",
+            "--install-id",
+            install_id,
+            "--target-dir",
+            target_dir,
+        )
+        assert rejected.code == 2
+        assert rejected.payload["message"]["code"] == "ref.target.unavailable"
+        assert rejected.payload["message"]["details"]["reason"] == reason
+        assert not (initialized_root / target_dir.lstrip("/")).exists()
+
+    cli.run("--repos-path", str(initialized_root), "boundary-set", "add", "--path", "/external")
+    boundary_target = "/external/linked"
+    rejected = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "ref",
+        "--install-id",
+        install_id,
+        "--target-dir",
+        boundary_target,
+    )
+    assert rejected.code == 2
+    assert rejected.payload["message"]["code"] == "ref.target.unavailable"
+    assert rejected.payload["message"]["details"]["reason"] == "existing-boundary"
+    assert not (initialized_root / boundary_target.lstrip("/")).exists()
+    assert not (initialized_root / boundary_target.lstrip("/")).parent.exists()

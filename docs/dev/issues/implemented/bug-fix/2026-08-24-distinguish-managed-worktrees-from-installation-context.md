@@ -32,7 +32,7 @@ After the exclusion, command dispatch follows the ordinary repository-root path.
 
 ### Installation path protection
 
-`worktree create --work-path` rejects a path equal to a recorded `Installation.install_path`, including when that physical path is absent. `worktree create --install-id <INSTALL-ID>` remains valid and creates an independent Worktree directory under `/.doctidex-git/worktrees/`.
+`worktree create --work-path` now rejects paths inside `/.doctidex-git/imports/` and paths below an existing BoundaryPoint, including when the physical path is absent. The earlier exact-recorded-`install-path` rule is partially superseded by [Reserve `/.doctidex-git/imports` for managed Installations](2026-08-25-reserve-doctidex-git-imports-directory.md). `worktree create --install-id <INSTALL-ID>` remains valid and creates an independent Worktree directory under `/.doctidex-git/worktrees/`.
 
 ### Documentation
 

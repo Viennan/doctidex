@@ -7,6 +7,9 @@ from pathlib import Path
 
 from whero.doctidex.errors import CommandFailure
 
+MANAGED_IMPORTS_DIRECTORY = "/.doctidex-git/imports"
+MANAGED_WORKTREES_DIRECTORY = "/.doctidex-git/worktrees"
+
 
 def normalize_repo_path(value: str, *, parameter: str) -> str:
     """Validate and normalize one absolute path inside the Git root."""
@@ -49,6 +52,18 @@ def normalize_repo_path(value: str, *, parameter: str) -> str:
     return normalized
 
 
+def is_managed_imports_path(path: str) -> bool:
+    """Return whether ``path`` is inside the managed Installation directory."""
+
+    return _is_managed_directory_path(path, MANAGED_IMPORTS_DIRECTORY)
+
+
+def is_managed_worktrees_path(path: str) -> bool:
+    """Return whether ``path`` is inside the managed Worktree directory."""
+
+    return _is_managed_directory_path(path, MANAGED_WORKTREES_DIRECTORY)
+
+
 def repo_path_to_fs(git_root: Path, repo_path: str) -> Path:
     """Map a repository-internal path to a filesystem path under ``git_root``."""
 
@@ -62,3 +77,7 @@ def fs_path_to_repo_path(root: Path, path: Path) -> str:
     if not relative.parts:
         return "/"
     return f"/{'/'.join(relative.parts)}"
+
+
+def _is_managed_directory_path(path: str, directory: str) -> bool:
+    return path == directory or path.startswith(f"{directory}/")

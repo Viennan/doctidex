@@ -71,17 +71,17 @@ An `InstallationRuntimeModelView` exposes Installation-local records while mappi
 
 ### Installation
 
-An Installation remains addressable by `install-id` even when its physical worktree is absent. A tracked Installation is stored in `imports.json`; an untracked Installation is stored in `runtime.json`. An Installation is read-only: validation reports uncommitted changes, and repair discards them to restore the recorded commit.
+An Installation remains addressable by `install-id` even when its physical worktree is absent. A tracked Installation is stored in `imports.json`; an untracked Installation is stored in `runtime.json`. An Installation is read-only: validation reports uncommitted changes, and repair discards them to restore the recorded commit. `/.doctidex-git/imports/` is the managed Installation directory; its only allowed descendants are Installation directories created or restored by the import service.
 
 Revision selectors are resolution inputs, not live tracking relationships. A branch or tag resolves once to `commit-hash`; a direct commit is reused by URL and commit.
 
 ### Ref
 
-A Ref links a `target-dir` to the root or a `src-sub-dir` of one tracked Installation. Creating a Ref promotes its Installation to tracked. Removal is blocked while an in-scope Markdown link crosses its boundary.
+A Ref links a `target-dir` to the root or a `src-sub-dir` of one tracked Installation. Creating a Ref promotes its Installation to tracked. Removal is blocked while an in-scope Markdown link crosses its boundary. `target-dir` must not be inside `/.doctidex-git/imports/` or `/.doctidex-git/worktrees/`, and must not be below an existing BoundaryPoint.
 
 ### Worktree
 
-A Worktree records origin and creation base but does not track later commits. It may branch, modify, and commit freely from its base commit, and it is not read-only. Default paths live under `/.doctidex-git/worktrees/`; a custom path receives tool-managed Git ignore rules. Removing a dirty recorded worktree requires `--force`. `worktree create --work-path` rejects a recorded Installation path, including when that physical path is absent.
+A Worktree records origin and creation base but does not track later commits. It may branch, modify, and commit freely from its base commit, and it is not read-only. Default paths live under `/.doctidex-git/worktrees/`; a custom path receives tool-managed Git ignore rules. Removing a dirty recorded worktree requires `--force`. `worktree create --work-path` rejects paths inside `/.doctidex-git/imports/` and paths below an existing BoundaryPoint, including when the physical path is absent.
 
 ### Boundary points
 

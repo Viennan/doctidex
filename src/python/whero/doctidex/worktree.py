@@ -9,7 +9,7 @@ from pathlib import Path
 
 from whero.doctidex.errors import CommandFailure
 from whero.doctidex.model import Worktree
-from whero.doctidex.paths import normalize_repo_path, repo_path_to_fs
+from whero.doctidex.paths import is_managed_imports_path, normalize_repo_path, repo_path_to_fs
 from whero.doctidex.repository import (
     GitCommitUnavailable,
     ensure_commit_available,
@@ -239,8 +239,10 @@ def _create_from_repository(
         view = transaction.write_model_view()
         work_path = _select_work_path(view, store.git_root, source_url, explicit_work_path, tree_name)
         target = repo_path_to_fs(store.git_root, work_path)
-        if view.installation_at(work_path) is not None:
-            raise _target_failure(work_path, occupant="installation-path")
+        if is_managed_imports_path(work_path):
+            raise _target_failure(work_path, occupant="managed-imports-directory")
+        if view.first_boundary(work_path) is not None:
+            raise _target_failure(work_path, occupant="existing-boundary")
         _ensure_available_target(view, target, work_path)
         ensure_worktree_commit(
             repository,

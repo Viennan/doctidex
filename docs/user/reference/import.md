@@ -51,7 +51,7 @@ doctidex-git import ref \
 doctidex-git import unref --target-dir <REPOSITORY-PATH>
 ```
 
-`ref` creates a relative symlink and derives an `import-ref` boundary. Creating a Ref promotes its Installation to tracked. `unref` is a no-op when no Ref exists and is blocked while a Markdown link crosses the Ref boundary.
+`ref` creates a relative symlink and derives an `import-ref` boundary. `--target-dir` must not be inside `/.doctidex-git/imports/` or `/.doctidex-git/worktrees/`, and must not be below an existing boundary point. Creating a Ref promotes its Installation to tracked. `unref` is a no-op when no Ref exists and is blocked while a Markdown link crosses the Ref boundary.
 
 ## Query
 
@@ -107,7 +107,7 @@ Removal is blocked when a tracked Installation still has a Ref or an in-scope Ma
 | `installation.restore.unavailable` | Tracked Installation cannot be restored at its commit. |
 | `installation.remove.blocked` | Ref or cross-boundary link still depends on the Installation. |
 | `ref.source.unavailable` | Installation or `src-sub-dir` cannot be a link source. |
-| `ref.target.unavailable` | Target is occupied or cannot be created. |
+| `ref.target.unavailable` | Target is occupied, is under a managed directory, is below an existing boundary point, or cannot be created. |
 | `ref.target.inconsistent` | Physical symlink does not match the Ref record. |
 | `ref.remove.blocked` | Markdown link still crosses the Ref boundary. |
 

@@ -262,7 +262,7 @@ def test_worktree_create_rejects_occupied_paths_and_unknown_installation(
     assert unavailable.payload["message"]["code"] == "worktree.source.unavailable"
 
 
-def test_worktree_create_rejects_installation_path_as_worktree(
+def test_worktree_create_rejects_managed_imports_paths_as_worktree(
     initialized_root: Path,
     source_repository: Path,
     cache_home: Path,
@@ -296,7 +296,7 @@ def test_worktree_create_rejects_installation_path_as_worktree(
     )
     assert existing.code == 2
     assert existing.payload["message"]["code"] == "worktree.target.unavailable"
-    assert existing.payload["message"]["details"] == {"operation": "create", "occupant": "installation-path"}
+    assert existing.payload["message"]["details"] == {"operation": "create", "occupant": "managed-imports-directory"}
 
     shutil.rmtree(install_root)
     absent = cli.run(
@@ -313,5 +313,56 @@ def test_worktree_create_rejects_installation_path_as_worktree(
     )
     assert absent.code == 2
     assert absent.payload["message"]["code"] == "worktree.target.unavailable"
-    assert absent.payload["message"]["details"] == {"operation": "create", "occupant": "installation-path"}
+    assert absent.payload["message"]["details"] == {"operation": "create", "occupant": "managed-imports-directory"}
     assert not install_root.exists()
+
+    for work_path in ("/.doctidex-git/imports", "/.doctidex-git/imports/new/path"):
+        rejected = cli.run(
+            "--repos-path",
+            str(initialized_root),
+            "worktree",
+            "create",
+            "--url",
+            str(source_repository),
+            "--branch",
+            "main",
+            "--work-path",
+            work_path,
+        )
+        assert rejected.code == 2
+        assert rejected.payload["message"]["code"] == "worktree.target.unavailable"
+        assert rejected.payload["message"]["details"] == {
+            "operation": "create",
+            "occupant": "managed-imports-directory",
+        }
+    assert not (initialized_root / ".doctidex-git" / "imports" / "new" / "path").exists()
+    assert read_json(initialized_root / ".doctidex-git" / "runtime.json")["worktrees"] == []
+    gitignore = (initialized_root / ".gitignore").read_text()
+    assert "# doctidex-git worktree: /.doctidex-git/imports" not in gitignore
+
+
+def test_worktree_create_rejects_path_below_existing_boundary_point(
+    initialized_root: Path,
+    source_repository: Path,
+    cache_home: Path,
+    cli: CliRunner,
+) -> None:
+    cli.run("--repos-path", str(initialized_root), "boundary-set", "add", "--path", "/external")
+
+    rejected = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "worktree",
+        "create",
+        "--url",
+        str(source_repository),
+        "--branch",
+        "main",
+        "--work-path",
+        "/external/project",
+    )
+
+    assert rejected.code == 2
+    assert rejected.payload["message"]["code"] == "worktree.target.unavailable"
+    assert rejected.payload["message"]["details"] == {"operation": "create", "occupant": "existing-boundary"}
+    assert not (initialized_root / "external" / "project").exists()

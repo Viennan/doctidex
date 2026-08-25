@@ -10,9 +10,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from whero.doctidex.errors import CommandFailure
-from whero.doctidex.model import Installation, Ref
+from whero.doctidex.model import BoundaryPoint, Installation, Ref
 from whero.doctidex.model_view import scan_markdown_links
-from whero.doctidex.paths import normalize_repo_path, repo_path_to_fs
+from whero.doctidex.paths import (
+    is_managed_imports_path,
+    is_managed_worktrees_path,
+    normalize_repo_path,
+    repo_path_to_fs,
+)
 from whero.doctidex.repository import (
     GitCommitUnavailable,
     ensure_commit_available,
@@ -129,6 +134,18 @@ def ref(store: RuntimeStore, install_id: str, src_sub_dir: str, target_dir: str)
         src_sub_dir = normalize_repo_path(src_sub_dir, parameter="--src-sub-dir")
     with store.write_transaction() as transaction:
         view = transaction.write_model_view()
+        reason, boundary = _ref_target_reservation(view, target_dir)
+        if reason is not None:
+            details: dict[str, object] = {"install-id": install_id, "operation": "create", "reason": reason}
+            if boundary is not None:
+                details["boundary-path"] = boundary.path
+                details["boundary-type"] = boundary.type
+            raise CommandFailure(
+                code="ref.target.unavailable",
+                summary="The managed reference target cannot be created at the requested path.",
+                subject={"kind": "ref", "target-dir": target_dir},
+                details=details,
+            )
         installation = _find_installation(view, install_id)
         source = repo_path_to_fs(store.git_root, installation.install_path)
         if src_sub_dir:
@@ -550,6 +567,21 @@ def _install_path(git_url: str, selector_value: str) -> str:
 
 def _repository_location(git_url: str) -> tuple[str, tuple[str, ...]]:
     return repository_location(git_url)
+
+
+def _ref_target_reservation(
+    view: RuntimeModelView, target_dir: str
+) -> tuple[str | None, BoundaryPoint | None]:
+    """Return the rejection reason and boundary that block Ref creation at ``target_dir``."""
+
+    if is_managed_imports_path(target_dir):
+        return "managed-imports-directory", None
+    if is_managed_worktrees_path(target_dir):
+        return "managed-worktrees-directory", None
+    boundary = view.first_boundary(target_dir)
+    if boundary is None:
+        return None, None
+    return "existing-boundary", boundary
 
 
 def _find_installation(model: RuntimeModelView, install_id: str) -> Installation:
