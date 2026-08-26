@@ -161,8 +161,10 @@ def test_import_restore_uses_the_recorded_commit(
         "v1",
     )
     install_directory = initialized_root / installed.payload["install-path"].lstrip("/")
-    removed = git(install_directory, "worktree", "remove", "--force", str(install_directory))
+    backing_directory = install_directory.resolve()
+    removed = git(backing_directory, "worktree", "remove", "--force", str(backing_directory))
     assert removed.returncode == 0
+    install_directory.unlink()
     assert not install_directory.exists()
 
     commit_file(source_repository, "other.md", "other\n")

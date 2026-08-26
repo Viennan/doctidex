@@ -28,7 +28,20 @@ def test_repair_recreates_missing_ref_and_removes_unregistered_install_link(
     cache_home: Path,
     cli: CliRunner,
 ) -> None:
-    installed = _install_tracked(cli, initialized_root, source_repository)
+    commit = git_head(source_repository)
+    installed = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "install",
+        "--tracked",
+        "--url",
+        str(source_repository),
+        "--commit",
+        commit,
+    )
+    assert installed.code == 0
+    installed = installed.payload
     cli.run(
         "--repos-path",
         str(initialized_root),
@@ -64,7 +77,9 @@ def test_repair_recreates_a_dangling_ref_when_tracked_install_is_missing(
         "--target-dir",
         "/linked",
     )
-    shutil.rmtree(initialized_root / installed["install-path"].lstrip("/"))
+    install_root = initialized_root / installed["install-path"].lstrip("/")
+    shutil.rmtree(install_root.resolve())
+    install_root.unlink()
     (initialized_root / "linked").unlink()
 
     assert cli.run("--repos-path", str(initialized_root), "repair").code == 0
@@ -156,7 +171,20 @@ def test_repair_discards_dirty_installation(
     cache_home: Path,
     cli: CliRunner,
 ) -> None:
-    installed = _install_tracked(cli, initialized_root, source_repository)
+    commit = git_head(source_repository)
+    installed = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "install",
+        "--tracked",
+        "--url",
+        str(source_repository),
+        "--commit",
+        commit,
+    )
+    assert installed.code == 0
+    installed = installed.payload
     install_root = initialized_root / installed["install-path"].lstrip("/")
     expected_commit = git_head(source_repository)
     (install_root / "readme.md").write_text("dirty tracked\n")

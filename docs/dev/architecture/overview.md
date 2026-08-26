@@ -75,6 +75,8 @@ An Installation remains addressable by `install-id` even when its physical workt
 
 Revision selectors are resolution inputs, not live tracking relationships. A branch or tag resolves once to `commit-hash`; a direct commit is reused by URL and commit.
 
+Multiple Installations that resolve the same source to the same commit share one physical Git worktree through the [Installation share store](installation-shares.md).
+
 ### Ref
 
 A Ref links a `target-dir` to the root or a `src-sub-dir` of one tracked Installation. Creating a Ref promotes its Installation to tracked. Removal is blocked while an in-scope Markdown link crosses its boundary. `target-dir` must not be inside `/.doctidex-git/imports/` or `/.doctidex-git/worktrees/`, and must not be below an existing BoundaryPoint.

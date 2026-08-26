@@ -298,7 +298,10 @@ def test_worktree_create_rejects_managed_imports_paths_as_worktree(
     assert existing.payload["message"]["code"] == "worktree.target.unavailable"
     assert existing.payload["message"]["details"] == {"operation": "create", "occupant": "managed-imports-directory"}
 
-    shutil.rmtree(install_root)
+    if install_root.is_symlink():
+        install_root.unlink()
+    else:
+        shutil.rmtree(install_root)
     absent = cli.run(
         "--repos-path",
         str(initialized_root),
