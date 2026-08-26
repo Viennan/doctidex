@@ -52,13 +52,7 @@ def repair_core(
                 ),
             )
 
-            for installation in model.installations:
-                target = repo_path_to_fs(store.git_root, installation.install_path)
-                if installation.tracked and not target.exists() and not target.is_symlink():
-                    # Tracked installations can intentionally exist as metadata without files.
-                    continue
-                repository = cache_transaction.load(installation.git_url)
-                _align_installation(store, repository, installation)
+            _align_installation_shares(store, cache_transaction, model)
 
             _align_refs(store, model)
             _remove_unregistered_refs(store, model)
@@ -172,6 +166,42 @@ def _align_installation(store: RuntimeStore, repository: Path, installation) -> 
             installation.commit_hash,
             install_path=installation.install_path,
         )
+
+
+def _align_installation_shares(store: RuntimeStore, cache_transaction: GitCacheWriteTransaction, model) -> None:
+    installations_by_id = {item.install_id: item for item in model.installations}
+    for share in model.state.installation_shares:
+        repository = cache_transaction.load(share.git_url)
+        import_workflow.ensure_install_commit(
+            repository,
+            share.git_url,
+            "commit",
+            share.commit_hash,
+            share.commit_hash,
+        )
+        target = repo_path_to_fs(store.git_root, share.install_path)
+        if not import_workflow.prepare_install_path(
+            repository,
+            target,
+            git_url=share.git_url,
+            commit_hash=share.commit_hash,
+            install_path=share.install_path,
+        ):
+            import_workflow.create_worktree(
+                repository,
+                target,
+                share.commit_hash,
+                install_path=share.install_path,
+            )
+        for install_id in share.install_ids:
+            installation = installations_by_id.get(install_id)
+            if installation is None or not (installation.branch or installation.tag):
+                continue
+            import_workflow.ensure_selector_symlink(
+                store,
+                installation.install_path,
+                share.install_path,
+            )
 
 
 def _align_refs(store: RuntimeStore, model: RuntimeRepairModelView) -> None:

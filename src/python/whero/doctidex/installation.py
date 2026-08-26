@@ -40,8 +40,23 @@ def resolve_installation_context(root: Path) -> InstallationContext | None:
     if _inside_managed_worktree(owner, root):
         return None
 
-    install_path = fs_path_to_repo_path(owner, root)
+    install_path = _installation_path_for_root(owner, root)
     return InstallationContext(owner_root=owner, install_path=install_path)
+
+
+def _installation_path_for_root(owner: Path, root: Path) -> str:
+    """Return the recorded Installation path that physically contains ``root``."""
+
+    store = RuntimeStore(owner)
+    try:
+        with store.diagnostic_transaction() as transaction:
+            for installation in transaction.model_view().installations:
+                candidate = repo_path_to_fs(owner, installation.install_path)
+                if candidate.resolve() == root.resolve():
+                    return installation.install_path
+    except (ModelFormatError, StoreFailure):
+        pass
+    return fs_path_to_repo_path(owner, root)
 
 class InstallationRuntimeStore:
     """A RuntimeStore-shaped adapter backed by one owner work model."""
@@ -101,30 +116,12 @@ class InstallationRuntimeStore:
     def restore_import(self, coordinator, install_id: str) -> Installation:
         """Restore an Installation-local import into the owner work model."""
 
-        with self.installation_store.unlocked_read_only_transaction() as transaction:
-            local = transaction.model_view().installation(install_id)
-        if local is None:
-            raise CommandFailure(
-                code="installation.not-found",
-                summary="The requested installation does not exist.",
-                subject={"kind": "installation", "install-id": install_id},
-                details={"operation": "find"},
-            )
-        owner_installation = import_workflow.install(
+        return import_workflow.restore_context_import(
             self.owner_store,
+            self.installation_store,
             coordinator,
-            tracked=False,
-            git_url=local.git_url,
-            branch="",
-            tag="",
-            commit=local.commit_hash,
-            keys=list(local.keys),
-        )
-        return replace(
-            local,
-            presentation_path=str(
-                repo_path_to_fs(self.owner_store.git_root, owner_installation.install_path)
-            ),
+            parent_install_path=self.context.install_path,
+            sub_install_id=install_id,
         )
 
 

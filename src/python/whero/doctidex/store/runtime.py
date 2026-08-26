@@ -9,7 +9,15 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal, Self
 
-from whero.doctidex.model import BoundaryPoint, Installation, ModelFormatError, Ref, RuntimeState, Worktree
+from whero.doctidex.model import (
+    BoundaryPoint,
+    Installation,
+    InstallationShare,
+    ModelFormatError,
+    Ref,
+    RuntimeState,
+    Worktree,
+)
 
 from .files import (
     FileLock,
@@ -291,6 +299,7 @@ class RuntimeTransaction:
         self._installations_by_path: dict[str, Installation] = {}
         self._installations_by_source: dict[tuple[str, str, str], Installation] = {}
         self._installations_by_commit: dict[tuple[str, str], Installation] = {}
+        self._installation_shares_by_commit: dict[tuple[str, str], InstallationShare] = {}
         self._refs_by_target_dir: dict[str, Ref] = {}
         self._refs_by_installation: dict[str, tuple[Ref, ...]] = {}
         self._worktrees_by_path: dict[str, Worktree] = {}
@@ -345,6 +354,9 @@ class RuntimeTransaction:
             if item.branch or item.tag:
                 self._installations_by_source.setdefault((item.git_url, item.branch, item.tag), item)
             self._installations_by_commit.setdefault((item.git_url, item.commit_hash), item)
+        self._installation_shares_by_commit = {
+            (item.git_url, item.commit_hash): item for item in self.state.installation_shares
+        }
         self._refs_by_target_dir = {item.target_dir: item for item in self.state.refs}
         refs_by_installation: dict[str, list[Ref]] = {}
         for reference in self.state.refs:
@@ -480,6 +492,7 @@ class RuntimeWriteTransaction(RuntimeTransaction):
         installations: tuple[Installation, ...] | None = None,
         refs: tuple[Ref, ...] | None = None,
         worktrees: tuple[Worktree, ...] | None = None,
+        installation_shares: tuple[InstallationShare, ...] | None = None,
     ) -> None:
         self.replace_state(
             RuntimeState(
@@ -489,6 +502,9 @@ class RuntimeWriteTransaction(RuntimeTransaction):
                 installations=installations if installations is not None else self.state.installations,
                 refs=refs if refs is not None else self.state.refs,
                 worktrees=worktrees if worktrees is not None else self.state.worktrees,
+                installation_shares=(
+                    installation_shares if installation_shares is not None else self.state.installation_shares
+                ),
             )
         )
 

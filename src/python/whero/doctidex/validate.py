@@ -279,6 +279,24 @@ def _model_violations(git_root: Path, state: RuntimeState) -> list[dict[str, obj
     duplicate(state.worktrees, "work_path", "runtime.json")
     duplicate(state.custom_boundary_points, "path", "boundary-set.json")
 
+    share_by_commit: dict[tuple[str, str], list[int]] = {}
+    for index, item in enumerate(state.installation_shares):
+        share_by_commit.setdefault((item.git_url, item.commit_hash), []).append(index)
+    for key, indexes in share_by_commit.items():
+        if len(indexes) > 1:
+            violations.append(
+                {
+                    "code": "state-record.invalid",
+                    "path": "/.doctidex-git/runtime.json",
+                    "message": "Multiple installation shares claim the same source and commit.",
+                    "details": {
+                        "identity-field": "installation-share-commit",
+                        "identity-value": {"git-url": key[0], "commit-hash": key[1]},
+                        "conflicting-state-files": ["/.doctidex-git/runtime.json"],
+                        "record-indexes": indexes,
+                    },
+                }
+            )
     installations = {item.install_id: item for item in state.installations}
     for reference in state.refs:
         installation = installations.get(reference.install_id)
@@ -361,6 +379,66 @@ def _model_violations(git_root: Path, state: RuntimeState) -> list[dict[str, obj
                     "details": {"install-id": item.install_id, "install-path": item.install_path},
                 }
             )
+    installations_by_id = {item.install_id: item for item in state.installations}
+    for share in state.installation_shares:
+        share_path = repo_path_to_fs(git_root, share.install_path)
+        if not share_path.exists() or not _is_git_worktree(share_path):
+            violations.append(
+                {
+                    "code": "installation.share.worktree.invalid",
+                    "path": share.install_path,
+                    "message": "An installation share does not have a valid physical worktree.",
+                    "details": {
+                        "git-url": share.git_url,
+                        "commit-hash": share.commit_hash,
+                        "install-path": share.install_path,
+                    },
+                }
+            )
+        for install_id in share.install_ids:
+            installation = installations_by_id.get(install_id)
+            if installation is None:
+                violations.append(
+                    {
+                        "code": "installation.share.reference.missing",
+                        "path": share.install_path,
+                        "message": "An installation share references an unknown Installation.",
+                        "details": {
+                            "git-url": share.git_url,
+                            "commit-hash": share.commit_hash,
+                            "install-id": install_id,
+                        },
+                    }
+                )
+                continue
+            target = repo_path_to_fs(git_root, installation.install_path)
+            if installation.branch or installation.tag:
+                if not target.is_symlink() or target.resolve(strict=False) != share_path.resolve(strict=False):
+                    violations.append(
+                        {
+                            "code": "installation.share.selector.invalid",
+                            "path": installation.install_path,
+                            "message": "A selector Installation does not link to its share worktree.",
+                            "details": {
+                                "install-id": installation.install_id,
+                                "install-path": installation.install_path,
+                                "share-install-path": share.install_path,
+                            },
+                        }
+                    )
+            elif installation.install_path != share.install_path:
+                violations.append(
+                    {
+                        "code": "installation.share.commit-path.invalid",
+                        "path": installation.install_path,
+                        "message": "A commit Installation does not use its share's physical path.",
+                        "details": {
+                            "install-id": installation.install_id,
+                            "install-path": installation.install_path,
+                            "share-install-path": share.install_path,
+                        },
+                    }
+                )
     for reference in state.refs:
         installation = installations.get(reference.install_id)
         if installation is None:

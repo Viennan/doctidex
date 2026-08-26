@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 
-from whero.doctidex.model import BoundaryPoint, Installation, Ref, RuntimeState, Worktree
+from whero.doctidex.model import BoundaryPoint, Installation, InstallationShare, Ref, RuntimeState, Worktree
 
 if TYPE_CHECKING:
     from .runtime import (
@@ -71,6 +71,11 @@ class RuntimeModelView:
         """Return the installation matching one Git URL and commit."""
 
         return self._transaction._installations_by_commit.get((git_url, commit_hash))
+
+    def installation_share(self, git_url: str, commit_hash: str) -> InstallationShare | None:
+        """Return the installation share matching one Git URL and commit."""
+
+        return self._transaction._installation_shares_by_commit.get((git_url, commit_hash))
 
     def ref(self, target_dir: str) -> Ref | None:
         """Return the Ref at ``target_dir``, if present."""
@@ -194,6 +199,30 @@ class RuntimeWriteModelView(RuntimeModelView):
         selected_ids = set(install_ids)
         self._write_transaction._replace_collections(
             installations=tuple(item for item in self.state.installations if item.install_id not in selected_ids)
+        )
+
+    def upsert_installation_share(self, share: InstallationShare) -> None:
+        """Insert or replace one installation share by Git URL and commit."""
+
+        shares = tuple(
+            share
+            if (item.git_url, item.commit_hash) == (share.git_url, share.commit_hash)
+            else item
+            for item in self.state.installation_shares
+        )
+        if self.installation_share(share.git_url, share.commit_hash) is None:
+            shares = (*shares, share)
+        self._write_transaction._replace_collections(installation_shares=shares)
+
+    def remove_installation_share(self, git_url: str, commit_hash: str) -> None:
+        """Remove the installation share for one Git URL and commit."""
+
+        self._write_transaction._replace_collections(
+            installation_shares=tuple(
+                item
+                for item in self.state.installation_shares
+                if (item.git_url, item.commit_hash) != (git_url, commit_hash)
+            )
         )
 
     def upsert_ref(self, reference: Ref) -> None:

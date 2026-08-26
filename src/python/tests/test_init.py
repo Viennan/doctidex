@@ -24,7 +24,11 @@ def test_init_creates_a_complete_ignored_workspace(git_root: Path, cli: CliRunne
     assert read_json(workspace / "boundary-set.json") == []
     assert read_json(workspace / "imports.json") == []
     assert read_json(workspace / "import-refs.json") == []
-    assert read_json(workspace / "runtime.json") == {"imports": [], "worktrees": []}
+    assert read_json(workspace / "runtime.json") == {
+        "imports": [],
+        "worktrees": [],
+        "installation-shares": [],
+    }
     assert (workspace / "config.toml").read_text() == ""
     assert (git_root / "index.md").read_text() == EXPECTED_ROOT_INDEX
     assert not list(git_root.glob(".*doctidex-git.initializing-*"))
@@ -59,6 +63,7 @@ def test_init_reports_existing_workspace_and_keeps_its_state(initialized_root: P
                 "work-path": "/work",
             }
         ],
+        "installation-shares": [],
     }
     write_json(workspace / "boundary-set.json", boundary_set)
     write_json(workspace / "imports.json", imports)

@@ -19,6 +19,8 @@ Quick lookup for development and design terms. Each entry links to its authorita
 | RuntimeState | The merged tracked and runtime work-model view. | [overview.md](architecture/overview.md#domain-model) |
 | InstallationContext | Owner root and install path for a path inside an Installation. | [overview.md](architecture/overview.md#context-detection) |
 | InstallationRuntimeStore | A RuntimeStore adapter that coordinates owner and Installation stores without merging state. | [overview.md](architecture/overview.md#model-adaptation) |
+| InstallationShare | One runtime-local relation for a Git URL and commit; it owns the shared physical worktree path and referencing Installation identities. | [installation-shares.md](architecture/installation-shares.md#installationshare) |
+| InstallationContextReference | Provenance for a sub-Installation restored from InstallationContext. | [installation-shares.md](architecture/installation-shares.md#installationcontext) |
 | CacheStore | The user-level `status.json` store for cached bare repositories. | [stores-transactions.md](architecture/stores-transactions.md#cachestore-transactions) |
 | RuntimeStore | The repository-local journaled store for the work model. | [stores-transactions.md](architecture/stores-transactions.md#runtimestore-transactions) |
 | StoreCoordinator | Command-level coordination for RuntimeStore repair and cache transaction selection. | [stores-transactions.md](architecture/stores-transactions.md#coordination) |

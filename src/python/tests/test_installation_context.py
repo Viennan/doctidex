@@ -175,7 +175,7 @@ def test_installation_context_queries_local_install_and_restores_to_owner(
     workspace = source_repository / ".doctidex-git"
     write_json(workspace / "boundary-set.json", [])
     write_json(workspace / "import-refs.json", [])
-    write_json(workspace / "runtime.json", {"imports": [], "worktrees": []})
+    write_json(workspace / "runtime.json", {"imports": [], "worktrees": [], "installation-shares": []})
     write_json(
         workspace / "imports.json",
         [
@@ -248,10 +248,13 @@ def test_installation_context_queries_local_install_and_restores_to_owner(
     assert restored.payload["install-path"] == "/.doctidex-git/imports/nested"
     assert Path(restored.payload["presentation-path"]).is_dir()
     runtime = read_json(initialized_root / ".doctidex-git" / "runtime.json")
-    matching = [
-        item
-        for item in runtime["imports"]
-        if item["git-url"] == str(nested_source) and item["commit-hash"] == nested_commit
-    ]
-    assert len(matching) == 1
-    assert matching[0]["tracked"] is False
+    nested_record = next(item for item in runtime["imports"] if item["install-id"] == "nested-id")
+    assert nested_record["tracked"] is False
+    assert nested_record["commit-hash"] == nested_commit
+    share = runtime["installation-shares"][0]
+    assert "nested-id" in share["install-ids"]
+    assert any(
+        reference["install-id"] == "nested-id"
+        and reference["owner-install-id"] == installed.payload["install-id"]
+        for reference in share["context-references"]
+    )

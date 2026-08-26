@@ -174,6 +174,74 @@ class Worktree:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class InstallationContextReference:
+    """Provenance for one sub-Installation restored from InstallationContext."""
+
+    install_id: str
+    owner_install_id: str
+
+    @classmethod
+    def from_json(cls, value: object, *, artifact: str) -> InstallationContextReference:
+        """Reconstruct one InstallationContext reference from a persisted document value."""
+
+        record = _mapping(value, artifact=artifact)
+        return cls(
+            install_id=_string(record, "install-id", artifact=artifact),
+            owner_install_id=_string(record, "owner-install-id", artifact=artifact),
+        )
+
+    def to_json(self) -> dict[str, str]:
+        """Return the InstallationContext reference as its persisted representation."""
+
+        return {
+            "install-id": self.install_id,
+            "owner-install-id": self.owner_install_id,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class InstallationShare:
+    """The runtime-local sharing relation for one Git source and commit."""
+
+    git_url: str
+    commit_hash: str
+    install_path: str
+    install_ids: tuple[str, ...]
+    context_references: tuple[InstallationContextReference, ...] = ()
+
+    @classmethod
+    def from_json(cls, value: object, *, artifact: str) -> InstallationShare:
+        """Reconstruct an InstallationShare from one persisted document value."""
+
+        record = _mapping(value, artifact=artifact)
+        install_ids = record.get("install-ids")
+        if not isinstance(install_ids, list) or not all(isinstance(item, str) for item in install_ids):
+            raise ModelFormatError(artifact, "an installation share with a string install-ids array")
+        context_references = tuple(
+            InstallationContextReference.from_json(item, artifact=artifact)
+            for item in _list(record.get("context-references"), artifact=artifact)
+        )
+        return cls(
+            git_url=_string(record, "git-url", artifact=artifact),
+            commit_hash=_string(record, "commit-hash", artifact=artifact),
+            install_path=_string(record, "install-path", artifact=artifact, path=True),
+            install_ids=tuple(install_ids),
+            context_references=context_references,
+        )
+
+    def to_json(self) -> dict[str, object]:
+        """Return the InstallationShare as its persisted document representation."""
+
+        return {
+            "git-url": self.git_url,
+            "commit-hash": self.commit_hash,
+            "install-path": self.install_path,
+            "install-ids": list(self.install_ids),
+            "context-references": [item.to_json() for item in self.context_references],
+        }
+
+
 class CacheItemStatus(StrEnum):
     """Internal CacheStore publication state."""
 
@@ -214,6 +282,7 @@ class RuntimeState:
     installations: tuple[Installation, ...]
     refs: tuple[Ref, ...]
     worktrees: tuple[Worktree, ...]
+    installation_shares: tuple[InstallationShare, ...]
 
     @property
     def boundary_points(self) -> tuple[BoundaryPoint, ...]:
@@ -228,9 +297,9 @@ class RuntimeState:
 
     @classmethod
     def empty(cls) -> RuntimeState:
-        """Return an empty state with no boundary points, installations, refs, or worktrees."""
+        """Return an empty state with no boundary points, installations, refs, worktrees, or shares."""
 
-        return cls(custom_boundary_points=(), installations=(), refs=(), worktrees=())
+        return cls(custom_boundary_points=(), installations=(), refs=(), worktrees=(), installation_shares=())
 
     @classmethod
     def from_documents(
@@ -270,12 +339,17 @@ class RuntimeState:
             Worktree.from_json(item, artifact="runtime.json")
             for item in _list(runtime_record.get("worktrees"), artifact="runtime.json")
         )
+        installation_shares = tuple(
+            InstallationShare.from_json(item, artifact="runtime.json")
+            for item in _list(runtime_record.get("installation-shares"), artifact="runtime.json")
+        )
         installations = (*tracked, *untracked)
         return cls(
             custom_boundary_points=boundaries,
             installations=installations,
             refs=refs,
             worktrees=worktrees,
+            installation_shares=installation_shares,
         )
 
     def to_documents(self) -> dict[str, object]:
@@ -288,6 +362,7 @@ class RuntimeState:
             "runtime.json": {
                 "imports": [item.to_json() for item in self.installations if not item.tracked],
                 "worktrees": [item.to_json() for item in self.worktrees],
+                "installation-shares": [item.to_json() for item in self.installation_shares],
             },
         }
 

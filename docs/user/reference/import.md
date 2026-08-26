@@ -20,6 +20,8 @@ doctidex-git import install \
 
 Branch and tag selectors resolve once. Re-running the same branch/tag with an unchanged remote commit reuses the Installation; a changed commit replaces it.
 
+For a branch or tag Installation, the reported `install-path` is a symbolic link to the shared Installation worktree for the resolved commit. Commands continue to use the reported path; the symlink does not change Installation read-only behavior.
+
 Success:
 
 ```json

@@ -6,11 +6,17 @@ import os
 import shutil
 import subprocess
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from whero.doctidex.errors import CommandFailure
-from whero.doctidex.model import BoundaryPoint, Installation, Ref
+from whero.doctidex.model import (
+    BoundaryPoint,
+    Installation,
+    InstallationContextReference,
+    InstallationShare,
+    Ref,
+)
 from whero.doctidex.model_view import scan_markdown_links
 from whero.doctidex.paths import (
     is_managed_imports_path,
@@ -25,7 +31,7 @@ from whero.doctidex.repository import (
     resolve_revision,
 )
 from whero.doctidex.store.coordination import WorkflowCoordinator
-from whero.doctidex.store.model_view import RuntimeModelView
+from whero.doctidex.store.model_view import RuntimeModelView, RuntimeWriteModelView
 from whero.doctidex.store.runtime import RuntimeStore
 
 
@@ -65,6 +71,73 @@ def install(
         )
 
     return coordinator.with_repository(git_url, install_from_repository)
+
+
+def restore_context_import(
+    owner_store: RuntimeStore,
+    installation_store: RuntimeStore,
+    coordinator: WorkflowCoordinator,
+    *,
+    parent_install_path: str,
+    sub_install_id: str,
+) -> Installation:
+    """Restore one Installation-local sub-Installation into the owner work model."""
+
+    with installation_store.unlocked_read_only_transaction() as transaction:
+        local = transaction.model_view().installation(sub_install_id)
+    if local is None:
+        raise CommandFailure(
+            code="installation.not-found",
+            summary="The requested installation does not exist.",
+            subject={"kind": "installation", "install-id": sub_install_id},
+            details={"operation": "find"},
+        )
+
+    parent_install_id = _parent_install_id(owner_store, parent_install_path)
+
+    def restore_from_repository(repository: Path) -> Installation:
+        with owner_store.write_transaction() as transaction:
+            view = transaction.write_model_view()
+            share = _ensure_share_for_commit(
+                owner_store,
+                repository,
+                view,
+                local.git_url,
+                local.commit_hash,
+            )
+            existing = view.installation(local.install_id)
+            if existing is None:
+                existing = Installation(
+                    tracked=False,
+                    git_url=local.git_url,
+                    commit_hash=local.commit_hash,
+                    install_id=local.install_id,
+                    install_path=share.install_path,
+                    keys=tuple(local.keys),
+                    branch="",
+                    tag="",
+                )
+                view.upsert_installation(existing)
+            context_reference = InstallationContextReference(
+                install_id=local.install_id,
+                owner_install_id=parent_install_id,
+            )
+            _ensure_installation_in_share(
+                owner_store,
+                repository,
+                view,
+                existing,
+                context_reference=context_reference,
+            )
+            return existing
+
+    owner_installation = coordinator.with_repository(local.git_url, restore_from_repository)
+    return replace(
+        local,
+        presentation_path=str(
+            repo_path_to_fs(owner_store.git_root, owner_installation.install_path)
+        ),
+    )
 
 
 def restore(
@@ -109,7 +182,6 @@ def remove(
     with store.write_transaction() as transaction:
         view = transaction.write_model_view()
         selected = _select_installations(view, install_id, untracked=untracked, auto=auto)
-        selected_ids = {item.install_id for item in selected}
         blocked = _blocked_installations(store.git_root, view, selected)
         if blocked:
             raise CommandFailure(
@@ -122,8 +194,7 @@ def remove(
                 details={"blocked-installations": blocked},
             )
         for item in selected:
-            _remove_path(repo_path_to_fs(store.git_root, item.install_path))
-        view.remove_installations(selected_ids)
+            _remove_installation_reference(store, view, item)
 
 
 def ref(store: RuntimeStore, install_id: str, src_sub_dir: str, target_dir: str) -> Ref:
@@ -213,7 +284,7 @@ def unref(store: RuntimeStore, target_dir: str) -> None:
                     "expected-source": str(source),
                     "actual-target": os.readlink(target) if target.is_symlink() else None,
                 },
-        )
+            )
         target.unlink()
         view.remove_ref(target_dir)
 
@@ -236,11 +307,7 @@ def query(
             "commit-hash": item.commit_hash,
             "install-id": item.install_id,
             "install-path": item.install_path,
-            **(
-                {"presentation-path": item.presentation_path}
-                if item.presentation_path is not None
-                else {}
-            ),
+            **({"presentation-path": item.presentation_path} if item.presentation_path is not None else {}),
             "keys": list(item.keys),
             "refs": [
                 {"src-sub-dir": ref.src_sub_dir, "target-dir": ref.target_dir}
@@ -275,6 +342,12 @@ def ensure_install_commit(
                 "selector-value": selector_value,
             },
         ) from exc
+
+
+def ensure_selector_symlink(store: RuntimeStore, selector_install_path: str, share_install_path: str) -> None:
+    """Create or refresh a selector Installation symlink to one share path."""
+
+    _ensure_symlink(store, selector_install_path, share_install_path)
 
 
 def create_worktree(repository: Path, target: Path, commit_hash: str, *, install_path: str) -> None:
@@ -349,40 +422,207 @@ def _install_resolved(
 ) -> Installation:
     with store.write_transaction() as transaction:
         view = transaction.write_model_view()
-        existing = (
-            view.installation_for_selector(git_url, branch=branch, tag=tag)
-            if selector_kind in {"branch", "tag"}
-            else view.installation_for_commit(git_url, commit_hash)
+        if selector_kind in {"branch", "tag"}:
+            return _install_selector_resolved(
+                store,
+                repository,
+                view,
+                tracked=tracked,
+                git_url=git_url,
+                branch=branch,
+                tag=tag,
+                keys=keys,
+                selector_value=selector_value,
+                commit_hash=commit_hash,
+            )
+        return _install_commit_resolved(
+            store,
+            repository,
+            view,
+            tracked=tracked,
+            git_url=git_url,
+            keys=keys,
+            commit_hash=commit_hash,
         )
-        keep_existing = existing is not None and existing.commit_hash == commit_hash
-        install_path = existing.install_path if keep_existing else _install_path(git_url, selector_value)
-        target = repo_path_to_fs(store.git_root, install_path)
+
+
+def _install_selector_resolved(
+    store: RuntimeStore,
+    repository: Path,
+    view: RuntimeWriteModelView,
+    *,
+    tracked: bool,
+    git_url: str,
+    branch: str,
+    tag: str,
+    keys: list[str],
+    selector_value: str,
+    commit_hash: str,
+) -> Installation:
+    existing = view.installation_for_selector(git_url, branch=branch, tag=tag)
+    if existing is not None and existing.commit_hash == commit_hash:
+        _ensure_installation_in_share(store, repository, view, existing)
+        return existing
+
+    if existing is not None:
+        _leave_share(store, view, existing)
+
+    installation = Installation(
+        tracked=tracked or bool(existing is not None and view.refs_for(existing)),
+        git_url=git_url,
+        commit_hash=commit_hash,
+        install_id=uuid.uuid4().hex,
+        install_path=_install_path(git_url, selector_value),
+        keys=tuple(dict.fromkeys((*_default_keys(git_url, branch=branch, tag=tag), *keys))),
+        branch=branch,
+        tag=tag,
+    )
+    if existing is None:
+        view.upsert_installation(installation)
+    else:
+        view.replace_installation(existing, installation)
+    _ensure_installation_in_share(store, repository, view, installation)
+    return installation
+
+
+def _install_commit_resolved(
+    store: RuntimeStore,
+    repository: Path,
+    view: RuntimeWriteModelView,
+    *,
+    tracked: bool,
+    git_url: str,
+    keys: list[str],
+    commit_hash: str,
+) -> Installation:
+    share = _ensure_share_for_commit(store, repository, view, git_url, commit_hash)
+    existing = view.installation_at(share.install_path)
+    if existing is not None:
+        if tracked and not existing.tracked:
+            existing = view.set_installation_tracking(existing, tracked=True)
+        _ensure_installation_in_share(store, repository, view, existing)
+        return existing
+
+    installation = Installation(
+        tracked=tracked,
+        git_url=git_url,
+        commit_hash=commit_hash,
+        install_id=uuid.uuid4().hex,
+        install_path=share.install_path,
+        keys=tuple(dict.fromkeys((*_default_keys(git_url, branch="", tag=""), *keys))),
+        branch="",
+        tag="",
+    )
+    view.upsert_installation(installation)
+    _ensure_installation_in_share(store, repository, view, installation)
+    return installation
+
+
+def _ensure_share_for_commit(
+    store: RuntimeStore,
+    repository: Path,
+    view: RuntimeWriteModelView,
+    git_url: str,
+    commit_hash: str,
+) -> InstallationShare:
+    share = view.installation_share(git_url, commit_hash)
+    if share is not None:
+        target = repo_path_to_fs(store.git_root, share.install_path)
         if not prepare_install_path(
             repository,
             target,
             git_url=git_url,
             commit_hash=commit_hash,
-            install_path=install_path,
+            install_path=share.install_path,
         ):
-            create_worktree(repository, target, commit_hash, install_path=install_path)
-        if keep_existing:
-            return existing
+            create_worktree(repository, target, commit_hash, install_path=share.install_path)
+        return share
 
-        installation = Installation(
-            tracked=tracked or bool(existing is not None and view.refs_for(existing)),
-            git_url=git_url,
-            commit_hash=commit_hash,
-            install_id=uuid.uuid4().hex,
-            install_path=install_path,
-            keys=tuple(dict.fromkeys((*_default_keys(git_url, branch=branch, tag=tag), *keys))),
-            branch=branch,
-            tag=tag,
+    install_path = _install_path(git_url, commit_hash)
+    target = repo_path_to_fs(store.git_root, install_path)
+    if not prepare_install_path(
+        repository,
+        target,
+        git_url=git_url,
+        commit_hash=commit_hash,
+        install_path=install_path,
+    ):
+        create_worktree(repository, target, commit_hash, install_path=install_path)
+    share = InstallationShare(
+        git_url=git_url,
+        commit_hash=commit_hash,
+        install_path=install_path,
+        install_ids=(),
+        context_references=(),
+    )
+    view.upsert_installation_share(share)
+    return share
+
+
+def _ensure_installation_in_share(
+    store: RuntimeStore,
+    repository: Path,
+    view: RuntimeWriteModelView,
+    installation: Installation,
+    *,
+    context_reference: InstallationContextReference | None = None,
+) -> None:
+    share = _ensure_share_for_commit(store, repository, view, installation.git_url, installation.commit_hash)
+    install_ids = (
+        share.install_ids
+        if installation.install_id in share.install_ids
+        else (*share.install_ids, installation.install_id)
+    )
+    context_references = share.context_references
+    if context_reference is not None:
+        context_references = tuple(
+            context_reference if item.install_id == context_reference.install_id else item
+            for item in context_references
         )
-        if existing is None:
-            view.upsert_installation(installation)
-        else:
-            view.replace_installation(existing, installation)
-        return installation
+        if context_reference.install_id not in {item.install_id for item in share.context_references}:
+            context_references = (*context_references, context_reference)
+    share = replace(share, install_ids=install_ids, context_references=context_references)
+    view.upsert_installation_share(share)
+    if installation.branch or installation.tag:
+        _ensure_symlink(store, installation.install_path, share.install_path)
+
+
+def _ensure_symlink(store: RuntimeStore, selector_install_path: str, share_install_path: str) -> None:
+    target = repo_path_to_fs(store.git_root, selector_install_path)
+    source = repo_path_to_fs(store.git_root, share_install_path)
+    if target.is_symlink() and target.resolve(strict=False) == source.resolve(strict=False):
+        return
+    _remove_path(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.symlink(os.path.relpath(source, start=target.parent), target, target_is_directory=True)
+    except OSError as exc:
+        raise _installation_target_failure(selector_install_path, "unavailable-path") from exc
+
+
+def _leave_share(
+    store: RuntimeStore,
+    view: RuntimeWriteModelView,
+    installation: Installation,
+) -> None:
+    share = view.installation_share(installation.git_url, installation.commit_hash)
+    if share is None:
+        if installation.branch or installation.tag:
+            _remove_path(repo_path_to_fs(store.git_root, installation.install_path))
+        return
+    remaining = tuple(item for item in share.install_ids if item != installation.install_id)
+    context_references = tuple(
+        item for item in share.context_references if item.install_id != installation.install_id
+    )
+    if installation.branch or installation.tag:
+        _remove_path(repo_path_to_fs(store.git_root, installation.install_path))
+    if remaining:
+        view.upsert_installation_share(
+            replace(share, install_ids=remaining, context_references=context_references)
+        )
+    else:
+        _remove_path(repo_path_to_fs(store.git_root, share.install_path))
+        view.remove_installation_share(installation.git_url, installation.commit_hash)
 
 
 def _read_installation(store: RuntimeStore, install_id: str) -> Installation:
@@ -401,22 +641,7 @@ def _restore_resolved(store: RuntimeStore, repository: Path, install_id: str) ->
                 {"required-tracked": True, "actual-tracked": False},
             )
         _ensure_restore_commit(repository, current)
-        target = repo_path_to_fs(store.git_root, current.install_path)
-        try:
-            if not prepare_install_path(
-                repository,
-                target,
-                git_url=current.git_url,
-                commit_hash=current.commit_hash,
-                install_path=current.install_path,
-            ):
-                create_worktree(repository, target, current.commit_hash, install_path=current.install_path)
-        except CommandFailure as exc:
-            if exc.code != "installation.target.unavailable":
-                raise
-            raise _installation_failure(
-                "installation.restore.unavailable", current, {"commit-hash": current.commit_hash}
-            ) from exc
+        _ensure_installation_in_share(store, repository, view, current)
         return current
 
 
@@ -596,6 +821,19 @@ def _find_installation(model: RuntimeModelView, install_id: str) -> Installation
     return installation
 
 
+def _parent_install_id(owner_store: RuntimeStore, parent_install_path: str) -> str:
+    with owner_store.read_only_transaction() as transaction:
+        installation = transaction.model_view().installation_at(parent_install_path)
+    if installation is None:
+        raise CommandFailure(
+            code="installation.context.unavailable",
+            summary="The owning Installation cannot be resolved.",
+            subject={"kind": "installation", "install-path": parent_install_path},
+            details={"owner-path": str(owner_store.git_root), "reason": "owner-installation-missing"},
+        )
+    return installation.install_id
+
+
 def _select_installations(
     model: RuntimeModelView, install_id: str | None, *, untracked: bool, auto: bool
 ) -> tuple[Installation, ...]:
@@ -609,6 +847,35 @@ def _select_installations(
         for item in model.installations
         if not item.tracked or not model.refs_for(item)
     )
+
+
+def _remove_installation_reference(
+    store: RuntimeStore,
+    view: RuntimeWriteModelView,
+    installation: Installation,
+) -> None:
+    share = view.installation_share(installation.git_url, installation.commit_hash)
+    if share is None:
+        if installation.branch or installation.tag:
+            _remove_path(repo_path_to_fs(store.git_root, installation.install_path))
+        view.remove_installations((installation.install_id,))
+        return
+
+    if installation.branch or installation.tag:
+        _remove_path(repo_path_to_fs(store.git_root, installation.install_path))
+    view.remove_installations((installation.install_id,))
+
+    remaining = tuple(item for item in share.install_ids if item != installation.install_id)
+    context_references = tuple(
+        item for item in share.context_references if item.install_id != installation.install_id
+    )
+    if remaining:
+        view.upsert_installation_share(
+            replace(share, install_ids=remaining, context_references=context_references)
+        )
+    else:
+        _remove_path(repo_path_to_fs(store.git_root, share.install_path))
+        view.remove_installation_share(installation.git_url, installation.commit_hash)
 
 
 def _installation_failure(code: str, installation: Installation, details: dict[str, object]) -> CommandFailure:
