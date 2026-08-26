@@ -6,7 +6,7 @@ Status: implemented
 
 Every `import install` and `import restore` previously created one detached Git worktree at the Installation's `install-path`. The path was derived from the Git URL and the requested revision selector, so a branch, a tag, and an explicit commit that all resolved to the same `(git-url, commit-hash)` still received separate worktrees under `/.doctidex-git/imports/`.
 
-That duplicated read-only checkouts and model records without adding information. The duplication was already unnecessary for recursive Installation use: `InstallationRuntimeModelView` maps an Installation-local record's `presentation-path` to the owner repository's Installation for the same commit.
+That duplicated read-only checkouts and model records without adding information. The duplication was already unnecessary for recursive Installation use: `InstallationRuntimeModelView` preserves the local record and, once restored, maps `presentation-path` to the owner-side Installation with the same `install-id`.
 
 The change is limited to Installation storage. The `worktree` command family keeps its current storage organization and editable Worktree semantics.
 
@@ -52,6 +52,8 @@ Removing an Installation removes its `install-id` and physical path. The share a
 ### InstallationContext
 
 `import restore` inside an Installation resolves the parent Installation by exact `install-path`, records or reuses the owner-side Installation under the local `install-id`, and stores an `InstallationContextReference` naming the parent Installation.
+
+The read-only adapter and identity-based `presentation-path` mapping are defined by [Make Installation-context transactions read-only](../simplification/2026-08-27-make-installation-context-transactions-read-only.md).
 
 ### Validation and repair
 

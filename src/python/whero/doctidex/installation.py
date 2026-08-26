@@ -59,7 +59,12 @@ def _installation_path_for_root(owner: Path, root: Path) -> str:
     return fs_path_to_repo_path(owner, root)
 
 class InstallationRuntimeStore:
-    """A RuntimeStore-shaped adapter backed by one owner work model."""
+    """A read-only RuntimeStore-shaped adapter for one Installation context.
+
+    The adapter opens Installation-context transactions for read-only commands.
+    ``restore_import`` is the only mutating operation and performs its owner-side
+    writes through the import workflow rather than through a write transaction.
+    """
 
     def __init__(self, context: InstallationContext) -> None:
         self.context = context
@@ -97,11 +102,6 @@ class InstallationRuntimeStore:
         """Open a read-only transaction over the owner and Installation views."""
 
         return InstallationReadOnlyTransaction(self)
-
-    def write_transaction(self) -> InstallationWriteTransaction:
-        """Open an owner-only write transaction for ``import restore``."""
-
-        return InstallationWriteTransaction(self)
 
     def diagnostic_transaction(self):
         """Open the owner's diagnostic transaction."""
@@ -240,9 +240,9 @@ class InstallationRuntimeModelView:
     def _mapped_installation(self, local: Installation | None) -> Installation | None:
         if local is None:
             return None
-        owner_installation = self._owner_view.installation_for_commit(local.git_url, local.commit_hash)
+        owner_installation = self._owner_view.installation(local.install_id)
         if owner_installation is None:
-            return None
+            return replace(local, presentation_path=None)
         return replace(
             local,
             presentation_path=str(
@@ -289,50 +289,6 @@ class InstallationReadOnlyTransaction:
         return self._owner_transaction.__exit__(exc_type, exc, traceback)
 
     def model_view(self):
-        """Return the transaction's InstallationRuntimeModelView."""
-
-        assert self._model_view is not None
-        return self._model_view
-
-
-class InstallationWriteTransaction:
-    """Write transaction for ``import restore`` that only mutates owner."""
-
-    def __init__(self, store: InstallationRuntimeStore) -> None:
-        self.store = store
-        self._owner_transaction = None
-        self._installation_transaction = None
-        self._model_view = None
-
-    def __enter__(self) -> Self:
-        owner_transaction = self.store.owner_store.write_transaction()
-        owner_transaction.__enter__()
-        self._owner_transaction = owner_transaction
-        try:
-            installation_transaction = self.store.installation_store.unlocked_read_only_transaction()
-            installation_transaction.__enter__()
-            self._installation_transaction = installation_transaction
-            owner_view = owner_transaction.model_view()
-            self._model_view = InstallationRuntimeModelView(
-                self.store.context,
-                owner_view,
-                installation_transaction.model_view(),
-            )
-        except Exception:
-            exc_info = _current_exc_info()
-            if self._installation_transaction is not None:
-                self._installation_transaction.__exit__(*exc_info)
-            owner_transaction.__exit__(*exc_info)
-            raise
-        return self
-
-    def __exit__(self, exc_type: object, exc: object, traceback: object) -> bool:
-        assert self._owner_transaction is not None
-        if self._installation_transaction is not None:
-            self._installation_transaction.__exit__(exc_type, exc, traceback)
-        return self._owner_transaction.__exit__(exc_type, exc, traceback)
-
-    def write_model_view(self):
         """Return the transaction's InstallationRuntimeModelView."""
 
         assert self._model_view is not None
