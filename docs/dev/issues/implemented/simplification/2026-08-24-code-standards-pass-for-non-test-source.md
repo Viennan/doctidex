@@ -16,7 +16,7 @@ The non-test source now follows all five conventions while preserving observable
 
 - `RuntimeStore` exposes `clean_journal`, `encode_state`, and `observe_entry` as public operations, with callers in `store/runtime.py`, `initialization.py`, and `repair.py` updated.
 - `initialization.ensure_runtime_ignores` is public, so `repair` no longer imports a private bootstrap helper.
-- The physical-alignment steps reused by `repair` from `imports` (`ensure_install_commit`, `prepare_install_path`, `create_worktree`) and `worktree` (`ensure_worktree_commit`, `create_git_worktree`, `align_custom_ignores`) are public workflow operations in their owning modules, with signatures and failure semantics unchanged.
+- The physical-alignment steps reused by `repair` from `imports` (`ensure_install_commit`, `ensure_install_worktree`) and `worktree` (`ensure_worktree_commit`, `create_git_worktree`, `align_custom_ignores`) are public workflow operations in their owning modules.
 
 ### Ordering and grouping
 

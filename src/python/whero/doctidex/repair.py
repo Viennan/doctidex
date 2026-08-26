@@ -153,19 +153,13 @@ def _align_installation(store: RuntimeStore, repository: Path, installation) -> 
         installation.commit_hash,
         installation.commit_hash,
     )
-    if not import_workflow.prepare_install_path(
+    import_workflow.ensure_install_worktree(
         repository,
         target,
         git_url=installation.git_url,
         commit_hash=installation.commit_hash,
         install_path=installation.install_path,
-    ):
-        import_workflow.create_worktree(
-            repository,
-            target,
-            installation.commit_hash,
-            install_path=installation.install_path,
-        )
+    )
 
 
 def _align_installation_shares(store: RuntimeStore, cache_transaction: GitCacheWriteTransaction, model) -> None:
@@ -180,19 +174,13 @@ def _align_installation_shares(store: RuntimeStore, cache_transaction: GitCacheW
             share.commit_hash,
         )
         target = repo_path_to_fs(store.git_root, share.install_path)
-        if not import_workflow.prepare_install_path(
+        import_workflow.ensure_install_worktree(
             repository,
             target,
             git_url=share.git_url,
             commit_hash=share.commit_hash,
             install_path=share.install_path,
-        ):
-            import_workflow.create_worktree(
-                repository,
-                target,
-                share.commit_hash,
-                install_path=share.install_path,
-            )
+        )
         for install_id in share.install_ids:
             installation = installations_by_id.get(install_id)
             if installation is None or not (installation.branch or installation.tag):

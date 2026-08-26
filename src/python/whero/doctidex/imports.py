@@ -350,52 +350,35 @@ def ensure_selector_symlink(store: RuntimeStore, selector_install_path: str, sha
     _ensure_symlink(store, selector_install_path, share_install_path)
 
 
-def create_worktree(repository: Path, target: Path, commit_hash: str, *, install_path: str) -> None:
-    """Create one detached Git worktree at the requested install path."""
-
-    try:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run(
-            ["git", "-C", str(repository), "worktree", "prune"],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        subprocess.run(
-            ["git", "-C", str(repository), "worktree", "add", "--detach", str(target), commit_hash],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-    except (OSError, subprocess.CalledProcessError) as exc:
-        raise _installation_target_failure(install_path, "unavailable-path") from exc
-
-
-def prepare_install_path(
+def ensure_install_worktree(
     repository: Path,
     target: Path,
     *,
     git_url: str,
     commit_hash: str,
     install_path: str,
-) -> bool:
-    """Prepare an existing install-path, returning whether it was reused."""
+) -> None:
+    """Ensure one detached Git worktree is present, compatible, clean, and checked out."""
 
     if not target.exists() and not target.is_symlink():
-        return False
+        _create_worktree(repository, target, commit_hash, install_path=install_path)
+        return
 
     existing = _inspect_worktree(target, install_path)
     if existing is None:
         _remove_install_path(target, install_path)
-        return False
+        _create_worktree(repository, target, commit_hash, install_path=install_path)
+        return
     if existing.git_url != git_url:
         raise _installation_target_failure(install_path, "different-git-url")
-    if existing.detached and existing.clean:
-        _checkout_worktree(target, commit_hash, install_path)
-        return True
+    reusable = existing.detached and existing.clean
+    if reusable:
+        if existing.head_hash != commit_hash:
+            _checkout_worktree(target, commit_hash, install_path)
+        return
 
     _remove_worktree(repository, target, install_path=install_path)
-    return False
+    _create_worktree(repository, target, commit_hash, install_path=install_path)
 
 
 @dataclass(frozen=True, slots=True)
@@ -405,6 +388,7 @@ class _ExistingWorktree:
     git_url: str | None
     detached: bool
     clean: bool
+    head_hash: str | None
 
 
 def _install_resolved(
@@ -526,28 +510,18 @@ def _ensure_share_for_commit(
     commit_hash: str,
 ) -> InstallationShare:
     share = view.installation_share(git_url, commit_hash)
-    if share is not None:
-        target = repo_path_to_fs(store.git_root, share.install_path)
-        if not prepare_install_path(
-            repository,
-            target,
-            git_url=git_url,
-            commit_hash=commit_hash,
-            install_path=share.install_path,
-        ):
-            create_worktree(repository, target, commit_hash, install_path=share.install_path)
-        return share
-
-    install_path = _install_path(git_url, commit_hash)
+    install_path = share.install_path if share is not None else _install_path(git_url, commit_hash)
     target = repo_path_to_fs(store.git_root, install_path)
-    if not prepare_install_path(
+    ensure_install_worktree(
         repository,
         target,
         git_url=git_url,
         commit_hash=commit_hash,
         install_path=install_path,
-    ):
-        create_worktree(repository, target, commit_hash, install_path=install_path)
+    )
+    if share is not None:
+        return share
+
     share = InstallationShare(
         git_url=git_url,
         commit_hash=commit_hash,
@@ -605,17 +579,29 @@ def _leave_share(
     view: RuntimeWriteModelView,
     installation: Installation,
 ) -> None:
+    """Detach a replaced selector Installation without deleting its Installation record."""
+
+    if installation.branch or installation.tag:
+        _remove_path(repo_path_to_fs(store.git_root, installation.install_path))
+
     share = view.installation_share(installation.git_url, installation.commit_hash)
     if share is None:
-        if installation.branch or installation.tag:
-            _remove_path(repo_path_to_fs(store.git_root, installation.install_path))
         return
+    _remove_from_installation_share(store, view, share, installation)
+
+
+def _remove_from_installation_share(
+    store: RuntimeStore,
+    view: RuntimeWriteModelView,
+    share: InstallationShare,
+    installation: Installation,
+) -> None:
+    """Remove one Installation from a share, deleting the share when empty."""
+
     remaining = tuple(item for item in share.install_ids if item != installation.install_id)
     context_references = tuple(
         item for item in share.context_references if item.install_id != installation.install_id
     )
-    if installation.branch or installation.tag:
-        _remove_path(repo_path_to_fs(store.git_root, installation.install_path))
     if remaining:
         view.upsert_installation_share(
             replace(share, install_ids=remaining, context_references=context_references)
@@ -742,12 +728,19 @@ def _inspect_worktree(target: Path, install_path: str) -> _ExistingWorktree | No
             capture_output=True,
             text=True,
         )
+        head_commit = subprocess.run(
+            ["git", "-C", str(target), "rev-parse", "HEAD"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
     except OSError as exc:
         raise _installation_target_failure(install_path, "unavailable-path") from exc
     return _ExistingWorktree(
         git_url=remote.stdout.strip() if remote.returncode == 0 else None,
         detached=head.returncode == 1,
         clean=status.returncode == 0 and not status.stdout.strip(),
+        head_hash=head_commit.stdout.strip() if head_commit.returncode == 0 else None,
     )
 
 
@@ -755,6 +748,25 @@ def _checkout_worktree(target: Path, commit_hash: str, install_path: str) -> Non
     try:
         subprocess.run(
             ["git", "-C", str(target), "checkout", "--detach", commit_hash],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise _installation_target_failure(install_path, "unavailable-path") from exc
+
+
+def _create_worktree(repository: Path, target: Path, commit_hash: str, *, install_path: str) -> None:
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            ["git", "-C", str(repository), "worktree", "prune"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(repository), "worktree", "add", "--detach", str(target), commit_hash],
             check=True,
             capture_output=True,
             text=True,
@@ -854,28 +866,17 @@ def _remove_installation_reference(
     view: RuntimeWriteModelView,
     installation: Installation,
 ) -> None:
-    share = view.installation_share(installation.git_url, installation.commit_hash)
-    if share is None:
-        if installation.branch or installation.tag:
-            _remove_path(repo_path_to_fs(store.git_root, installation.install_path))
-        view.remove_installations((installation.install_id,))
-        return
+    """Remove an Installation record and then detach its share membership."""
 
     if installation.branch or installation.tag:
         _remove_path(repo_path_to_fs(store.git_root, installation.install_path))
     view.remove_installations((installation.install_id,))
 
-    remaining = tuple(item for item in share.install_ids if item != installation.install_id)
-    context_references = tuple(
-        item for item in share.context_references if item.install_id != installation.install_id
-    )
-    if remaining:
-        view.upsert_installation_share(
-            replace(share, install_ids=remaining, context_references=context_references)
-        )
-    else:
-        _remove_path(repo_path_to_fs(store.git_root, share.install_path))
-        view.remove_installation_share(installation.git_url, installation.commit_hash)
+    share = view.installation_share(installation.git_url, installation.commit_hash)
+    if share is None:
+        return
+
+    _remove_from_installation_share(store, view, share, installation)
 
 
 def _installation_failure(code: str, installation: Installation, details: dict[str, object]) -> CommandFailure:
