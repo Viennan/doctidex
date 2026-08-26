@@ -47,43 +47,29 @@ def create(
         if installation is None:
             raise _source_failure(_failure_work_path(explicit_work_path), install_id=install_id)
         source_url = installation.git_url
-        base_commit_hash = installation.commit_hash
         selector_kind, selector_value = "install-id", install_id
-
-        def create_from_repository(repository: Path) -> Worktree:
-            return _create_from_repository(
-                store,
-                repository,
-                install_id=install_id,
-                source_url=source_url,
-                base_commit_hash=base_commit_hash,
-                explicit_work_path=explicit_work_path,
-                tree_name=tree_name,
-                selector_kind=selector_kind,
-                selector_value=selector_value,
-            )
-
+        resolved_commit: str | None = installation.commit_hash
     else:
         assert git_url is not None
         source_url = git_url
         selector_kind, selector_value = _revision_selector(branch=branch, tag=tag, commit=commit)
-        resolved_commit: str | None = None
+        resolved_commit = None
 
-        def create_from_repository(repository: Path) -> Worktree:
-            nonlocal resolved_commit
-            if resolved_commit is None:
-                resolved_commit = _resolve_revision(repository, source_url, selector_kind, selector_value)
-            return _create_from_repository(
-                store,
-                repository,
-                install_id=None,
-                source_url=source_url,
-                base_commit_hash=resolved_commit,
-                explicit_work_path=explicit_work_path,
-                tree_name=tree_name,
-                selector_kind=selector_kind,
-                selector_value=selector_value,
-            )
+    def create_from_repository(repository: Path) -> Worktree:
+        nonlocal resolved_commit
+        if resolved_commit is None:
+            resolved_commit = _resolve_revision(repository, source_url, selector_kind, selector_value)
+        return _create_from_repository(
+            store,
+            repository,
+            install_id=install_id,
+            source_url=source_url,
+            base_commit_hash=resolved_commit,
+            explicit_work_path=explicit_work_path,
+            tree_name=tree_name,
+            selector_kind=selector_kind,
+            selector_value=selector_value,
+        )
 
     try:
         return coordinator.with_repository(source_url, create_from_repository)
