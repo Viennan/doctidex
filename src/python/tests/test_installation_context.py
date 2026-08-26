@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from conftest import (
     CliRunner,
     commit_file,
@@ -11,6 +12,8 @@ from conftest import (
     write_json,
     write_residual_journal,
 )
+
+from whero.doctidex.installation import InstallationRuntimeStore, resolve_installation_context
 
 
 def test_default_worktree_path_is_not_installation_context(
@@ -162,6 +165,43 @@ def test_installation_context_rejects_forbidden_commands_and_allows_read_only_co
     assert validated.payload["message"] == {}
 
 
+def test_installation_runtime_store_exposes_only_read_only_transaction_surface(
+    initialized_root: Path,
+    source_repository: Path,
+    cache_home: Path,
+    cli: CliRunner,
+) -> None:
+    workspace = source_repository / ".doctidex-git"
+    write_json(workspace / "boundary-set.json", [])
+    write_json(workspace / "import-refs.json", [])
+    write_json(workspace / "runtime.json", {"imports": [], "worktrees": [], "installation-shares": []})
+    write_json(workspace / "imports.json", [])
+    assert git(source_repository, "add", ".doctidex-git").returncode == 0
+    assert git(source_repository, "commit", "--quiet", "-m", "workspace").returncode == 0
+
+    installed = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "install",
+        "--untracked",
+        "--url",
+        str(source_repository),
+        "--branch",
+        "main",
+    )
+    installation_root = initialized_root / installed.payload["install-path"].lstrip("/")
+
+    context = resolve_installation_context(installation_root)
+    assert context is not None
+
+    store = InstallationRuntimeStore(context)
+    with store.read_only_transaction() as transaction:
+        assert transaction.model_view() is not None
+    with pytest.raises(AttributeError):
+        _ = store.write_transaction
+
+
 def test_installation_context_queries_local_install_and_restores_to_owner(
     tmp_path: Path,
     initialized_root: Path,
@@ -233,7 +273,7 @@ def test_installation_context_queries_local_install_and_restores_to_owner(
     candidate = queried.payload["candidates"][0]
     assert candidate["install-id"] == "nested-id"
     assert candidate["install-path"] == "/.doctidex-git/imports/nested"
-    assert candidate["presentation-path"] == str(initialized_root / owner_nested.payload["install-path"].lstrip("/"))
+    assert "presentation-path" not in candidate
 
     restored = cli.run(
         "--repos-path",
@@ -247,6 +287,18 @@ def test_installation_context_queries_local_install_and_restores_to_owner(
     assert restored.payload["install-id"] == "nested-id"
     assert restored.payload["install-path"] == "/.doctidex-git/imports/nested"
     assert Path(restored.payload["presentation-path"]).is_dir()
+    queried_after_restore = cli.run(
+        "--repos-path",
+        str(installation_root),
+        "import",
+        "query",
+        "--install-id",
+        "nested-id",
+    )
+    restored_candidate = queried_after_restore.payload["candidates"][0]
+    assert restored_candidate["presentation-path"] == str(
+        initialized_root / owner_nested.payload["install-path"].lstrip("/")
+    )
     runtime = read_json(initialized_root / ".doctidex-git" / "runtime.json")
     nested_record = next(item for item in runtime["imports"] if item["install-id"] == "nested-id")
     assert nested_record["tracked"] is False

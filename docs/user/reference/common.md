@@ -44,6 +44,8 @@ The following commands are allowed in Installation context:
 
 `import restore` has special Installation-local routing: it reads the requested Installation from the local work model and installs it into the owner work model as an untracked Installation. It never creates a nested Installation inside the current Installation; the local Installation is flattened into the owner repository. The returned Installation keeps its local identity and provides an owner-side `presentation-path`.
 
+When an Installation-context `import query` result has no `presentation-path`, the Installation exists only in the local work model. In the same Installation context, run `import restore --install-id <INSTALL-ID>` to install it into the owner work model and obtain its owner-side path.
+
 ### Forbidden commands
 
 The following commands are forbidden inside an Installation:

@@ -116,3 +116,5 @@ Removal is blocked when a tracked Installation still has a Ref or an in-scope Ma
 ## Installation context
 
 Inside a managed Installation, `import query` and `import restore` are allowed. `import restore` reads the local Installation and installs it into the owner work model as an untracked Installation. `import install`, `import track`, `import ref`, and `import unref` are forbidden.
+
+When an Installation-context `import query` result has no `presentation-path`, the Installation has not yet been restored into the owner work model. In the same Installation context, run `import restore --install-id <INSTALL-ID>` to install it and obtain its owner-side path.
