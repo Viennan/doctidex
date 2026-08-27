@@ -37,6 +37,9 @@ from `--repos-path` when supplied; otherwise it requires exactly one ancestor `.
 fails on zero or multiple candidates. It then opens the owner `RuntimeState`, finds the recorded Installation by
 `install-id`, and constructs `InstallationContext` from the owner root and the recorded `install-path`.
 
+The selected Installation must itself be a doctidex-git-managed repository with a local `.doctidex-git` work
+model. An ordinary external checkout has no Installation-local declarations for the adapter to read.
+
 When `--installation-context` is omitted, path detection is a defensive guard rather than a context resolver. The
 CLI walks ancestors for a `.doctidex-git` owner. A selected root that matches a recorded `Worktree.work_path` is an
 ordinary repository path. If one owner is found and no Worktree match exists, the path appears to be inside that
@@ -89,6 +92,11 @@ An `InstallationRuntimeModelView` exposes Installation-local records. It sets `p
 ### Installation
 
 An Installation remains addressable by `install-id` even when its physical worktree is absent. A tracked Installation is stored in `imports.json`; an untracked Installation is stored in `runtime.json`. An Installation is read-only: validation reports uncommitted changes, and repair discards them to restore the recorded commit. `/.doctidex-git/imports/` is the managed Installation directory; its only allowed descendants are Installation directories created or restored by the import service.
+
+`restore-state` is a derived availability value. `available` means the physical Installation is present,
+`restore-required` means a tracked Installation has metadata but no physical worktree, and `missing` means an
+untracked Installation's physical path is absent. `import query` exposes this value. Context resolution fails
+with `installation.restore.required` when a tracked selected Installation is not restored.
 
 Revision selectors are resolution inputs, not live tracking relationships. A branch or tag resolves once to `commit-hash`; a direct commit is reused by URL and commit.
 

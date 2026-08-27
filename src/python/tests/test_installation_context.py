@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import pytest
@@ -324,6 +325,151 @@ def test_unknown_installation_context_id_fails_before_mutation(
     assert failed.payload["message"]["details"]["install-id"] == "missing-id"
 
 
+def test_installation_context_rejects_not_restored_tracked_installation(
+    initialized_root: Path,
+    source_repository: Path,
+    cache_home: Path,
+    cli: CliRunner,
+) -> None:
+    installed = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "install",
+        "--tracked",
+        "--url",
+        str(source_repository),
+        "--commit",
+        git_head(source_repository),
+    )
+    install_path = initialized_root / installed.payload["install-path"].lstrip("/")
+    shutil.rmtree(install_path)
+
+    failed = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "--installation-context",
+        installed.payload["install-id"],
+        "validate",
+        "--model-structure",
+    )
+
+    assert failed.code == 2
+    assert failed.payload["message"]["code"] == "installation.restore.required"
+    assert failed.payload["message"]["details"]["install-id"] == installed.payload["install-id"]
+
+
+def test_installation_context_rejects_missing_untracked_installation(
+    initialized_root: Path,
+    source_repository: Path,
+    cache_home: Path,
+    cli: CliRunner,
+) -> None:
+    installed = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "install",
+        "--untracked",
+        "--url",
+        str(source_repository),
+        "--commit",
+        git_head(source_repository),
+    )
+    install_path = initialized_root / installed.payload["install-path"].lstrip("/")
+    shutil.rmtree(install_path)
+
+    failed = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "--installation-context",
+        installed.payload["install-id"],
+        "validate",
+        "--model-structure",
+    )
+
+    assert failed.code == 2
+    assert failed.payload["message"]["code"] == "installation.context.unavailable"
+    assert failed.payload["message"]["details"]["reason"] == "installation-missing"
+
+
+def test_available_installation_with_missing_local_workspace_reports_context_unavailable(
+    initialized_root: Path,
+    source_repository: Path,
+    cache_home: Path,
+    cli: CliRunner,
+) -> None:
+    installed = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "install",
+        "--untracked",
+        "--url",
+        str(source_repository),
+        "--branch",
+        "main",
+    )
+
+    failed = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "--installation-context",
+        installed.payload["install-id"],
+        "import",
+        "query",
+        "--install-id",
+        "missing-local",
+    )
+
+    assert failed.code == 2
+    assert failed.payload["message"]["code"] == "installation.context.unavailable"
+    assert failed.payload["message"]["details"]["reason"] == "declarations-invalid"
+
+
+def test_available_installation_with_malformed_local_workspace_reports_work_model_invalid(
+    initialized_root: Path,
+    source_repository: Path,
+    cache_home: Path,
+    cli: CliRunner,
+) -> None:
+    workspace = source_repository / ".doctidex-git"
+    write_json(workspace / "boundary-set.json", [])
+    write_json(workspace / "import-refs.json", [])
+    write_json(workspace / "runtime.json", {"imports": [], "worktrees": [], "installation-shares": []})
+    write_json(workspace / "imports.json", [])
+    assert git(source_repository, "add", ".doctidex-git").returncode == 0
+    assert git(source_repository, "commit", "--quiet", "-m", "workspace").returncode == 0
+
+    installed = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "install",
+        "--untracked",
+        "--url",
+        str(source_repository),
+        "--branch",
+        "main",
+    )
+    installation_root = initialized_root / installed.payload["install-path"].lstrip("/")
+    (installation_root / ".doctidex-git" / "runtime.json").write_text("{not valid json\n")
+
+    failed = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "--installation-context",
+        installed.payload["install-id"],
+        "import",
+        "query",
+        "--install-id",
+        "missing-local",
+    )
+
+    assert failed.code == 2
+    assert failed.payload["message"]["code"] == "work-model.invalid"
+
+
 def test_installation_context_id_discovers_owner_root_from_current_directory(
     initialized_root: Path,
     source_repository: Path,
@@ -455,6 +601,7 @@ def test_installation_context_queries_local_install_and_restores_to_owner(
     assert candidate["install-id"] == "nested-id"
     assert candidate["install-path"] == "/.doctidex-git/imports/nested"
     assert "presentation-path" not in candidate
+    assert candidate["restore-state"] == "restore-required"
 
     restored = cli.run(
         "--repos-path",
@@ -485,6 +632,7 @@ def test_installation_context_queries_local_install_and_restores_to_owner(
     assert restored_candidate["presentation-path"] == str(
         initialized_root / owner_nested.payload["install-path"].lstrip("/")
     )
+    assert restored_candidate["restore-state"] == "available"
 
     runtime = read_json(initialized_root / ".doctidex-git" / "runtime.json")
     nested_record = next(item for item in runtime["imports"] if item["install-id"] == "nested-id")

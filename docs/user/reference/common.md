@@ -35,6 +35,10 @@ The cache stores bare Git repositories. It is not the authority for Installation
 When it is supplied, the CLI runs the command in Installation context for that `install-id`; the owner root comes
 from `--repos-path` or the ancestor-owner rule above.
 
+Installation context is meaningful only when the selected Installation itself is a doctidex-git-managed
+repository with a local `.doctidex-git` work model. If the Installation is an ordinary external checkout, the
+context commands that read Installation-local declarations fail with `installation.context.unavailable`.
+
 When `--installation-context` is omitted, path detection is defensive only. A selected root that matches a recorded
 `Worktree.work_path` is an ordinary repository path. If the path otherwise appears to be inside a managed
 Installation, the command fails with `installation.context.argument-required` and does not run.
@@ -49,6 +53,10 @@ The following commands are allowed in Installation context:
 - `import restore`
 
 `import restore` has special Installation-local routing: it reads the requested Installation from the local work model and installs it into the owner work model as an untracked Installation. It never creates a nested Installation inside the current Installation; the local Installation is flattened into the owner repository. The returned Installation keeps its local identity and provides an owner-side `presentation-path`.
+
+If the selected `--installation-context` refers to a tracked Installation whose physical worktree is absent, the
+command fails with `installation.restore.required` before mutation. Run `import restore --install-id
+<INSTALL-ID>` in the owner root to recreate the physical worktree.
 
 When an Installation-context `import query` result has no `presentation-path`, the Installation exists only in the local work model. In the same Installation context, run `import restore --install-id <INSTALL-ID>` to install it into the owner work model and obtain its owner-side path.
 
@@ -77,6 +85,7 @@ Other commands are not yet available in Installation context.
 | `installation.owner.ambiguous` | The path is nested in multiple Installation owner workspaces. |
 | `installation.context.forbidden` | The requested command is prohibited inside an Installation. |
 | `installation.context.unavailable` | The command is not yet available inside an Installation, or local declarations cannot be read. |
+| `installation.restore.required` | The selected tracked Installation has not been restored; run `import restore`. |
 
 ## Success results and exit codes
 

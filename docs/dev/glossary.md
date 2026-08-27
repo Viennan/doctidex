@@ -7,6 +7,7 @@ Quick lookup for development and design terms. Each entry links to its authorita
 | BoundaryPoint | A custom or model-derived path where the current repository's link and scan rules stop. | [overview.md](architecture/overview.md#boundary-points) |
 | StructuredLinkAnnotation | A `doctidex` HTML-comment YAML block attached to one Markdown link. | [overview.md](architecture/overview.md#link-and-annotation-semantics) |
 | Installation | An external Git source at one fixed commit and one read-only install path. | [overview.md](architecture/overview.md#installation) |
+| Restore state | Derived Installation availability: `available`, `restore-required`, or `missing`. | [overview.md](architecture/overview.md#installation) |
 | Ref | A managed symbolic link from a repository path into an Installation. | [overview.md](architecture/overview.md#ref) |
 | Worktree | A managed, untracked editable Git worktree based on a recorded base commit. | [overview.md](architecture/overview.md#worktree) |
 | CustomBoundaryPoint | A tracked boundary declared directly by `boundary-set add`. | [overview.md](architecture/overview.md#boundary-points) |

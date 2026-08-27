@@ -53,6 +53,38 @@ def resolve_installation_context_by_id(owner_root: Path, install_id: str) -> Ins
             subject={"kind": "installation", "install-id": install_id},
             details={"install-id": install_id, "owner-path": str(owner_root)},
         )
+    restore_state = import_workflow.installation_restore_state(owner_root, installation)
+    if restore_state == "restore-required":
+        raise CommandFailure(
+            code="installation.restore.required",
+            summary="The selected Installation has not been restored.",
+            subject={
+                "kind": "installation",
+                "install-id": install_id,
+                "install-path": installation.install_path,
+            },
+            details={
+                "install-id": install_id,
+                "install-path": installation.install_path,
+                "tracked": True,
+                "required-command": f"import restore --install-id {install_id}",
+            },
+        )
+    if restore_state == "missing":
+        raise CommandFailure(
+            code="installation.context.unavailable",
+            summary="The selected untracked Installation is missing.",
+            subject={
+                "kind": "installation",
+                "install-id": install_id,
+                "install-path": installation.install_path,
+            },
+            details={
+                "install-id": install_id,
+                "install-path": installation.install_path,
+                "reason": "installation-missing",
+            },
+        )
     return InstallationContext(owner_root=owner_root, install_path=installation.install_path)
 
 

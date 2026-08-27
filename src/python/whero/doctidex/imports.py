@@ -290,7 +290,13 @@ def unref(store: RuntimeStore, target_dir: str) -> None:
 
 
 def query(
-    model: RuntimeModelView, *, install_id: str | None, install_path: str | None, ref_path: str | None, keys: list[str]
+    model: RuntimeModelView,
+    *,
+    git_root: Path,
+    install_id: str | None,
+    install_path: str | None,
+    ref_path: str | None,
+    keys: list[str],
 ) -> list[dict[str, object]]:
     """Return Installations selected by identity, path, Ref, or fuzzy key."""
 
@@ -307,6 +313,11 @@ def query(
             "commit-hash": item.commit_hash,
             "install-id": item.install_id,
             "install-path": item.install_path,
+            "restore-state": (
+                "available"
+                if item.presentation_path is not None
+                else installation_restore_state(git_root, item)
+            ),
             **({"presentation-path": item.presentation_path} if item.presentation_path is not None else {}),
             "keys": list(item.keys),
             "refs": [
@@ -318,6 +329,16 @@ def query(
         }
         for item in candidates
     ]
+
+
+def installation_restore_state(git_root: Path, installation: Installation) -> str:
+    """Return the physical restore state for one Installation."""
+
+    if repo_path_to_fs(git_root, installation.install_path).exists():
+        return "available"
+    if installation.tracked:
+        return "restore-required"
+    return "missing"
 
 
 def ensure_install_commit(

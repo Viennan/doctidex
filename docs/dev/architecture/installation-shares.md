@@ -72,6 +72,7 @@ There is no physical-owner transfer among Installations and no synthetic backing
 `import restore` with `--installation-context <INSTALL-ID>` resolves the parent Installation by its recorded
 `install-id`, records or reuses the owner-side Installation under the local `install-id`, and adds that id to the
 owner share. The corresponding `InstallationContextReference` preserves which parent produced the sub-Installation.
+The query surface reports owner-side restore state through `presentation-path`.
 
 ## Validation and repair
 

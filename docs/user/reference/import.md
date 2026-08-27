@@ -65,6 +65,10 @@ doctidex-git import query \
 
 Exactly one selector class is required. `--key` is repeatable fuzzy search.
 
+`restore-state` is one of `available`, `restore-required`, or `missing`. A tracked Installation with only
+metadata and no physical worktree is `restore-required`; run `import restore --install-id <INSTALL-ID>` to make
+it available. An untracked Installation with a missing physical path is `missing`.
+
 ```json
 {
   "status": "ok",
@@ -75,6 +79,7 @@ Exactly one selector class is required. `--key` is repeatable fuzzy search.
       "commit-hash": "<HASH>",
       "install-id": "<INSTALL-ID>",
       "install-path": "/<INSTALL-PATH>",
+      "restore-state": "available",
       "keys": ["<QUERY-KEY>"],
       "branch": "<BRANCH-OR-EMPTY>",
       "tag": "<TAG-OR-EMPTY>",
@@ -107,6 +112,7 @@ Removal is blocked when a tracked Installation still has a Ref or an in-scope Ma
 | `installation.not-found` | Requested Installation does not exist. |
 | `installation.tracking-state.invalid` | `restore` received an untracked Installation. |
 | `installation.restore.unavailable` | Tracked Installation cannot be restored at its commit. |
+| `installation.restore.required` | A tracked Installation is not restored; run `import restore`. |
 | `installation.remove.blocked` | Ref or cross-boundary link still depends on the Installation. |
 | `ref.source.unavailable` | Installation or `src-sub-dir` cannot be a link source. |
 | `ref.target.unavailable` | Target is occupied, is under a managed directory, is below an existing boundary point, or cannot be created. |
@@ -130,3 +136,6 @@ Running an import command with a path inside a managed Installation but without 
 produces `installation.context.argument-required`.
 
 When an Installation-context `import query` result has no `presentation-path`, the Installation has not yet been restored into the owner work model. In the same Installation context, run `import restore --install-id <INSTALL-ID>` to install it and obtain its owner-side path.
+
+In Installation-context query results, a candidate with `presentation-path` is `available`; otherwise
+`restore-state` falls back to the local `install-path` check.

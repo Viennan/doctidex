@@ -45,6 +45,8 @@ candidates fail with `installation.owner.ambiguous`.
 constructs `InstallationContext` from the owner root and the recorded `install-path`. An unknown `install-id`
 fails with `installation.not-found`.
 
+The restore-aware availability and error contract is defined by [Make Installation restore state visible and distinguishable](../bug-fix/2026-08-28-restore-awareness-and-errors.md).
+
 `installation_path_preflight` is the only path-based check. It keeps the Worktree exclusion, returns ordinary
 context when no owner exists, and fails with `installation.context.argument-required` when a non-Worktree path
 appears to be inside a managed Installation.

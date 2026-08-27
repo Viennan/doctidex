@@ -101,6 +101,7 @@ The diagram maps to the retained concepts:
 | Installation | One external Git URL fixed at one commit and installed at one read-only path. |
 | Ref | A managed symbolic link into an Installation. |
 | Worktree | An editable Git worktree whose base commit is recorded; it may branch, modify, and commit freely. |
+| Restore state | Whether a tracked Installation's physical worktree is present or requires `import restore`. |
 | BoundaryPoint | A path where the current repository's link and scan rules stop. |
 | StructuredLinkAnnotation | A `doctidex` comment that records the first BoundaryPoint crossed by a Markdown link. |
 
@@ -114,6 +115,12 @@ Use `--installation-context <INSTALL-ID>` to operate on a recorded Installation.
 create Worktrees, or initialize a workspace are forbidden. Running from inside a managed Installation without
 `--installation-context` is blocked and asks for the argument. `import restore` does not install inside the current
 Installation; it flattens the local Installation into the owner repository.
+
+This context is meaningful only when the selected Installation is itself maintained by doctidex-git and has its
+own `.doctidex-git` work model.
+
+`import query` reports `restore-state`. Tracked Installations are metadata-only until restored; after clone or
+physical removal, run `import restore --install-id <INSTALL-ID>`.
 
 See [common.md](reference/common.md#installation-context) for the complete behavior.
 
@@ -129,6 +136,7 @@ See [common.md](reference/common.md#installation-context) for the complete behav
 | Result contract | Every command emits machine-readable JSON. | Success uses `status: "ok"`; `validate` adds `valid`; failures use stable `message.code`. |
 | Cache | The CLI caches bare repositories under the doctidex-git home. | Configure with `DOCTIDEX-GIT-HOME` and `config.toml`; see [common.md](reference/common.md#cache-configuration). |
 | Installation context | Select an Installation with `--installation-context`; the allowed command set is restricted. | Only `validate`, `boundary-set parse`, `import query`, and `import restore` are allowed; `import restore` flattens the local Installation into the owner repository. |
+| Restore state | Tracked metadata may not have a physical worktree. | `import query` reports `available`, `restore-required`, or `missing`; run `import restore` for `restore-required`. |
 
 ## Command documents
 

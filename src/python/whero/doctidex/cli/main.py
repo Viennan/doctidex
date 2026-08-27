@@ -407,6 +407,7 @@ def _run_import(operation: ResolvedInvocation, args: argparse.Namespace) -> Comm
         with store.read_only_transaction() as transaction:
             candidates = import_workflow.query(
                 transaction.model_view(),
+                git_root=operation.root,
                 install_id=args.install_id,
                 install_path=install_path,
                 ref_path=ref_path,

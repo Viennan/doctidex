@@ -50,7 +50,9 @@ Diagnostics are not execution failures. `validate` returns `status: "ok"` with `
 | `worktree.clean` | Managed Worktree has uncommitted changes. |
 | `installation.worktree.dirty` | An Installation has uncommitted changes; reported inside `work-model.valid`. |
 
-When a tracked Installation's physical directory is absent, validation does not restore it or require its link targets. This is expected after cloning tracked metadata.
+When a tracked Installation's physical directory is absent, validation does not restore it or require its link
+targets. This is expected after cloning tracked metadata; use `import query` to see `restore-state` and
+`import restore --install-id <INSTALL-ID>` to recreate the physical worktree.
 
 ## Cross-boundary annotation
 
@@ -70,4 +72,5 @@ When a tracked Installation's physical directory is absent, validation does not 
 
 ## Installation context
 
-`validate` is allowed when the selected Git root is inside a managed Installation.
+`validate` is allowed when the selected Git root is inside a managed Installation. If `--installation-context`
+selects a tracked Installation that is not restored, the command fails with `installation.restore.required`.

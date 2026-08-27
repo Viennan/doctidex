@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from conftest import CliRunner, commit_file, git, git_head, read_json
@@ -351,6 +352,73 @@ def test_import_query_by_install_path_and_ref_path(
     assert by_path.payload["candidates"][0]["install-id"] == install_id
     by_ref = cli.run("--repos-path", str(initialized_root), "import", "query", "--ref-path", "/linked")
     assert by_ref.payload["candidates"][0]["install-id"] == install_id
+
+
+def test_import_query_reports_restore_state(
+    initialized_root: Path,
+    source_repository: Path,
+    cache_home: Path,
+    cli: CliRunner,
+) -> None:
+    commit = git_head(source_repository)
+    tracked = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "install",
+        "--tracked",
+        "--url",
+        str(source_repository),
+        "--commit",
+        commit,
+    )
+    tracked_path = initialized_root / tracked.payload["install-path"].lstrip("/")
+
+    available = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "query",
+        "--install-id",
+        tracked.payload["install-id"],
+    )
+    assert available.payload["candidates"][0]["restore-state"] == "available"
+
+    shutil.rmtree(tracked_path)
+    restore_required = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "query",
+        "--install-id",
+        tracked.payload["install-id"],
+    )
+    assert restore_required.payload["candidates"][0]["restore-state"] == "restore-required"
+
+    untracked_commit = commit_file(source_repository, "untracked.md", "untracked\n")
+    untracked = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "install",
+        "--untracked",
+        "--url",
+        str(source_repository),
+        "--commit",
+        untracked_commit,
+    )
+    untracked_path = initialized_root / untracked.payload["install-path"].lstrip("/")
+    shutil.rmtree(untracked_path)
+
+    missing = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "query",
+        "--install-id",
+        untracked.payload["install-id"],
+    )
+    assert missing.payload["candidates"][0]["restore-state"] == "missing"
 
 
 def test_import_track_reports_missing_installation(
