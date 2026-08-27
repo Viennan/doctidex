@@ -7,7 +7,6 @@ from conftest import CliRunner, read_json, write_json
 EXPECTED_ROOT_INDEX = "---\ntype: index\ndoctidex:\n  type: index\n  root: true\n---\n"
 RUNTIME_IGNORE_PATHS = (
     "/.doctidex-git/.lock",
-    "/.doctidex-git/.command.lock",
     "/.doctidex-git/runtime.json",
     "/.doctidex-git/.transactions/",
     "/.doctidex-git/imports/",

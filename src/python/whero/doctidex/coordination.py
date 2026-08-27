@@ -3,46 +3,33 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import Self
 
 from whero.doctidex.git_cache import GitCache, GitCacheWriteTransaction
 from whero.doctidex.repair import repair_core
-from whero.doctidex.store.files import FileLock, StoreFailure
+from whero.doctidex.store.files import StoreFailure
 from whero.doctidex.store.runtime import RepairRequired, RuntimeStore
 
 _MAX_REPAIR_ATTEMPTS = 3
 
 
-class StoreCoordinator(AbstractContextManager["StoreCoordinator"]):
-    """Keep one CLI command serialized while coordinating RuntimeStore repair."""
+class StoreCoordinator:
+    """Retry RuntimeStore operations and coordinate cache-before-runtime access."""
 
     def __init__(self, store: RuntimeStore, cache: GitCache) -> None:
         self.store = store
         self.cache = cache
-        self._command_lock = FileLock(store.workspace_path / ".command.lock", store="runtime")
-
-    def __enter__(self) -> Self:
-        self._command_lock.acquire()
-        return self
-
-    def __exit__(self, exc_type: object, exc: object, traceback: object) -> bool:
-        self._command_lock.release()
-        return False
 
     def run[T](self, operation: Callable[[], T]) -> T:
         """Run a RuntimeStore operation, repairing residual journals between retries."""
 
-        attempts = 0
-        while True:
+        for attempts in range(_MAX_REPAIR_ATTEMPTS + 1):
             try:
                 return operation()
             except RepairRequired as signal:
                 if attempts >= _MAX_REPAIR_ATTEMPTS:
                     raise _retry_exhausted(self.store, attempts, signal.transaction_ids) from signal
-                attempts += 1
-                self.repair()
+                self._repair_with_fresh_transaction()
 
     def with_repository[T](self, git_url: str, operation: Callable[[Path], T]) -> T:
         """Run cache-backed work with a cache transaction covering all external actions.
@@ -72,8 +59,8 @@ class StoreCoordinator(AbstractContextManager["StoreCoordinator"]):
                 repair_attempts=repair_attempts,
             )
 
-    def repair(self) -> None:
-        """Run explicit maintenance in a fresh GitCache Write transaction."""
+    def _repair_with_fresh_transaction(self) -> None:
+        """Run repair in a fresh GitCache Write transaction for retry paths."""
 
         with self.cache.write_transaction() as transaction:
             repair_core(self.store, transaction)
@@ -85,14 +72,12 @@ class StoreCoordinator(AbstractContextManager["StoreCoordinator"]):
         *,
         repair_attempts: int = 0,
     ) -> T:
-        attempts = repair_attempts
-        while True:
+        for attempts in range(repair_attempts, _MAX_REPAIR_ATTEMPTS + 1):
             try:
                 return operation()
             except RepairRequired as signal:
                 if attempts >= _MAX_REPAIR_ATTEMPTS:
                     raise _retry_exhausted(self.store, attempts, signal.transaction_ids) from signal
-                attempts += 1
                 repair_core(self.store, transaction)
 
 

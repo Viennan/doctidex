@@ -17,7 +17,7 @@ Two stores serve different lifecycles:
 
 Both stores use:
 
-- advisory exclusive `FileLock`s backed by `fcntl.flock`;
+- advisory shared and exclusive `FileLock`s backed by `fcntl.flock`;
 - same-directory temporary files followed by atomic rename;
 - `fsync` on files and parent directories;
 - SHA-256 digests for observation and recovery.
@@ -30,11 +30,11 @@ CacheStore publishes one `status.json` document containing `CacheItem` records.
 
 ### Read-only transaction
 
-A read-only transaction acquires the cache lock, reads `status.json`, removes interrupted `preparing` records and their cache directories, then exposes the resulting records. It does not replace records.
+A read-only transaction enters with a shared lock, reads `status.json`, and exposes the resulting records. If `preparing` records are present, it releases the shared lock, acquires an exclusive lock, removes the interrupted `preparing` records and their cache directories, publishes the cleaned record set, reacquires the shared lock, and checks again. It repeats that recovery at most three times and fails if `preparing` records remain.
 
 ### Write transaction
 
-A write transaction acquires the same lock, performs startup recovery, and supports `replace_records`. A record replacement writes `status.json` atomically and becomes visible immediately. It does not journal the replacement.
+A write transaction acquires an exclusive lock, performs startup recovery, and supports `replace_records`. A record replacement writes `status.json` atomically and becomes visible immediately. It does not journal the replacement.
 
 ### Startup recovery
 
@@ -65,7 +65,7 @@ Each journal entry records:
 
 ### Write transaction lifecycle
 
-1. Acquire the RuntimeStore lock.
+1. Acquire the exclusive RuntimeStore lock.
 2. Reject startup if any pending journal exists by raising `RepairRequired`.
 3. Load the current RuntimeState and snapshot target hashes.
 4. Create a transaction directory and write a `prepared` journal immediately.
@@ -83,13 +83,14 @@ Repair inspects residual journals and compares each target's current digest with
 
 ### Read-only and diagnostic access
 
-- `read_only_transaction` acquires the lock and refuses pending journals.
-- `diagnostic_transaction` acquires the lock, reports pending journals, and may avoid loading inconsistent state.
+- `read_only_transaction` acquires a shared lock and refuses pending journals.
+- `read_diagnostic_transaction` acquires a shared lock, reports pending journals, and may avoid loading inconsistent state.
+- `repair_transaction` acquires an exclusive lock, reports pending journals, and exposes the repair model view and narrowed Ref publication used by repair.
 - `unlocked_read_only_transaction` reads a snapshot without the RuntimeStore lock for already-isolated contexts, such as Installation-local model access.
 
 ## Coordination
 
-`StoreCoordinator` serializes one workspace command with `.command.lock`. A normal RuntimeStore transaction that observes a residual journal raises `RepairRequired`; the coordinator runs repair outside the failed transaction and retries the operation.
+`StoreCoordinator` is a plain coordination object; it does not own a command lock. A normal RuntimeStore transaction that observes a residual journal raises `RepairRequired`; the coordinator runs `repair_core` outside the failed transaction and retries the operation. Explicit repair remains the `repair(store, cache)` entry point in the repair workflow.
 
 Cache-backed work selects a cache transaction first:
 
@@ -97,7 +98,7 @@ Cache-backed work selects a cache transaction first:
 - if RuntimeStore repair becomes necessary, the read-only cache transaction exits before a write transaction performs repair;
 - a cache miss starts write and may reuse that write transaction for repair.
 
-Repair is retried up to three times. Exhaustion becomes a structured store failure.
+Repair is retried up to three times. Exhaustion becomes a structured store failure. `repair_core` requires a caller-owned GitCache write transaction and acquires the RuntimeStore repair lock itself.
 
 Commands needing both domains acquire cache access before RuntimeStore access.
 

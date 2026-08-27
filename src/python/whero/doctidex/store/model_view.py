@@ -10,7 +10,7 @@ from whero.doctidex.model import BoundaryPoint, Installation, InstallationShare,
 
 if TYPE_CHECKING:
     from .runtime import (
-        RuntimeDiagnosticTransaction,
+        RuntimeRepairTransaction,
         RuntimeTransaction,
         RuntimeWriteTransaction,
     )
@@ -270,13 +270,13 @@ class RuntimeRepairModelView(RuntimeModelView):
         selected_paths = set(target_dirs)
         if not selected_paths:
             return
-        self._diagnostic_transaction._replace_refs_for_repair(
+        self._repair_transaction.replace_refs_for_repair(
             tuple(reference for reference in self.state.refs if reference.target_dir not in selected_paths)
         )
 
     @property
-    def _diagnostic_transaction(self) -> RuntimeDiagnosticTransaction:
-        return cast("RuntimeDiagnosticTransaction", self._transaction)
+    def _repair_transaction(self) -> RuntimeRepairTransaction:
+        return cast("RuntimeRepairTransaction", self._transaction)
 
 
 def _ancestor_paths(path: str) -> tuple[str, ...]:

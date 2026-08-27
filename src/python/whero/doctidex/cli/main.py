@@ -14,6 +14,7 @@ from typing import Concatenate, NoReturn, ParamSpec
 
 from whero.doctidex import boundary as boundary_workflow
 from whero.doctidex import imports as import_workflow
+from whero.doctidex import repair as repair_workflow
 from whero.doctidex import validate as validate_workflow
 from whero.doctidex import worktree as worktree_workflow
 from whero.doctidex.coordination import StoreCoordinator
@@ -261,19 +262,19 @@ def _is_forbidden_installation_command(command: str) -> bool:
 
 @_command_result()
 def _run_boundary(operation: ParsedInvocation, root: Path, args: argparse.Namespace) -> CommandPayload:
-    with StoreCoordinator(_command_runtime_store(root), GitCache.from_environment()) as coordinator:
-        store = coordinator.store
+    coordinator = StoreCoordinator(_command_runtime_store(root), GitCache.from_environment())
+    store = coordinator.store
 
-        def execute() -> CommandPayload:
-            if args.boundary_command == "add":
-                boundary_workflow.add(store, args.path)
-                return success(command=operation.command)
-            if args.boundary_command == "remove":
-                boundary_workflow.remove(store, args.path)
-                return success(command=operation.command)
-            return success(command=operation.command, results=boundary_workflow.parse(store, args.path))
+    def execute() -> CommandPayload:
+        if args.boundary_command == "add":
+            boundary_workflow.add(store, args.path)
+            return success(command=operation.command)
+        if args.boundary_command == "remove":
+            boundary_workflow.remove(store, args.path)
+            return success(command=operation.command)
+        return success(command=operation.command, results=boundary_workflow.parse(store, args.path))
 
-        return coordinator.run(execute)
+    return coordinator.run(execute)
 
 
 @_command_result()
@@ -281,8 +282,8 @@ def _run_import(operation: ParsedInvocation, root: Path, args: argparse.Namespac
     context = resolve_installation_context(root)
     if context is not None and args.import_command == "restore":
         store = InstallationRuntimeStore(context)
-        with StoreCoordinator(store, GitCache.from_environment()) as coordinator:
-            item = coordinator.run(lambda: store.restore_import(coordinator, args.install_id))
+        coordinator = StoreCoordinator(store, GitCache.from_environment())
+        item = coordinator.run(lambda: store.restore_import(coordinator, args.install_id))
         fields: dict[str, object] = {
             "install-id": item.install_id,
             "install-path": item.install_path,
@@ -294,96 +295,96 @@ def _run_import(operation: ParsedInvocation, root: Path, args: argparse.Namespac
             **fields,
         )
 
-    with StoreCoordinator(_command_runtime_store(root), GitCache.from_environment()) as coordinator:
-        store = coordinator.store
+    coordinator = StoreCoordinator(_command_runtime_store(root), GitCache.from_environment())
+    store = coordinator.store
 
-        def execute() -> CommandPayload:
-            name = args.import_command
-            if name == "install":
-                item = import_workflow.install(
-                    store,
-                    coordinator,
-                    tracked=args.tracked,
-                    git_url=args.url,
-                    branch=args.branch or "",
-                    tag=args.tag or "",
-                    commit=args.commit or "",
-                    keys=args.key,
-                )
-                return success(
-                    command=operation.command,
-                    **{"install-id": item.install_id, "install-path": item.install_path},
-                )
-            if name == "restore":
-                item = import_workflow.restore(store, coordinator, args.install_id)
-                return success(
-                    command=operation.command,
-                    **{"install-id": item.install_id, "install-path": item.install_path},
-                )
-            if name == "track":
-                item = import_workflow.track(store, args.install_id)
-                return success(
-                    command=operation.command,
-                    **{"install-id": item.install_id, "install-path": item.install_path},
-                )
-            if name == "remove":
-                import_workflow.remove(store, args.install_id, untracked=args.untracked, auto=args.auto)
-                return success(command=operation.command)
-            if name == "ref":
-                import_workflow.ref(store, args.install_id, args.src_sub_dir or "", args.target_dir)
-                return success(command=operation.command)
-            if name == "unref":
-                import_workflow.unref(store, args.target_dir)
-                return success(command=operation.command)
-            install_path = _normalize_optional_path(args.install_path, "--install-path")
-            ref_path = _normalize_optional_path(args.ref_path, "--ref-path")
-            with store.read_only_transaction() as transaction:
-                candidates = import_workflow.query(
-                    transaction.model_view(),
-                    install_id=args.install_id,
-                    install_path=install_path,
-                    ref_path=ref_path,
-                    keys=args.key,
-                )
-            return success(command=operation.command, candidates=candidates)
+    def execute() -> CommandPayload:
+        name = args.import_command
+        if name == "install":
+            item = import_workflow.install(
+                store,
+                coordinator,
+                tracked=args.tracked,
+                git_url=args.url,
+                branch=args.branch or "",
+                tag=args.tag or "",
+                commit=args.commit or "",
+                keys=args.key,
+            )
+            return success(
+                command=operation.command,
+                **{"install-id": item.install_id, "install-path": item.install_path},
+            )
+        if name == "restore":
+            item = import_workflow.restore(store, coordinator, args.install_id)
+            return success(
+                command=operation.command,
+                **{"install-id": item.install_id, "install-path": item.install_path},
+            )
+        if name == "track":
+            item = import_workflow.track(store, args.install_id)
+            return success(
+                command=operation.command,
+                **{"install-id": item.install_id, "install-path": item.install_path},
+            )
+        if name == "remove":
+            import_workflow.remove(store, args.install_id, untracked=args.untracked, auto=args.auto)
+            return success(command=operation.command)
+        if name == "ref":
+            import_workflow.ref(store, args.install_id, args.src_sub_dir or "", args.target_dir)
+            return success(command=operation.command)
+        if name == "unref":
+            import_workflow.unref(store, args.target_dir)
+            return success(command=operation.command)
+        install_path = _normalize_optional_path(args.install_path, "--install-path")
+        ref_path = _normalize_optional_path(args.ref_path, "--ref-path")
+        with store.read_only_transaction() as transaction:
+            candidates = import_workflow.query(
+                transaction.model_view(),
+                install_id=args.install_id,
+                install_path=install_path,
+                ref_path=ref_path,
+                keys=args.key,
+            )
+        return success(command=operation.command, candidates=candidates)
 
-        return coordinator.run(execute)
+    return coordinator.run(execute)
 
 
 @_command_result()
 def _run_worktree(operation: ParsedInvocation, root: Path, args: argparse.Namespace) -> CommandPayload:
-    with StoreCoordinator(_runtime_store(root), GitCache.from_environment()) as coordinator:
-        store = coordinator.store
+    coordinator = StoreCoordinator(_runtime_store(root), GitCache.from_environment())
+    store = coordinator.store
 
-        def execute() -> CommandPayload:
-            name = args.worktree_command
-            if name == "create":
-                record = worktree_workflow.create(
-                    store,
-                    coordinator,
-                    install_id=args.install_id,
-                    git_url=args.url,
-                    work_path=args.work_path,
-                    branch=args.branch or "",
-                    tag=args.tag or "",
-                    commit=args.commit or "",
-                    tree_name=args.tree_name,
-                )
-                return success(command=operation.command, **{"work-path": record.work_path})
-            if name == "remove":
-                worktree_workflow.remove(
-                    store,
-                    work_path=args.work_path,
-                    force=args.force,
-                )
-                return success(command=operation.command)
-            record = worktree_workflow.query(store, work_path=args.work_path)
-            fields: dict[str, object] = {}
-            if record.install_id is not None:
-                fields["install-id"] = record.install_id
-            return success(command=operation.command, **fields)
+    def execute() -> CommandPayload:
+        name = args.worktree_command
+        if name == "create":
+            record = worktree_workflow.create(
+                store,
+                coordinator,
+                install_id=args.install_id,
+                git_url=args.url,
+                work_path=args.work_path,
+                branch=args.branch or "",
+                tag=args.tag or "",
+                commit=args.commit or "",
+                tree_name=args.tree_name,
+            )
+            return success(command=operation.command, **{"work-path": record.work_path})
+        if name == "remove":
+            worktree_workflow.remove(
+                store,
+                work_path=args.work_path,
+                force=args.force,
+            )
+            return success(command=operation.command)
+        record = worktree_workflow.query(store, work_path=args.work_path)
+        fields: dict[str, object] = {}
+        if record.install_id is not None:
+            fields["install-id"] = record.install_id
+        return success(command=operation.command, **fields)
 
-        return coordinator.run(execute)
+    return coordinator.run(execute)
 
 
 @_command_result(exit_status=_validate_exit_status)
@@ -403,8 +404,7 @@ def _run_validate(operation: ParsedInvocation, root: Path, args: argparse.Namesp
 
 @_command_result()
 def _run_repair(operation: ParsedInvocation, root: Path) -> CommandPayload:
-    with StoreCoordinator(_runtime_store(root), GitCache.from_environment()) as coordinator:
-        coordinator.repair()
+    repair_workflow.repair(_runtime_store(root), GitCache.from_environment())
     return success(command=operation.command)
 
 

@@ -30,21 +30,29 @@ class StoreFailure(RuntimeError):
 
 
 class FileLock:
-    """An advisory, process-wide exclusive lock backed by ``fcntl.flock``."""
+    """An advisory file lock with shared and exclusive acquisition modes."""
 
     def __init__(self, path: Path, *, store: str) -> None:
         self.path = path
         self.store = store
         self._handle: object | None = None
 
-    def acquire(self) -> None:
+    def acquire_shared(self) -> None:
+        """Take a shared advisory lock, creating the lock file as needed."""
+
+        self._acquire(fcntl.LOCK_SH)
+
+    def acquire_exclusive(self) -> None:
         """Take the exclusive advisory lock, creating the lock file as needed."""
 
+        self._acquire(fcntl.LOCK_EX)
+
+    def _acquire(self, operation: int) -> None:
         handle = None
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             handle = self.path.open("a+b")
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            fcntl.flock(handle.fileno(), operation)
         except OSError as exc:
             if handle is not None:
                 handle.close()

@@ -11,6 +11,8 @@ from whero.doctidex.model import CacheItem, CacheItemStatus, ModelFormatError
 
 from .files import FileLock, StoreFailure, atomic_write_bytes, read_bytes
 
+_MAX_CACHE_READ_RECOVERY_ATTEMPTS = 3
+
 
 class CacheStore:
     """Manage CacheStore records and their cache repository paths."""
@@ -29,11 +31,6 @@ class CacheStore:
         """Open a locked transaction whose record replacements publish immediately."""
 
         return CacheWriteTransaction(self)
-
-    def transaction(self) -> CacheWriteTransaction:
-        """Compatibility alias for the write transaction during the phase transition."""
-
-        return self.write_transaction()
 
     def _read_records(self) -> tuple[CacheItem, ...]:
         if not self.status_path.exists():
@@ -67,7 +64,7 @@ class CacheTransaction:
         self.records: tuple[CacheItem, ...] = ()
 
     def __enter__(self) -> Self:
-        self.store._lock.acquire()
+        self.store._lock.acquire_exclusive()
         try:
             self.records = self.store._read_records()
             self._recover_preparing()
@@ -88,6 +85,11 @@ class CacheTransaction:
 
         return next((record for record in self.records if record.git_url == git_url), None)
 
+    def _has_preparing(self) -> bool:
+        """Return whether any current record is still preparing."""
+
+        return any(record.status == CacheItemStatus.PREPARING for record in self.records)
+
     def _recover_preparing(self) -> None:
         preparing = tuple(record for record in self.records if record.status == CacheItemStatus.PREPARING)
         if not preparing:
@@ -107,6 +109,32 @@ class CacheTransaction:
 
 class CacheReadOnlyTransaction(CacheTransaction):
     """A CacheStore transaction exposing only record queries."""
+
+    def __enter__(self) -> Self:
+        """Enter with a shared lock, recovering interrupted preparing records when needed."""
+
+        for _attempt in range(_MAX_CACHE_READ_RECOVERY_ATTEMPTS):
+            self.store._lock.acquire_shared()
+            try:
+                self.records = self.store._read_records()
+                if not self._has_preparing():
+                    return self
+            except Exception:
+                self.store._lock.release()
+                raise
+            self.store._lock.release()
+            self.store._lock.acquire_exclusive()
+            try:
+                self.records = self.store._read_records()
+                self._recover_preparing()
+            finally:
+                self.store._lock.release()
+        raise StoreFailure(
+            store="cache",
+            phase="recovery",
+            state_path=self.store.status_path,
+            details={"attempts": _MAX_CACHE_READ_RECOVERY_ATTEMPTS},
+        )
 
 
 class CacheWriteTransaction(CacheTransaction):

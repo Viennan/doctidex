@@ -49,7 +49,7 @@ def _installation_path_for_root(owner: Path, root: Path) -> str:
 
     store = RuntimeStore(owner)
     try:
-        with store.diagnostic_transaction() as transaction:
+        with store.read_diagnostic_transaction() as transaction:
             for installation in transaction.model_view().installations:
                 candidate = repo_path_to_fs(owner, installation.install_path)
                 if candidate.resolve() == root.resolve():
@@ -103,10 +103,10 @@ class InstallationRuntimeStore:
 
         return InstallationReadOnlyTransaction(self)
 
-    def diagnostic_transaction(self):
-        """Open the owner's diagnostic transaction."""
+    def read_diagnostic_transaction(self):
+        """Open the owner's read-only diagnostic transaction."""
 
-        return self.owner_store.diagnostic_transaction()
+        return self.owner_store.read_diagnostic_transaction()
 
     def read_state(self) -> RuntimeState:
         """Return the owner's current RuntimeState."""
@@ -315,7 +315,7 @@ def _inside_managed_worktree(owner: Path, root: Path) -> bool:
 
     store = RuntimeStore(owner)
     try:
-        with store.diagnostic_transaction() as transaction:
+        with store.read_diagnostic_transaction() as transaction:
             if any(journal.state in {"prepared", "publishing"} for journal in transaction.pending_journals):
                 raise StoreFailure(
                     store="runtime",
