@@ -7,13 +7,19 @@ from conftest import (
     CliRunner,
     commit_file,
     git,
+    git_head,
     make_git_repository,
     read_json,
     write_json,
     write_residual_journal,
 )
 
-from whero.doctidex.installation import InstallationRuntimeStore, resolve_installation_context
+from whero.doctidex.errors import CommandFailure
+from whero.doctidex.installation import (
+    InstallationRuntimeStore,
+    resolve_installation_context_by_id,
+    resolve_owner_root_from_path,
+)
 
 
 def test_default_worktree_path_is_not_installation_context(
@@ -147,9 +153,16 @@ def test_installation_context_rejects_forbidden_commands_and_allows_read_only_co
         "--branch",
         "main",
     )
+    install_id = installed.payload["install-id"]
     installation_root = initialized_root / installed.payload["install-path"].lstrip("/")
 
-    forbidden = cli.run("--repos-path", str(installation_root), "init")
+    forbidden = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "--installation-context",
+        install_id,
+        "init",
+    )
     assert forbidden.code == 2
     assert forbidden.payload["message"]["code"] == "installation.context.forbidden"
     assert forbidden.payload["message"]["subject"] == {
@@ -158,11 +171,45 @@ def test_installation_context_rejects_forbidden_commands_and_allows_read_only_co
     }
     assert not (installation_root / ".doctidex-git").exists()
 
-    validated = cli.run("--repos-path", str(installation_root), "validate", "--model-structure")
+    validated = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "--installation-context",
+        install_id,
+        "validate",
+        "--model-structure",
+    )
     assert validated.code == 1
     assert validated.payload["status"] == "ok"
     assert validated.payload["valid"] is False
     assert validated.payload["message"] == {}
+
+
+def test_path_detected_installation_without_argument_requires_explicit_context(
+    initialized_root: Path,
+    source_repository: Path,
+    cache_home: Path,
+    cli: CliRunner,
+) -> None:
+    installed = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "install",
+        "--untracked",
+        "--url",
+        str(source_repository),
+        "--branch",
+        "main",
+    )
+    installation_root = initialized_root / installed.payload["install-path"].lstrip("/")
+
+    failed = cli.run("--repos-path", str(installation_root), "init")
+
+    assert failed.code == 2
+    assert failed.payload["message"]["code"] == "installation.context.argument-required"
+    assert failed.payload["message"]["details"]["required-argument"] == "--installation-context"
+    assert not (installation_root / ".doctidex-git").exists()
 
 
 def test_installation_runtime_store_exposes_only_read_only_transaction_surface(
@@ -190,16 +237,139 @@ def test_installation_runtime_store_exposes_only_read_only_transaction_surface(
         "--branch",
         "main",
     )
-    installation_root = initialized_root / installed.payload["install-path"].lstrip("/")
+    install_id = installed.payload["install-id"]
 
-    context = resolve_installation_context(installation_root)
-    assert context is not None
+    context = resolve_installation_context_by_id(initialized_root, install_id)
+    assert context.install_path == installed.payload["install-path"]
 
     store = InstallationRuntimeStore(context)
     with store.read_only_transaction() as transaction:
         assert transaction.model_view() is not None
     with pytest.raises(AttributeError):
         _ = store.write_transaction
+
+
+def test_installation_context_by_id_works_for_shared_branch_tag_and_commit_paths(
+    initialized_root: Path,
+    source_repository: Path,
+    cache_home: Path,
+    cli: CliRunner,
+) -> None:
+    branch = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "install",
+        "--untracked",
+        "--url",
+        str(source_repository),
+        "--branch",
+        "main",
+    )
+    tag = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "install",
+        "--untracked",
+        "--url",
+        str(source_repository),
+        "--tag",
+        "v1",
+    )
+    commit = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "install",
+        "--untracked",
+        "--url",
+        str(source_repository),
+        "--commit",
+        git_head(source_repository),
+    )
+
+    for install_id in (
+        branch.payload["install-id"],
+        tag.payload["install-id"],
+        commit.payload["install-id"],
+    ):
+        validated = cli.run(
+            "--repos-path",
+            str(initialized_root),
+            "--installation-context",
+            install_id,
+            "validate",
+            "--model-structure",
+        )
+        assert validated.code == 1
+        assert validated.payload["valid"] is False
+
+
+def test_unknown_installation_context_id_fails_before_mutation(
+    initialized_root: Path,
+    cli: CliRunner,
+) -> None:
+    failed = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "--installation-context",
+        "missing-id",
+        "validate",
+        "--model-structure",
+    )
+
+    assert failed.code == 2
+    assert failed.payload["message"]["code"] == "installation.not-found"
+    assert failed.payload["message"]["details"]["install-id"] == "missing-id"
+
+
+def test_installation_context_id_discovers_owner_root_from_current_directory(
+    initialized_root: Path,
+    source_repository: Path,
+    cache_home: Path,
+    cli: CliRunner,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    installed = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "install",
+        "--untracked",
+        "--url",
+        str(source_repository),
+        "--branch",
+        "main",
+    )
+    installation_root = initialized_root / installed.payload["install-path"].lstrip("/")
+    monkeypatch.chdir(installation_root)
+
+    validated = cli.run(
+        "--installation-context",
+        installed.payload["install-id"],
+        "validate",
+        "--model-structure",
+    )
+
+    assert validated.code == 1
+    assert validated.payload["valid"] is False
+
+
+def test_owner_root_candidate_rule_rejects_zero_and_multiple_candidates(tmp_path: Path) -> None:
+    zero_candidates = tmp_path / "plain" / "directory"
+    zero_candidates.mkdir(parents=True)
+    with pytest.raises(CommandFailure) as zero_error:
+        resolve_owner_root_from_path(zero_candidates)
+    assert zero_error.value.code == "installation.context.owner-required"
+
+    multiple_candidates = (
+        tmp_path / "outer" / ".doctidex-git" / "inner" / ".doctidex-git" / "leaf"
+    )
+    multiple_candidates.mkdir(parents=True)
+    with pytest.raises(CommandFailure) as multiple_error:
+        resolve_owner_root_from_path(multiple_candidates)
+    assert multiple_error.value.code == "installation.owner.ambiguous"
 
 
 def test_installation_context_queries_local_install_and_restores_to_owner(
@@ -256,15 +426,26 @@ def test_installation_context_queries_local_install_and_restores_to_owner(
         "--branch",
         "main",
     )
-    installation_root = initialized_root / installed.payload["install-path"].lstrip("/")
+    installed_id = installed.payload["install-id"]
 
-    parsed = cli.run("--repos-path", str(installation_root), "boundary-set", "parse", "--path", "/readme.md")
+    parsed = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "--installation-context",
+        installed_id,
+        "boundary-set",
+        "parse",
+        "--path",
+        "/readme.md",
+    )
     assert parsed.code == 0
     assert parsed.payload["results"] == [{"path": "/readme.md", "has-boundary": False}]
 
     queried = cli.run(
         "--repos-path",
-        str(installation_root),
+        str(initialized_root),
+        "--installation-context",
+        installed_id,
         "import",
         "query",
         "--install-id",
@@ -277,7 +458,9 @@ def test_installation_context_queries_local_install_and_restores_to_owner(
 
     restored = cli.run(
         "--repos-path",
-        str(installation_root),
+        str(initialized_root),
+        "--installation-context",
+        installed_id,
         "import",
         "restore",
         "--install-id",
@@ -287,9 +470,12 @@ def test_installation_context_queries_local_install_and_restores_to_owner(
     assert restored.payload["install-id"] == "nested-id"
     assert restored.payload["install-path"] == "/.doctidex-git/imports/nested"
     assert Path(restored.payload["presentation-path"]).is_dir()
+
     queried_after_restore = cli.run(
         "--repos-path",
-        str(installation_root),
+        str(initialized_root),
+        "--installation-context",
+        installed_id,
         "import",
         "query",
         "--install-id",
@@ -299,6 +485,7 @@ def test_installation_context_queries_local_install_and_restores_to_owner(
     assert restored_candidate["presentation-path"] == str(
         initialized_root / owner_nested.payload["install-path"].lstrip("/")
     )
+
     runtime = read_json(initialized_root / ".doctidex-git" / "runtime.json")
     nested_record = next(item for item in runtime["imports"] if item["install-id"] == "nested-id")
     assert nested_record["tracked"] is False
@@ -307,6 +494,6 @@ def test_installation_context_queries_local_install_and_restores_to_owner(
     assert "nested-id" in share["install-ids"]
     assert any(
         reference["install-id"] == "nested-id"
-        and reference["owner-install-id"] == installed.payload["install-id"]
+        and reference["owner-install-id"] == installed_id
         for reference in share["context-references"]
     )

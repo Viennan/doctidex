@@ -15,7 +15,10 @@ The product is a Linux/macOS CLI, not a hosted service or a replacement for Git.
 
 ## Bounded context
 
-The Git-root is the boundary for every command. `--repos-path` must select that root; when omitted, the CLI discovers it. Repository-internal paths begin with `/` and are rooted at the selected Git root, not the host filesystem.
+The Git-root is the boundary for every command. `--repos-path` selects the owner root when supplied; when omitted,
+the CLI discovers it. `--installation-context <INSTALL-ID>` selects a recorded Installation by identity without
+replacing Git-root selection. Repository-internal paths begin with `/` and are rooted at the selected Git root, not
+the host filesystem.
 
 The domain distinguishes:
 
@@ -29,12 +32,21 @@ Commands behave differently when the selected Git root is inside a managed Insta
 
 ### Context detection
 
-`resolve_installation_context` walks ancestors for a `.doctidex-git` owner and then consults the owner's RuntimeState. If the selected root matches a recorded `Worktree.work_path`, it is an ordinary repository path rather than an Installation. If one owner is found and no Worktree match exists, the current path is inside that owner's Installation. If multiple owners are found, the path is ambiguous and the command fails before any mutation.
+`--installation-context <INSTALL-ID>` is the authoritative Installation selector. The CLI resolves the owner root
+from `--repos-path` when supplied; otherwise it requires exactly one ancestor `.doctidex-git` owner candidate and
+fails on zero or multiple candidates. It then opens the owner `RuntimeState`, finds the recorded Installation by
+`install-id`, and constructs `InstallationContext` from the owner root and the recorded `install-path`.
+
+When `--installation-context` is omitted, path detection is a defensive guard rather than a context resolver. The
+CLI walks ancestors for a `.doctidex-git` owner. A selected root that matches a recorded `Worktree.work_path` is an
+ordinary repository path. If one owner is found and no Worktree match exists, the path appears to be inside that
+owner's Installation and the command fails with `installation.context.argument-required`. Multiple owner candidates
+fail with `installation.owner.ambiguous`.
 
 An `InstallationContext` records:
 
 - `owner-root`: the owning repository root;
-- `install-path`: the repository-internal path of the Installation containing the selected root.
+- `install-path`: the repository-internal path of the Installation selected by `install-id`.
 
 ### Command admission
 
@@ -60,7 +72,7 @@ An `InstallationRuntimeStore` coordinates two stores without merging their state
 
 An `InstallationRuntimeModelView` exposes Installation-local records. It sets `presentation-path` to the owner-side Installation with the same `install-id` when one exists; otherwise the field is absent. The Installation and owner models remain separate.
 
-`import restore` in Installation context reads the requested Installation from the local model, then installs it into the owner work model as an untracked Installation. It never creates a nested Installation inside the current Installation; the local Installation is flattened into the owner repository's runtime projection. The result keeps the local Installation identity and supplies the owner-side `presentation-path`.
+`import restore` with `--installation-context` reads the requested Installation from the local model, then installs it into the owner work model as an untracked Installation. It never creates a nested Installation inside the current Installation; the local Installation is flattened into the owner repository's runtime projection. The result keeps the local Installation identity and supplies the owner-side `presentation-path`.
 
 ## Domain model
 
@@ -186,7 +198,7 @@ The stores are not database transactions. Their objective is recoverable model s
 | CLI envelope and argument contract | [cli/main.py](../../../src/python/whero/doctidex/cli/main.py), [cli/results.py](../../../src/python/whero/doctidex/cli/results.py) |
 | Domain records | [model.py](../../../src/python/whero/doctidex/model.py) |
 | Shared model relations and link scans | [model_view.py](../../../src/python/whero/doctidex/model_view.py) |
-| Installation-context detection and owner routing | [installation.py](../../../src/python/whero/doctidex/installation.py) |
+| Installation-context resolution and owner routing | [installation.py](../../../src/python/whero/doctidex/installation.py) |
 | Store protocol and journals | [store/](../../../src/python/whero/doctidex/store/) |
 | Git source access and cache | [repository.py](../../../src/python/whero/doctidex/repository.py), [git_cache.py](../../../src/python/whero/doctidex/git_cache.py) |
 | Command workflows | [boundary.py](../../../src/python/whero/doctidex/boundary.py), [imports.py](../../../src/python/whero/doctidex/imports.py), [worktree.py](../../../src/python/whero/doctidex/worktree.py), [initialization.py](../../../src/python/whero/doctidex/initialization.py), [validate.py](../../../src/python/whero/doctidex/validate.py), [repair.py](../../../src/python/whero/doctidex/repair.py) |

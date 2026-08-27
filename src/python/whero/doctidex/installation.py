@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Self
@@ -9,9 +11,9 @@ from typing import Self
 from whero.doctidex import imports as import_workflow
 from whero.doctidex.errors import CommandFailure
 from whero.doctidex.model import BoundaryPoint, Installation, ModelFormatError, Ref, RuntimeState, Worktree
-from whero.doctidex.paths import fs_path_to_repo_path, repo_path_to_fs
+from whero.doctidex.paths import repo_path_to_fs
 from whero.doctidex.store.files import StoreFailure
-from whero.doctidex.store.runtime import RuntimeStore
+from whero.doctidex.store.runtime import RuntimeReadDiagnosticTransaction, RuntimeStore
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,41 +24,65 @@ class InstallationContext:
     install_path: str
 
 
-def resolve_installation_context(root: Path) -> InstallationContext | None:
-    """Return Installation context when ``root`` is inside an owner's Installation."""
+def resolve_owner_root_from_path(start_path: Path) -> Path:
+    """Return the owner root when ``start_path`` has exactly one ancestor owner."""
+
+    resolved = start_path.resolve()
+    owners = _owner_roots(resolved)
+    if len(owners) > 1:
+        raise _ambiguous_owner_error(resolved, owners)
+    if not owners:
+        raise CommandFailure(
+            code="installation.context.owner-required",
+            summary="The Installation owner could not be determined from the current path.",
+            subject={"kind": "installation", "path": str(resolved)},
+            details={"start-path": str(resolved), "required-argument": "--repos-path"},
+        )
+    return owners[0]
+
+
+def resolve_installation_context_by_id(owner_root: Path, install_id: str) -> InstallationContext:
+    """Resolve one recorded Installation by owner ``install_id``."""
+
+    with _owner_diagnostic_transaction(owner_root) as transaction:
+        installation = transaction.model_view().installation(install_id)
+    if installation is None:
+        raise CommandFailure(
+            code="installation.not-found",
+            summary="The requested Installation does not exist in the owner work model.",
+            subject={"kind": "installation", "install-id": install_id},
+            details={"install-id": install_id, "owner-path": str(owner_root)},
+        )
+    return InstallationContext(owner_root=owner_root, install_path=installation.install_path)
+
+
+def installation_path_preflight(root: Path) -> None:
+    """Fail when ``root`` is a managed Installation path without an explicit context."""
 
     owners = _owner_roots(root)
     if len(owners) > 1:
-        raise CommandFailure(
-            code="installation.owner.ambiguous",
-            summary="The requested path is nested in multiple Installation workspaces.",
-            subject={"kind": "installation", "path": str(root)},
-            details={"owner-paths": [str(owner) for owner in owners]},
-        )
+        raise _ambiguous_owner_error(root, owners)
     if not owners:
-        return None
+        return
 
     owner = owners[0]
     if _inside_managed_worktree(owner, root):
-        return None
+        return
 
-    install_path = _installation_path_for_root(owner, root)
-    return InstallationContext(owner_root=owner, install_path=install_path)
+    raise CommandFailure(
+        code="installation.context.argument-required",
+        summary="This path appears to be inside a managed Installation.",
+        subject={"kind": "installation", "path": str(root)},
+        details={
+            "owner-path": str(owner),
+            "required-argument": "--installation-context",
+            "correction": (
+                "Ensure the Installation is installed or restored, then pass "
+                "--installation-context <INSTALL-ID>."
+            ),
+        },
+    )
 
-
-def _installation_path_for_root(owner: Path, root: Path) -> str:
-    """Return the recorded Installation path that physically contains ``root``."""
-
-    store = RuntimeStore(owner)
-    try:
-        with store.read_diagnostic_transaction() as transaction:
-            for installation in transaction.model_view().installations:
-                candidate = repo_path_to_fs(owner, installation.install_path)
-                if candidate.resolve() == root.resolve():
-                    return installation.install_path
-    except (ModelFormatError, StoreFailure):
-        pass
-    return fs_path_to_repo_path(owner, root)
 
 class InstallationRuntimeStore:
     """A read-only RuntimeStore-shaped adapter for one Installation context.
@@ -313,6 +339,19 @@ def _current_exc_info():
 def _inside_managed_worktree(owner: Path, root: Path) -> bool:
     """Return whether ``root`` is the physical path of a recorded owner Worktree."""
 
+    with _owner_diagnostic_transaction(owner) as transaction:
+        worktrees = transaction.model_view().worktrees
+    resolved_root = root.resolve()
+    return any(
+        repo_path_to_fs(owner, worktree.work_path).resolve() == resolved_root
+        for worktree in worktrees
+    )
+
+
+@contextmanager
+def _owner_diagnostic_transaction(owner: Path) -> Iterator[RuntimeReadDiagnosticTransaction]:
+    """Open an owner diagnostic read after converting its model and journal errors."""
+
     store = RuntimeStore(owner)
     try:
         with store.read_diagnostic_transaction() as transaction:
@@ -323,7 +362,7 @@ def _inside_managed_worktree(owner: Path, root: Path) -> bool:
                     state_path=store.transactions_path,
                     details={"reason": "pending-transaction", "owner-path": str(owner)},
                 )
-            worktrees = transaction.model_view().worktrees
+            yield transaction
     except ModelFormatError as exc:
         raise CommandFailure(
             code="work-model.invalid",
@@ -336,10 +375,16 @@ def _inside_managed_worktree(owner: Path, root: Path) -> bool:
                 "expected": exc.expected_shape,
             },
         ) from exc
-    resolved_root = root.resolve()
-    return any(
-        repo_path_to_fs(owner, worktree.work_path).resolve() == resolved_root
-        for worktree in worktrees
+
+
+def _ambiguous_owner_error(path: Path, owners: tuple[Path, ...]) -> CommandFailure:
+    """Return the stable ambiguous-owner command failure."""
+
+    return CommandFailure(
+        code="installation.owner.ambiguous",
+        summary="The requested path is nested in multiple Installation workspaces.",
+        subject={"kind": "installation", "path": str(path)},
+        details={"owner-paths": [str(owner) for owner in owners]},
     )
 
 
@@ -353,5 +398,7 @@ __all__ = [
     "InstallationContext",
     "InstallationRuntimeModelView",
     "InstallationRuntimeStore",
-    "resolve_installation_context",
+    "installation_path_preflight",
+    "resolve_installation_context_by_id",
+    "resolve_owner_root_from_path",
 ]

@@ -115,6 +115,18 @@ Removal is blocked when a tracked Installation still has a Ref or an in-scope Ma
 
 ## Installation context
 
-Inside a managed Installation, `import query` and `import restore` are allowed. `import restore` reads the local Installation and installs it into the owner work model as an untracked Installation. `import install`, `import track`, `import ref`, and `import unref` are forbidden.
+To run an import command against an Installation, pass its owner-side `install-id`:
+
+```bash
+doctidex-git --repos-path <OWNER-ROOT> --installation-context <INSTALL-ID> import query ...
+doctidex-git --repos-path <OWNER-ROOT> --installation-context <INSTALL-ID> import restore --install-id <INSTALL-ID>
+```
+
+In Installation context, `import query` and `import restore` are allowed. `import restore` reads the local
+Installation and installs it into the owner work model as an untracked Installation. `import install`,
+`import track`, `import ref`, and `import unref` are forbidden.
+
+Running an import command with a path inside a managed Installation but without `--installation-context`
+produces `installation.context.argument-required`.
 
 When an Installation-context `import query` result has no `presentation-path`, the Installation has not yet been restored into the owner work model. In the same Installation context, run `import restore --install-id <INSTALL-ID>` to install it and obtain its owner-side path.

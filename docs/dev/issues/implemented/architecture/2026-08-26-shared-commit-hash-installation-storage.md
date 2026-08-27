@@ -51,7 +51,7 @@ Removing an Installation removes its `install-id` and physical path. The share a
 
 ### InstallationContext
 
-`import restore` inside an Installation resolves the parent Installation by exact `install-path`, records or reuses the owner-side Installation under the local `install-id`, and stores an `InstallationContextReference` naming the parent Installation.
+`import restore` with `--installation-context <INSTALL-ID>` resolves the parent Installation by its recorded `install-id`, records or reuses the owner-side Installation under the local `install-id`, and stores an `InstallationContextReference` naming the parent Installation. The explicit selector contract is defined by [Select Installation context by install-id argument](2026-08-27-select-installation-context-by-install-id.md).
 
 The read-only adapter and identity-based `presentation-path` mapping are defined by [Make Installation-context transactions read-only](../simplification/2026-08-27-make-installation-context-transactions-read-only.md).
 

@@ -109,10 +109,11 @@ or modify `index.md`.
 
 ## Installation context
 
-Running `doctidex-git` from inside a managed Installation changes which commands are allowed. Use `validate`,
-`boundary-set parse`, `import query`, and `import restore` there. Commands that mutate the owner work model, create
-Worktrees, or initialize a workspace are forbidden. `import restore` does not install inside the current Installation; it
-flattens the local Installation into the owner repository.
+Use `--installation-context <INSTALL-ID>` to operate on a recorded Installation. In that context, `validate`,
+`boundary-set parse`, `import query`, and `import restore` are allowed. Commands that mutate the owner work model,
+create Worktrees, or initialize a workspace are forbidden. Running from inside a managed Installation without
+`--installation-context` is blocked and asks for the argument. `import restore` does not install inside the current
+Installation; it flattens the local Installation into the owner repository.
 
 See [common.md](reference/common.md#installation-context) for the complete behavior.
 
@@ -127,7 +128,7 @@ See [common.md](reference/common.md#installation-context) for the complete behav
 | Validation and repair | Observe problems without changes, then repair recoverable physical state. | Use `validate` first; use `repair` to align model and physical objects. |
 | Result contract | Every command emits machine-readable JSON. | Success uses `status: "ok"`; `validate` adds `valid`; failures use stable `message.code`. |
 | Cache | The CLI caches bare repositories under the doctidex-git home. | Configure with `DOCTIDEX-GIT-HOME` and `config.toml`; see [common.md](reference/common.md#cache-configuration). |
-| Installation context | Commands inside an Installation are restricted. | Only `validate`, `boundary-set parse`, `import query`, and `import restore` are allowed; `import restore` flattens the local Installation into the owner repository. |
+| Installation context | Select an Installation with `--installation-context`; the allowed command set is restricted. | Only `validate`, `boundary-set parse`, `import query`, and `import restore` are allowed; `import restore` flattens the local Installation into the owner repository. |
 
 ## Command documents
 

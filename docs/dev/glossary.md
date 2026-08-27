@@ -12,7 +12,7 @@ Quick lookup for development and design terms. Each entry links to its authorita
 | CustomBoundaryPoint | A tracked boundary declared directly by `boundary-set add`. | [overview.md](architecture/overview.md#boundary-points) |
 | CacheItem | A cached bare repository identity and publication state. | [overview.md](architecture/overview.md#domain-model) |
 | RuntimeState | The merged tracked and runtime work-model view. | [overview.md](architecture/overview.md#domain-model) |
-| InstallationContext | Owner root and install path for a path inside an Installation. | [overview.md](architecture/overview.md#context-detection) |
+| InstallationContext | Owner root and install path for an Installation selected by `install-id`. | [overview.md](architecture/overview.md#context-detection) |
 | InstallationRuntimeStore | A RuntimeStore adapter that coordinates owner and Installation stores without merging state. | [overview.md](architecture/overview.md#model-adaptation) |
 | InstallationShare | One runtime-local relation for a Git URL and commit; it owns the shared physical worktree path and referencing Installation identities. | [installation-shares.md](architecture/installation-shares.md#installationshare) |
 | InstallationContextReference | Provenance for a sub-Installation restored from InstallationContext. | [installation-shares.md](architecture/installation-shares.md#installationcontext) |

@@ -26,9 +26,15 @@ from whero.doctidex.initialization import (
     WorkspaceInitializeFailed,
     initialize,
 )
-from whero.doctidex.installation import InstallationRuntimeStore, resolve_installation_context
+from whero.doctidex.installation import (
+    InstallationContext,
+    InstallationRuntimeStore,
+    installation_path_preflight,
+    resolve_installation_context_by_id,
+    resolve_owner_root_from_path,
+)
 from whero.doctidex.model import ModelFormatError
-from whero.doctidex.paths import normalize_repo_path
+from whero.doctidex.paths import normalize_repo_path, repo_path_to_fs
 from whero.doctidex.repository import resolve_git_root
 from whero.doctidex.store.files import StoreFailure
 from whero.doctidex.store.runtime import RuntimeStore
@@ -81,6 +87,18 @@ class ParsedInvocation:
 
     command: str
     repos_path: str | None
+    installation_context: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedInvocation:
+    """One invocation after owner root and optional Installation context resolution."""
+
+    command: str
+    repos_path: str
+    installation_context: str | None
+    context: InstallationContext | None
+    root: Path
 
 
 type CommandPayload = dict[str, object]
@@ -100,6 +118,12 @@ def build_parser() -> CliArgumentParser:
         "--repos-path",
         metavar="REPOSITORY-ROOT-PATH",
         help="Git root to operate on; omitted to discover it from the current path.",
+    )
+    parser.add_argument(
+        "--installation-context",
+        metavar="INSTALL-ID",
+        type=_non_empty,
+        help="Recorded Installation to operate on; omitted for ordinary repository context.",
     )
     commands = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
 
@@ -123,7 +147,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def dispatch(args: argparse.Namespace) -> ParsedInvocation:
     """Return the common invocation information used by command workflows."""
 
-    return ParsedInvocation(command=_command_path(args), repos_path=args.repos_path)
+    return ParsedInvocation(
+        command=_command_path(args),
+        repos_path=args.repos_path,
+        installation_context=args.installation_context,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -175,22 +203,22 @@ def _command_result[**P](
     *,
     exit_status: CommandExitStatus = _default_exit_status,
 ) -> Callable[
-    [Callable[Concatenate[ParsedInvocation, Path, P], CommandPayload]],
+    [Callable[Concatenate[ResolvedInvocation, P], CommandPayload]],
     Callable[Concatenate[ParsedInvocation, P], int],
 ]:
     """Adapt a Git-root command workflow to the CLI result contract."""
 
     def decorate(
-        handler: Callable[Concatenate[ParsedInvocation, Path, P], CommandPayload],
+        handler: Callable[Concatenate[ResolvedInvocation, P], CommandPayload],
     ) -> Callable[Concatenate[ParsedInvocation, P], int]:
         @wraps(handler)
         def run(invocation: ParsedInvocation, /, *args: P.args, **kwargs: P.kwargs) -> int:
-            operation = invocation
+            operation: ParsedInvocation | ResolvedInvocation = invocation
             try:
-                root = resolve_git_root(invocation.repos_path)
-                operation = ParsedInvocation(invocation.command, str(root))
-                _installation_context_preflight(invocation.command, root)
-                payload = handler(operation, root, *args, **kwargs)
+                resolved = _resolve_invocation(invocation)
+                operation = resolved
+                _installation_context_preflight(resolved.command, resolved.context)
+                payload = handler(resolved, *args, **kwargs)
             except CommandFailure as exc:
                 payload = _command_failure(operation, exc)
             except GitRootUnresolved as exc:
@@ -214,10 +242,43 @@ def _command_result[**P](
     return decorate
 
 
-def _installation_context_preflight(command: str, root: Path) -> None:
+def _resolve_invocation(invocation: ParsedInvocation) -> ResolvedInvocation:
+    """Resolve the command root and optional Installation context for one invocation."""
+
+    if invocation.installation_context is None:
+        root = resolve_git_root(invocation.repos_path)
+        installation_path_preflight(root)
+        return ResolvedInvocation(
+            command=invocation.command,
+            repos_path=str(root),
+            installation_context=None,
+            context=None,
+            root=root,
+        )
+
+    owner_root = _resolve_owner_root(invocation.repos_path)
+    context = resolve_installation_context_by_id(owner_root, invocation.installation_context)
+    command_root = repo_path_to_fs(owner_root, context.install_path)
+    return ResolvedInvocation(
+        command=invocation.command,
+        repos_path=str(command_root),
+        installation_context=invocation.installation_context,
+        context=context,
+        root=command_root,
+    )
+
+
+def _resolve_owner_root(repos_path: str | None) -> Path:
+    """Return the owner Git root from ``--repos-path`` or the current path's owner candidates."""
+
+    if repos_path is not None:
+        return resolve_git_root(repos_path)
+    return resolve_owner_root_from_path(Path.cwd())
+
+
+def _installation_context_preflight(command: str, context: InstallationContext | None) -> None:
     """Reject forbidden or not-yet-available commands in Installation context."""
 
-    context = resolve_installation_context(root)
     if context is None:
         return
     if command in {"validate", "boundary-set parse", "import query", "import restore"}:
@@ -260,8 +321,11 @@ def _is_forbidden_installation_command(command: str) -> bool:
 
 
 @_command_result()
-def _run_boundary(operation: ParsedInvocation, root: Path, args: argparse.Namespace) -> CommandPayload:
-    coordinator = StoreCoordinator(_command_runtime_store(root), GitCache.from_environment())
+def _run_boundary(operation: ResolvedInvocation, args: argparse.Namespace) -> CommandPayload:
+    coordinator = StoreCoordinator(
+        _command_runtime_store(operation.root, operation.context),
+        GitCache.from_environment(),
+    )
     store = coordinator.store
 
     def execute() -> CommandPayload:
@@ -277,8 +341,8 @@ def _run_boundary(operation: ParsedInvocation, root: Path, args: argparse.Namesp
 
 
 @_command_result()
-def _run_import(operation: ParsedInvocation, root: Path, args: argparse.Namespace) -> CommandPayload:
-    context = resolve_installation_context(root)
+def _run_import(operation: ResolvedInvocation, args: argparse.Namespace) -> CommandPayload:
+    context = operation.context
     if context is not None and args.import_command == "restore":
         store = InstallationRuntimeStore(context)
         coordinator = StoreCoordinator(store, GitCache.from_environment())
@@ -294,7 +358,10 @@ def _run_import(operation: ParsedInvocation, root: Path, args: argparse.Namespac
             **fields,
         )
 
-    coordinator = StoreCoordinator(_command_runtime_store(root), GitCache.from_environment())
+    coordinator = StoreCoordinator(
+        _command_runtime_store(operation.root, operation.context),
+        GitCache.from_environment(),
+    )
     store = coordinator.store
 
     def execute() -> CommandPayload:
@@ -351,8 +418,8 @@ def _run_import(operation: ParsedInvocation, root: Path, args: argparse.Namespac
 
 
 @_command_result()
-def _run_worktree(operation: ParsedInvocation, root: Path, args: argparse.Namespace) -> CommandPayload:
-    coordinator = StoreCoordinator(_runtime_store(root), GitCache.from_environment())
+def _run_worktree(operation: ResolvedInvocation, args: argparse.Namespace) -> CommandPayload:
+    coordinator = StoreCoordinator(_runtime_store(operation.root), GitCache.from_environment())
     store = coordinator.store
 
     def execute() -> CommandPayload:
@@ -387,27 +454,27 @@ def _run_worktree(operation: ParsedInvocation, root: Path, args: argparse.Namesp
 
 
 @_command_result(exit_status=_validate_exit_status)
-def _run_validate(operation: ParsedInvocation, root: Path, args: argparse.Namespace) -> CommandPayload:
+def _run_validate(operation: ResolvedInvocation, args: argparse.Namespace) -> CommandPayload:
     result = validate_workflow.validate(
-        RuntimeStore(root),
+        RuntimeStore(operation.root),
         subdir=args.subdir,
         model_structure=args.model_structure,
     )
     return success(
         command=operation.command,
         valid=result.valid,
-        scope={"repos-path": str(root), "subdir": result.scope},
+        scope={"repos-path": str(operation.root), "subdir": result.scope},
         diagnostics=list(result.diagnostics),
     )
 
 
 @_command_result()
-def _run_repair(operation: ParsedInvocation, root: Path) -> CommandPayload:
-    repair_workflow.repair(_runtime_store(root), GitCache.from_environment())
+def _run_repair(operation: ResolvedInvocation) -> CommandPayload:
+    repair_workflow.repair(_runtime_store(operation.root), GitCache.from_environment())
     return success(command=operation.command)
 
 
-def _command_failure(invocation: ParsedInvocation, exc: CommandFailure) -> dict[str, object]:
+def _command_failure(invocation: ParsedInvocation | ResolvedInvocation, exc: CommandFailure) -> dict[str, object]:
     return error(
         command=invocation.command,
         code=exc.code,
@@ -418,7 +485,7 @@ def _command_failure(invocation: ParsedInvocation, exc: CommandFailure) -> dict[
     )
 
 
-def _store_or_model_failure(invocation: ParsedInvocation, exc: Exception) -> dict[str, object]:
+def _store_or_model_failure(invocation: ParsedInvocation | ResolvedInvocation, exc: Exception) -> dict[str, object]:
     if isinstance(exc, StoreFailure):
         details: dict[str, object] = {"store": exc.store, "phase": exc.phase, "state-path": str(exc.state_path)}
         if exc.transaction_id is not None:
@@ -457,8 +524,9 @@ def _runtime_store(root: Path) -> RuntimeStore:
     return store
 
 
-def _command_runtime_store(root: Path) -> RuntimeStore | InstallationRuntimeStore:
-    context = resolve_installation_context(root)
+def _command_runtime_store(
+    root: Path, context: InstallationContext | None
+) -> RuntimeStore | InstallationRuntimeStore:
     if context is None:
         return _runtime_store(root)
     return InstallationRuntimeStore(context)
@@ -469,12 +537,13 @@ def _normalize_optional_path(value: str | None, parameter: str) -> str | None:
 
 
 def _run_init(invocation: ParsedInvocation) -> int:
+    resolved: ParsedInvocation | ResolvedInvocation = invocation
     try:
-        root = resolve_git_root(invocation.repos_path)
-        _installation_context_preflight("init", root)
-        result = initialize(invocation.repos_path)
+        resolved = _resolve_invocation(invocation)
+        _installation_context_preflight(resolved.command, resolved.context)
+        result = initialize(str(resolved.root))
     except CommandFailure as exc:
-        payload = _command_failure(ParsedInvocation("init", str(root)), exc)
+        payload = _command_failure(resolved, exc)
     except GitRootUnresolved as exc:
         payload = error(
             command="init",
@@ -649,7 +718,7 @@ def _command_path(args: argparse.Namespace) -> str:
 def _command_from_argv(argv: list[str]) -> str:
     values = iter(argv)
     for value in values:
-        if value == "--repos-path":
+        if value in {"--repos-path", "--installation-context"}:
             next(values, None)
             continue
         if value.startswith("-"):

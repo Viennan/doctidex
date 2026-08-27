@@ -18,7 +18,7 @@ Managed Worktrees and Installations are now separate path roles.
 
 ### Worktree context
 
-`resolve_installation_context` keeps the ancestor scan and multiple-owner ambiguity check. For one owner, it opens a read-only diagnostic transaction over the owner RuntimeState before returning `InstallationContext`. If the selected Git root matches a recorded `Worktree.work_path`, it returns no Installation context. The Worktree record, not the default `/.doctidex-git/worktrees/` spelling, is the authority for the exclusion.
+`installation_path_preflight` keeps the ancestor scan and multiple-owner ambiguity check. For one owner, it opens a read-only diagnostic transaction over the owner RuntimeState. If the selected Git root matches a recorded `Worktree.work_path`, it returns ordinary context. The Worktree record, not the default `/.doctidex-git/worktrees/` spelling, is the authority for the exclusion. The earlier `resolve_installation_context` path-to-`install-id` behavior is superseded by [Select Installation context by install-id argument](../architecture/2026-08-27-select-installation-context-by-install-id.md).
 
 If the owner work model cannot be read, the command fails before mutation with a structured `work-model.invalid` error that includes the owner path. A pending RuntimeStore transaction fails with a structured store error before the command mutates.
 

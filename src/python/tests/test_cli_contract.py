@@ -52,6 +52,42 @@ def test_argument_error_context_does_not_treat_an_unknown_value_as_a_subcommand(
     assert result.payload["message"]["context"]["command"] == "repair"
 
 
+@pytest.mark.parametrize(
+    "argv",
+    (
+        ("--installation-context", "id", "--repos-path", "/repo", "init"),
+        ("--installation-context", "id", "--repos-path", "/repo", "boundary-set", "parse", "--path", "/x"),
+        ("--installation-context", "id", "--repos-path", "/repo", "import", "query", "--install-id", "x"),
+        ("--installation-context", "id", "--repos-path", "/repo", "worktree", "query", "--work-path", "/x"),
+        ("--installation-context", "id", "--repos-path", "/repo", "validate", "--model-structure"),
+        ("--installation-context", "id", "--repos-path", "/repo", "repair"),
+    ),
+)
+def test_installation_context_argument_is_accepted_for_every_command(
+    cli: CliRunner, argv: tuple[str, ...]
+) -> None:
+    result = cli.run(*argv)
+
+    assert result.code == 2
+    assert result.payload["message"]["code"] == "git-root.unresolved"
+
+
+def test_installation_context_rejects_empty_value(cli: CliRunner) -> None:
+    result = cli.run("--installation-context", "", "repair")
+
+    assert result.code == 2
+    assert result.payload["message"]["code"] == "argument.invalid"
+    assert result.payload["message"]["details"]["parameter"] == "--installation-context"
+
+
+def test_argument_error_does_not_treat_installation_context_value_as_command(cli: CliRunner) -> None:
+    result = cli.run("--installation-context", "validate", "boundary-set", "add")
+
+    assert result.code == 2
+    assert result.payload["message"]["code"] == "argument.invalid"
+    assert result.payload["message"]["context"]["command"] == "boundary-set add"
+
+
 def test_repair_resolves_its_git_root_before_accessing_the_model(cli: CliRunner) -> None:
     result = cli.run("--repos-path", "/repo", "repair")
 

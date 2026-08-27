@@ -7,10 +7,12 @@ All command clusters share Git-root selection, repository paths, cache configura
 Every command accepts:
 
 ```bash
-doctidex-git [--repos-path <REPOSITORY-ROOT-PATH>] <command> [options]
+doctidex-git [--repos-path <REPOSITORY-ROOT-PATH>] [--installation-context <INSTALL-ID>] <command> [options]
 ```
 
 When `--repos-path` is omitted, the CLI discovers the enclosing Git root. When provided, it must name the Git root exactly.
+When `--installation-context` is supplied and `--repos-path` is omitted, the CLI treats the sole ancestor
+`.doctidex-git` owner as the effective owner root; zero or multiple candidates fail before mutation.
 
 Repository-internal paths begin with `/` and are rooted at the Git root, not the host filesystem:
 
@@ -29,9 +31,13 @@ The cache stores bare Git repositories. It is not the authority for Installation
 
 ## Installation context
 
-When the selected Git root is inside a managed Installation, the CLI runs in Installation context rather than ordinary repository context.
+`--installation-context <INSTALL-ID>` explicitly selects an Installation already recorded in the owner work model.
+When it is supplied, the CLI runs the command in Installation context for that `install-id`; the owner root comes
+from `--repos-path` or the ancestor-owner rule above.
 
-Detection walks ancestor directories for a `.doctidex-git` directory. A selected root that matches a recorded `Worktree.work_path` is an ordinary repository path, not Installation context. Otherwise, if exactly one owner is found, the current path belongs to that owner's Installation. If multiple owners are found, the command fails with `installation.owner.ambiguous`.
+When `--installation-context` is omitted, path detection is defensive only. A selected root that matches a recorded
+`Worktree.work_path` is an ordinary repository path. If the path otherwise appears to be inside a managed
+Installation, the command fails with `installation.context.argument-required` and does not run.
 
 ### Allowed commands
 
@@ -66,7 +72,9 @@ Other commands are not yet available in Installation context.
 
 | Code | Meaning |
 |---|---|
-| `installation.owner.ambiguous` | The path is nested in multiple Installation workspaces. |
+| `installation.context.argument-required` | The path appears to be inside an Installation; pass `--installation-context <INSTALL-ID>`. |
+| `installation.context.owner-required` | `--installation-context` was supplied, but no owner `.doctidex-git` candidate could be found from the current path. |
+| `installation.owner.ambiguous` | The path is nested in multiple Installation owner workspaces. |
 | `installation.context.forbidden` | The requested command is prohibited inside an Installation. |
 | `installation.context.unavailable` | The command is not yet available inside an Installation, or local declarations cannot be read. |
 
