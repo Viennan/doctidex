@@ -1,10 +1,15 @@
 # Doctidex Git v2 Architecture
 
-This document defines the current `doctidex-git` command architecture. It is authority for the work model, domain services, and implementation responsibilities. The directory-tree model is defined by [directory-tree-spec.md](directory-tree-spec.md); transactional store design is defined by [stores-transactions.md](stores-transactions.md).
+This document defines the current `doctidex-git` command architecture. It is authority for the work model, domain
+services, link and boundary semantics, and implementation responsibilities. Transactional store design is defined by
+[stores-transactions.md](stores-transactions.md).
 
 ## Purpose and scope
 
-`doctidex-git` turns one Git repository into a doctidex tree while preserving ordinary Git development. It manages fixed-revision installations, symbolic refs, editable worktrees, custom boundaries, validation, and repair.
+`doctidex-git` organizes one Git repository as a node in an interconnected multi-repository knowledge network while
+preserving ordinary Git development. The repository remains an ordinary development workspace and knowledge base, and can
+be used as an authoritative external knowledge source by other repositories. It manages fixed-revision installations,
+symbolic refs, editable worktrees, custom boundaries, validation, and repair.
 
 The product is a Linux/macOS CLI, not a hosted service or a replacement for Git. It owns only managed declarations and derived boundaries. Ordinary repository content and user-created worktrees remain outside its ownership.
 
@@ -65,7 +70,7 @@ An `InstallationRuntimeModelView` exposes Installation-local records. It sets `p
 | **Ref** | A managed symbolic link from a repository path into an Installation. |
 | **Worktree** | A managed, untracked editable Git worktree. |
 | **CustomBoundaryPoint** | A tracked boundary declared directly by `boundary-set add`. |
-| **InlineAnnotation** | Structured metadata on one Markdown link. |
+| **StructuredLinkAnnotation** | A `doctidex` HTML-comment YAML block attached to one Markdown link. |
 | **CacheItem** | A cached bare repository identity and publication state. |
 | **RuntimeState** | The merged tracked and runtime model view. |
 
@@ -98,13 +103,32 @@ The complete boundary view is derived from current state:
 
 When paths overlap, resolution selects the first ancestor boundary from the Git root and does not continue below it.
 
+### Link and annotation semantics
+
+Markdown documents under the Git root follow these link rules:
+
+- A path beginning with `/` is relative to the Git root.
+- A path not beginning with `/` is relative to the source document's directory.
+- Relative links are preferred when they express the same target.
+
+A cross-boundary link must be followed by a `StructuredLinkAnnotation` that records the first crossed BoundaryPoint:
+
+```markdown
+[External](/external/example/guide.md)
+<!-- doctidex: {cross-boundary-point: /external/example} -->
+```
+
+The annotation must be a full path-segment prefix of the link path and must resolve to the first crossed BoundaryPoint.
+The Git root is the anchor for these paths; no `index.md` root-identity declaration is required.
+
 ## Domain services by command cluster
 
 ### Workspace bootstrap service
 
 Commands: `init`
 
-`init` establishes the `.doctidex-git` workspace, root `index.md` identity, empty state projections, and Git ignore protection. A non-empty workspace is already initialized; `validate --model-structure` or `repair` is the next step.
+`init` establishes the `.doctidex-git` workspace, empty state projections, and Git ignore protection. A non-empty
+workspace is already initialized; `validate --model-structure` or `repair` is the next step.
 
 ### Boundary management service
 
@@ -128,7 +152,10 @@ Commands: `worktree create`, `worktree remove`, `worktree query`
 
 Commands: `validate`
 
-`validate` is read-only. It checks the work model first because an untrustworthy model cannot drive a complete Markdown scan. Full validation covers root identity, state projections, physical Installations, Refs, Worktrees, ignore protection, local link targets, cross-boundary annotations, and tracked-Installation requirements. It reports dirty Installations and dirty Worktrees. It does not scan `.doctidex-git` or paths below a BoundaryPoint.
+`validate` is read-only. It checks the work model first because an untrustworthy model cannot drive a complete Markdown
+scan. Full validation covers state projections, physical Installations, Refs, Worktrees, ignore protection, local link
+targets, cross-boundary annotations, and tracked-Installation requirements. It reports dirty Installations and dirty
+Worktrees. It does not scan `.doctidex-git` or paths below a BoundaryPoint.
 
 ### Repair service
 

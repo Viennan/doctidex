@@ -1,4 +1,4 @@
-"""Read-only validation of the doctidex work model and directory tree."""
+"""Read-only validation of the doctidex work model and Markdown content."""
 
 from __future__ import annotations
 
@@ -19,7 +19,6 @@ from whero.doctidex.model_view import (
     scan_markdown_links,
 )
 from whero.doctidex.paths import normalize_repo_path, repo_path_to_fs
-from whero.doctidex.root_index import ROOT_INDEX_FRONTMATTER, root_index_frontmatter, root_index_matches
 from whero.doctidex.store.files import StoreFailure
 from whero.doctidex.store.model_view import RuntimeModelView
 from whero.doctidex.store.runtime import RecoveryRequired, RuntimeStore
@@ -42,22 +41,18 @@ def validate(
 ) -> ValidationResult:
     """Validate one workspace without changing state.
 
-    ``model_structure`` retains only the root identity and repository-level
-    work-model checks.
+    ``model_structure`` retains only repository-level work-model checks.
     """
 
     scope = _scope(store.git_root, None if model_structure else subdir)
     check = _check_model(store, scope)
     diagnostics = list(check.diagnostics)
     if model_structure:
-        if not check.requires_recovery:
-            diagnostics.extend(_index_diagnostics(store.git_root))
         diagnostics.sort(key=lambda item: (str(item.get("path", "")), int(item.get("line", 0)), str(item["rule"])))
         return ValidationResult(not diagnostics, scope, tuple(diagnostics))
     if check.model is None:
         diagnostics.sort(key=lambda item: (str(item.get("path", "")), int(item.get("line", 0)), str(item["rule"])))
         return ValidationResult(not diagnostics, scope, tuple(diagnostics))
-    diagnostics.extend(_index_diagnostics(store.git_root))
     # Content scanning relies on complete, valid work-model files. Any model
     # diagnostic means those files are not trustworthy, so skip the scan.
     if not check.diagnostics:
@@ -538,41 +533,6 @@ def _git_worktree_dirty(target: Path) -> bool:
 def _git_output(target: Path, *arguments: str) -> str:
     result = subprocess.run(["git", "-C", str(target), *arguments], check=True, capture_output=True, text=True)
     return result.stdout.strip()
-
-
-def _index_diagnostics(git_root: Path) -> list[dict[str, object]]:
-    path = git_root / "index.md"
-    if not path.is_file():
-        return [
-            _diagnostic(
-                "index.conforms",
-                "/index.md",
-                "The doctidex root index.md is missing.",
-                {"expected": "file with doctidex root frontmatter", "actual": None},
-            )
-        ]
-    try:
-        content = path.read_text()
-    except OSError:
-        return [
-            _diagnostic(
-                "index.conforms",
-                "/index.md",
-                "The doctidex root index.md cannot be read.",
-                {"expected": "readable file", "actual": "unreadable"},
-            )
-        ]
-    frontmatter = root_index_frontmatter(content)
-    if not root_index_matches(frontmatter):
-        return [
-            _diagnostic(
-                "index.conforms",
-                "/index.md",
-                "The root index.md does not declare a doctidex root.",
-                {"expected": ROOT_INDEX_FRONTMATTER, "actual": frontmatter},
-            )
-        ]
-    return []
 
 
 def _gitignore_violations(git_root: Path, state: RuntimeState) -> list[dict[str, object]]:
