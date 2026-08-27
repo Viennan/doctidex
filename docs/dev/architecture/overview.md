@@ -138,7 +138,7 @@ Commands: `repair`
 
 ## Store and coordination services
 
-The RuntimeStore owns tracked and runtime JSON projections. The CacheStore owns bare repository cache records. The StoreCoordinator serializes one workspace command, performs repair outside a failed RuntimeStore transaction, and retries the actual operation. Commands needing both domains acquire cache access before RuntimeStore access.
+The RuntimeStore owns tracked and runtime JSON projections. The CacheStore owns bare repository cache records. The StoreCoordinator coordinates retry and cache-before-RuntimeStore lock order; it performs repair outside a failed RuntimeStore transaction and retries the actual operation without serializing the whole command. Explicit repair is owned by the repair service. Commands needing both domains acquire cache access before RuntimeStore access.
 
 The stores are not database transactions. Their objective is recoverable model state under cooperating `doctidex-git` processes, not reversal of every filesystem or Git side effect.
 

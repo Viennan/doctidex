@@ -31,12 +31,12 @@ def repair_core(
 ) -> None:
     """Repair under a caller-owned GitCache Write transaction.
 
-    The caller must already hold the command coordination lock. This core only acquires the
-    RuntimeStore diagnostic lock, so a normal command can reuse its existing Write transaction
-    after a `repair-required` signal without nesting GitCache locks.
+    The caller owns the GitCache Write transaction. This core acquires the RuntimeStore repair
+    lock, so a normal command can reuse its existing Write transaction after a `repair-required`
+    signal without nesting GitCache locks.
     """
 
-    with store.diagnostic_transaction() as transaction:
+    with store.repair_transaction() as transaction:
         journals = transaction.pending_journals
         requires_physical_repair = _recover_pending_journals(store, journals)
         transaction.reload_state()

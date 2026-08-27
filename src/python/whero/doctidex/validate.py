@@ -94,7 +94,7 @@ def _check_model(store: RuntimeStore, scope: str) -> _ModelCheck:
         return _ModelCheck(None, tuple(diagnostics))
 
     try:
-        with store.diagnostic_transaction() as transaction:
+        with store.read_diagnostic_transaction() as transaction:
             pending = transaction.pending_journals
             unfinished = tuple(journal for journal in pending if journal.state in {"prepared", "publishing"})
             if unfinished:

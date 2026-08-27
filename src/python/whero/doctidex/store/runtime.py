@@ -130,16 +130,15 @@ class RuntimeStore:
 
         return RuntimeReadOnlyTransaction(self)
 
-    def diagnostic_transaction(self) -> RuntimeDiagnosticTransaction:
-        """Return a locked read-only snapshot without journal recovery.
+    def read_diagnostic_transaction(self) -> RuntimeReadDiagnosticTransaction:
+        """Return a shared-lock read-only snapshot that reports pending journals."""
 
-        ``validate`` and the existing-workspace branch of ``init`` need to observe a
-        pending transaction as evidence, rather than silently recovering it.  This
-        transaction deliberately has no publication capability and never changes a
-        journal, state file, or cache record.
-        """
+        return RuntimeReadDiagnosticTransaction(self)
 
-        return RuntimeDiagnosticTransaction(self)
+    def repair_transaction(self) -> RuntimeRepairTransaction:
+        """Return an exclusive-lock repair transaction that may reconcile journals."""
+
+        return RuntimeRepairTransaction(self)
 
     def write_transaction(self) -> RuntimeWriteTransaction:
         """Return a write transaction that journals its existence on entry."""
@@ -309,7 +308,7 @@ class RuntimeTransaction:
         self._reindex()
 
     def __enter__(self) -> Self:
-        self.store._lock.acquire()
+        self._acquire_lock()
         try:
             pending = self.store._pending_journals()
             if pending:
@@ -338,6 +337,11 @@ class RuntimeTransaction:
 
     def _after_enter(self) -> None:
         """Allow write transactions to persist their transaction marker."""
+
+    def _acquire_lock(self) -> None:
+        """Acquire the lock mode appropriate for this transaction."""
+
+        self.store._lock.acquire_exclusive()
 
     def _set_state(self, state: RuntimeState) -> None:
         self.state = state
@@ -378,6 +382,9 @@ class RuntimeTransaction:
 class RuntimeReadOnlyTransaction(RuntimeTransaction):
     """A RuntimeStore snapshot that never creates or publishes a transaction journal."""
 
+    def _acquire_lock(self) -> None:
+        self.store._lock.acquire_shared()
+
 
 class RuntimeUnlockedReadOnlyTransaction(RuntimeTransaction):
     """A read-only snapshot that deliberately does not acquire the RuntimeStore lock."""
@@ -392,15 +399,15 @@ class RuntimeUnlockedReadOnlyTransaction(RuntimeTransaction):
         return False
 
 
-class RuntimeDiagnosticTransaction(RuntimeTransaction):
-    """A locked snapshot that reports pending journals without recovering them."""
+class RuntimeReadDiagnosticTransaction(RuntimeTransaction):
+    """A shared-lock snapshot that reports pending journals without mutating state."""
 
     def __init__(self, store: RuntimeStore) -> None:
         super().__init__(store)
         self.pending_journals: tuple[TransactionJournal, ...] = ()
 
     def __enter__(self) -> Self:
-        self.store._lock.acquire()
+        self._acquire_lock()
         try:
             self.pending_journals = self.store._inspect_pending_journals()
             # A prepared or publishing journal must short-circuit user-visible
@@ -412,20 +419,42 @@ class RuntimeDiagnosticTransaction(RuntimeTransaction):
             raise
         return self
 
+    def _acquire_lock(self) -> None:
+        self.store._lock.acquire_shared()
+
+
+class RuntimeRepairTransaction(RuntimeTransaction):
+    """An exclusive-lock repair transaction that may reconcile residual journals."""
+
+    def __init__(self, store: RuntimeStore) -> None:
+        super().__init__(store)
+        self.pending_journals: tuple[TransactionJournal, ...] = ()
+
+    def __enter__(self) -> Self:
+        self._acquire_lock()
+        try:
+            self.pending_journals = self.store._inspect_pending_journals()
+            if not any(journal.state in {"prepared", "publishing"} for journal in self.pending_journals):
+                self._set_state(self.store._load_state())
+        except Exception:
+            self.store._lock.release()
+            raise
+        return self
+
     def reload_state(self) -> None:
-        """Refresh the snapshot after repair has explicitly reconciled pending journals."""
+        """Refresh the repair snapshot after residual journals have been reconciled."""
 
         self._set_state(self.store._load_state())
         self._snapshot_hashes = self.store._snapshot_hashes()
 
     def repair_model_view(self):
-        """Return the narrow repair view for this diagnostic transaction."""
+        """Return the narrow repair view for this transaction."""
 
         from .model_view import RuntimeRepairModelView
 
         return RuntimeRepairModelView(self)
 
-    def _replace_refs_for_repair(self, refs: tuple[Ref, ...]) -> None:
+    def replace_refs_for_repair(self, refs: tuple[Ref, ...]) -> None:
         """Publish repair's narrowed Ref cleanup without opening a business journal."""
 
         if refs == self.state.refs:
