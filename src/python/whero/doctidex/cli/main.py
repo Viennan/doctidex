@@ -30,7 +30,6 @@ from whero.doctidex.installation import InstallationRuntimeStore, resolve_instal
 from whero.doctidex.model import ModelFormatError
 from whero.doctidex.paths import normalize_repo_path
 from whero.doctidex.repository import resolve_git_root
-from whero.doctidex.root_index import RootIndexFrontmatterConflict, RootIndexFrontmatterInvalid
 from whero.doctidex.store.files import StoreFailure
 from whero.doctidex.store.runtime import RuntimeStore
 
@@ -485,24 +484,6 @@ def _run_init(invocation: ParsedInvocation) -> int:
                 "requested-repos-path": exc.requested_repos_path,
                 "discovery-start-path": str(exc.discovery_start_path),
             },
-        )
-    except RootIndexFrontmatterConflict as exc:
-        payload = error(
-            command="init",
-            code="root-index.frontmatter.conflict",
-            summary="The root index.md has a conflicting doctidex root-identity field.",
-            subject={"kind": "root-index", "path": "/index.md"},
-            details={"field": exc.field, "expected": exc.expected, "actual": exc.actual},
-            repos_path=invocation.repos_path,
-        )
-    except RootIndexFrontmatterInvalid as exc:
-        payload = error(
-            command="init",
-            code="root-index.frontmatter.invalid",
-            summary="The root index.md frontmatter cannot be safely supplemented.",
-            subject={"kind": "root-index", "path": "/index.md"},
-            details={"reason": exc.reason},
-            repos_path=invocation.repos_path,
         )
     except WorkspaceInitializeFailed as exc:
         payload = error(

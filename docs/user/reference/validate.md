@@ -1,6 +1,6 @@
 # `validate`
 
-`validate` read-only checks the doctidex root, work model, tree links, and managed Worktrees.
+`validate` read-only checks the work model, Markdown links, and managed Worktrees.
 
 See [common.md](common.md) for shared interface and errors.
 
@@ -43,7 +43,6 @@ Diagnostics are not execution failures. `validate` returns `status: "ok"` with `
 | Rule | Meaning |
 |---|---|
 | `work-model.valid` | Workspace, projections, relationships, managed paths, or ignore rules are invalid. |
-| `index.conforms` | Root `index.md` is missing or does not declare a doctidex root. |
 | `link.path.conforms` | Local link cannot normalize to a repository-internal path. |
 | `link.target.exists` | Local link target does not exist. |
 | `link.annotation.required` | Cross-boundary link lacks a matching annotation. |

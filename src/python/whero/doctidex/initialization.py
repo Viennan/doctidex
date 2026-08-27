@@ -9,7 +9,6 @@ from pathlib import Path
 
 from whero.doctidex.model import ModelFormatError, RuntimeState
 from whero.doctidex.repository import GitRootUnresolved, resolve_git_root
-from whero.doctidex.root_index import prepare_root_index
 from whero.doctidex.store.files import StoreFailure, atomic_write_bytes, fsync_directory
 from whero.doctidex.store.runtime import RuntimeStore, encode_state
 
@@ -79,7 +78,6 @@ def _create_workspace(git_root: Path) -> None:
         with tempfile.TemporaryDirectory(prefix="doctidex-git-init-") as temporary_directory:
             temporary = Path(temporary_directory) / WORKSPACE_NAME
             temporary.mkdir()
-            _ensure_root_index(git_root)
             (temporary / "config.toml").write_bytes(b"")
             for name, content in encode_state(RuntimeState.empty()).items():
                 (temporary / name).write_bytes(content)
@@ -101,17 +99,6 @@ def _remove_partial_workspace(workspace: Path) -> None:
             shutil.rmtree(workspace)
     except OSError:
         pass
-
-
-def _ensure_root_index(git_root: Path) -> None:
-    path = git_root / "index.md"
-    try:
-        content = path.read_text() if path.exists() else None
-        updated = prepare_root_index(content)
-    except OSError as exc:
-        raise StoreFailure(store="runtime", phase="initialize", state_path=path) from exc
-    if updated != content:
-        atomic_write_bytes(path, updated.encode(), store="runtime", phase="initialize")
 
 
 __all__ = [

@@ -4,7 +4,6 @@ from pathlib import Path
 
 from conftest import CliRunner, read_json, write_json
 
-EXPECTED_ROOT_INDEX = "---\ntype: index\ndoctidex:\n  type: index\n  root: true\n---\n"
 RUNTIME_IGNORE_PATHS = (
     "/.doctidex-git/.lock",
     "/.doctidex-git/runtime.json",
@@ -29,7 +28,7 @@ def test_init_creates_a_complete_ignored_workspace(git_root: Path, cli: CliRunne
         "installation-shares": [],
     }
     assert (workspace / "config.toml").read_text() == ""
-    assert (git_root / "index.md").read_text() == EXPECTED_ROOT_INDEX
+    assert not (git_root / "index.md").exists()
     assert not list(git_root.glob(".*doctidex-git.initializing-*"))
 
     ignored_lines = (git_root / ".gitignore").read_text().splitlines()
@@ -81,9 +80,7 @@ def test_init_reports_existing_workspace_and_keeps_its_state(initialized_root: P
 
 
 def test_init_does_not_validate_existing_workspace(initialized_root: Path, cli: CliRunner) -> None:
-    (initialized_root / "index.md").write_text(
-        "---\ntype: index\ndoctidex:\n  type: index\n  root: true\n---\n[missing](/missing.md)\n"
-    )
+    (initialized_root / "index.md").write_text("[missing](/missing.md)\n")
 
     result = cli.run("--repos-path", str(initialized_root), "init")
 
@@ -93,43 +90,16 @@ def test_init_does_not_validate_existing_workspace(initialized_root: Path, cli: 
     assert cli.run("--repos-path", str(initialized_root), "validate", "--model-structure").payload["valid"] is True
 
 
-def test_init_supplements_existing_root_index_frontmatter(git_root: Path, cli: CliRunner) -> None:
+def test_init_leaves_an_existing_index_untouched(git_root: Path, cli: CliRunner) -> None:
     index = git_root / "index.md"
-    index.write_text("---\ntitle: Overview\ndoctidex:\n  type: index\n---\nExisting body.\n")
-
-    result = cli.run("--repos-path", str(git_root), "init")
-
-    assert result.code == 0
-    content = index.read_text()
-    assert "title: Overview" in content
-    assert "type: index" in content
-    assert "root: true" in content
-    assert content.endswith("Existing body.\n")
-
-
-def test_init_rejects_conflicting_root_index_frontmatter(git_root: Path, cli: CliRunner) -> None:
-    index = git_root / "index.md"
-    original = "---\ntype: guide\n---\nExisting body.\n"
+    original = "---\ntitle: Overview\n---\nExisting body.\n"
     index.write_text(original)
 
     result = cli.run("--repos-path", str(git_root), "init")
 
-    assert result.code == 2
-    assert result.payload["message"]["code"] == "root-index.frontmatter.conflict"
-    assert result.payload["message"]["subject"] == {"kind": "root-index", "path": "/index.md"}
-    assert result.payload["message"]["details"] == {"field": "type", "expected": "index", "actual": "guide"}
+    assert result.code == 0
     assert index.read_text() == original
-    assert not (git_root / ".doctidex-git").exists()
-
-
-def test_init_rejects_a_non_mapping_doctidex_frontmatter_field(git_root: Path, cli: CliRunner) -> None:
-    (git_root / "index.md").write_text("---\ndoctidex: null\n---\n")
-
-    result = cli.run("--repos-path", str(git_root), "init")
-
-    assert result.code == 2
-    assert result.payload["message"]["code"] == "root-index.frontmatter.conflict"
-    assert result.payload["message"]["details"] == {"field": "doctidex", "expected": "mapping", "actual": None}
+    assert (git_root / ".doctidex-git").exists()
 
 
 def test_init_reports_an_unresolved_explicit_git_root(tmp_path: Path, cli: CliRunner) -> None:

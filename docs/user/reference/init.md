@@ -1,6 +1,6 @@
 # `init`
 
-`init` establishes the `.doctidex-git` work model and root `index.md` identity.
+`init` establishes the `.doctidex-git` work model.
 
 See [common.md](common.md) for shared interface and errors.
 
@@ -23,18 +23,7 @@ When `.doctidex-git/` is absent or empty, `init` creates:
 └── runtime.json
 ```
 
-It also creates or supplements the required root `index.md` frontmatter:
-
-```yaml
----
-type: index
-doctidex:
-  type: index
-  root: true
----
-```
-
-Existing body and unrelated frontmatter are preserved.
+`init` does not create or modify `index.md`. `index.md` remains an ordinary Markdown file.
 
 ## Existing workspace
 
@@ -55,8 +44,6 @@ If `.doctidex-git/` exists and is non-empty, `init` does not overwrite state. It
 
 | Code | Cause and next step |
 |---|---|
-| `root-index.frontmatter.conflict` | Root `index.md` has conflicting doctidex root fields. |
-| `root-index.frontmatter.invalid` | Existing frontmatter cannot be safely supplemented. |
 | `workspace.initialize.failed` | Workspace artifacts or ignore rules could not be established. |
 
 `init` does not create Installations, Refs, Worktrees, or custom boundaries.
