@@ -168,12 +168,14 @@ workspace is already initialized; `validate --model-structure` or `repair` is th
 
 ### Hook service
 
-Commands: `hook install`, `hook post-checkout`
+Commands: `hook install`, `hook post-checkout`, `hook pre-commit`
 
 `hook install` writes supported Git hook scripts using the resolved command path and is idempotent. Successful first
 initialization installs the same hooks. `hook post-checkout` is the worker invoked by the post-checkout hook; it saves
 and restores branch snapshots, updates only `runtime.json` under the RuntimeStore exclusive lock, and then aligns
-physical Installation objects while still holding that lock.
+physical Installation objects while still holding that lock. `hook pre-commit` is the worker invoked by the
+pre-commit hook; it returns success when `.doctidex-git` is absent or the work-model structure is valid, and otherwise
+fails with `hook.pre-commit.validation.failed`.
 
 ### Boundary management service
 
@@ -235,7 +237,7 @@ publication without a journal, because the complete multi-file work model can be
 | Domain records | [model.py](../../../src/python/whero/doctidex/model.py) |
 | Shared model relations and link scans | [model_view.py](../../../src/python/whero/doctidex/model_view.py) |
 | Installation-context resolution and owner routing | [installation.py](../../../src/python/whero/doctidex/installation.py) |
-| Git hook installation and post-checkout workflow | [hooks.py](../../../src/python/whero/doctidex/hooks.py) |
+| Git hook installation and hook workers | [hooks.py](../../../src/python/whero/doctidex/hooks.py) |
 | Store protocol and journals | [store/](../../../src/python/whero/doctidex/store/) |
 | Git source access and cache | [repository.py](../../../src/python/whero/doctidex/repository.py), [git_cache.py](../../../src/python/whero/doctidex/git_cache.py) |
 | Command workflows | [boundary.py](../../../src/python/whero/doctidex/boundary.py), [imports.py](../../../src/python/whero/doctidex/imports.py), [worktree.py](../../../src/python/whero/doctidex/worktree.py), [initialization.py](../../../src/python/whero/doctidex/initialization.py), [validate.py](../../../src/python/whero/doctidex/validate.py), [repair.py](../../../src/python/whero/doctidex/repair.py) |

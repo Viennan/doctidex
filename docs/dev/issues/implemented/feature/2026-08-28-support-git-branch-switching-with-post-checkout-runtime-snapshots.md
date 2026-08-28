@@ -111,5 +111,6 @@ references.
 
 ## Related
 
+- [Add a pre-commit model-structure validation hook](2026-08-29-add-pre-commit-model-structure-validation-hook.md)
 - [Shared commit-hash Installation storage](../architecture/2026-08-26-shared-commit-hash-installation-storage.md)
 - [Select Installation context by install-id argument](../architecture/2026-08-27-select-installation-context-by-install-id.md)

@@ -11,6 +11,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from whero.doctidex import imports as import_workflow
+from whero.doctidex import validate as validate_workflow
 from whero.doctidex.errors import CommandFailure
 from whero.doctidex.model import BranchSnapshot, Installation, InstallationShare
 from whero.doctidex.paths import repo_path_to_fs
@@ -23,8 +24,9 @@ def install_hooks(git_root: Path) -> None:
     """Install the supported Git hooks for one repository."""
 
     hooks_path = _hooks_path(git_root)
-    script = _post_checkout_script(_command_path())
-    _write_hook(hooks_path / "post-checkout", script)
+    command_path = _command_path()
+    _write_hook(hooks_path / "post-checkout", _post_checkout_script(command_path))
+    _write_hook(hooks_path / "pre-commit", _pre_commit_script(command_path))
 
 
 def run_post_checkout(git_root: Path, hook_args: list[str]) -> None:
@@ -71,6 +73,22 @@ def run_post_checkout(git_root: Path, hook_args: list[str]) -> None:
         _align_physical_objects(git_root, old_installations, final.installations, final.installation_shares)
 
     store.update_runtime_json(update, after_update=after_update)
+
+
+def run_pre_commit(git_root: Path) -> None:
+    """Run the pre-commit work-model validation worker for one Git root."""
+
+    store = RuntimeStore(git_root)
+    if not store.workspace_path.is_dir():
+        return
+    result = validate_workflow.validate(store, model_structure=True)
+    if not result.valid:
+        raise CommandFailure(
+            code="hook.pre-commit.validation.failed",
+            summary="The pre-commit work-model validation failed.",
+            subject={"kind": "workspace", "path": "/.doctidex-git"},
+            details={"diagnostics": list(result.diagnostics)},
+        )
 
 
 def _save_snapshot(document: dict[str, object], branch: str) -> dict[str, object]:
@@ -257,6 +275,11 @@ def _command_path() -> str:
 def _post_checkout_script(command_path: str) -> str:
     quoted = shlex.quote(command_path)
     return f"#!/bin/sh\nexec {quoted} hook post-checkout \"$@\"\n"
+
+
+def _pre_commit_script(command_path: str) -> str:
+    quoted = shlex.quote(command_path)
+    return f"#!/bin/sh\nexec {quoted} hook pre-commit \"$@\"\n"
 
 
 def _write_hook(path: Path, content: str) -> None:

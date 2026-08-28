@@ -47,7 +47,7 @@ SUBCOMMANDS = {
     "boundary-set": {"add", "remove", "parse"},
     "import": {"install", "restore", "track", "remove", "ref", "unref", "query"},
     "worktree": {"create", "remove", "query"},
-    "hook": {"install", "post-checkout"},
+    "hook": {"install", "post-checkout", "pre-commit"},
 }
 
 
@@ -485,7 +485,10 @@ def _run_hook(operation: ResolvedInvocation, args: argparse.Namespace) -> Comman
     if args.hook_command == "install":
         hook_workflow.install_hooks(operation.root)
         return success(command=operation.command)
-    hook_workflow.run_post_checkout(operation.root, args.hook_args)
+    if args.hook_command == "post-checkout":
+        hook_workflow.run_post_checkout(operation.root, args.hook_args)
+        return success(command=operation.command)
+    hook_workflow.run_pre_commit(operation.root)
     return success(command=operation.command)
 
 
@@ -704,6 +707,7 @@ def _add_hook_parser(commands: argparse._SubParsersAction[argparse.ArgumentParse
     subcommands.add_parser("install", help="Install the configured doctidex-git Git hooks.")
     post_checkout = subcommands.add_parser("post-checkout", help="Run the doctidex-git post-checkout worker.")
     post_checkout.add_argument("hook_args", nargs="*", metavar="HOOK-ARG")
+    subcommands.add_parser("pre-commit", help="Run the doctidex-git pre-commit worker.")
 
 
 def _validate_revision_arguments(args: argparse.Namespace) -> None:

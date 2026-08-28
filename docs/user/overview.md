@@ -11,7 +11,8 @@ The tool manages:
 - editable Worktrees;
 - custom boundary points;
 - validation and repair;
-- Git hooks that keep untracked runtime state consistent across branch switches.
+- Git hooks that keep untracked runtime state consistent across branch switches and validate work-model structure
+  before commits.
 
 The command architecture is defined by [overview.md](../dev/architecture/overview.md).
 
@@ -135,7 +136,7 @@ See [common.md](reference/common.md#installation-context) for the complete behav
 | Worktrees | Create an editable worktree from an Installation or URL. | Use `worktree create`, `worktree query`, and `worktree remove`. |
 | Custom boundaries | Add or remove custom escape paths. | Use `boundary-set add`, `boundary-set remove`, and `boundary-set parse`. |
 | Validation and repair | Observe problems without changes, then repair recoverable physical state. | Use `validate` first; use `repair` to align model and physical objects. |
-| Git hooks | Keep untracked runtime state branch-consistent across `git checkout`. | `init` installs hooks; use `hook install` and `hook post-checkout`. |
+| Git hooks | Keep untracked runtime state branch-consistent and validate work-model structure before commits. | `init` installs hooks; use `hook install`, `hook pre-commit`, and `hook post-checkout`. |
 | Result contract | Every command emits machine-readable JSON. | Success uses `status: "ok"`; `validate` adds `valid`; failures use stable `message.code`. |
 | Cache | The CLI caches bare repositories under the doctidex-git home. | Configure with `DOCTIDEX-GIT-HOME` and `config.toml`; see [common.md](reference/common.md#cache-configuration). |
 | Installation context | Select an Installation with `--installation-context`; the allowed command set is restricted. | Only `validate`, `boundary-set parse`, `import query`, and `import restore` are allowed; `import restore` flattens the local Installation into the owner repository. |
@@ -160,8 +161,9 @@ Do not edit state JSON under `.doctidex-git/` by hand. Do not commit managed Ins
 Installation directories are read-only; create a Worktree when you need to modify or commit from a fixed revision. Use
 `validate` to observe problems and `repair` to align recoverable physical state.
 
-`hook install` and successful first-time `init` install a `post-checkout` hook. That hook keeps untracked Installation
-and share state branch-consistent; see [hook.md](reference/hook.md).
+`hook install` and successful first-time `init` install `pre-commit` and `post-checkout` hooks. The `pre-commit` hook
+validates work-model structure before commits, and the `post-checkout` hook keeps untracked Installation and share
+state branch-consistent; see [hook.md](reference/hook.md).
 
 `doctidex-git` coordinates only `doctidex-git` processes that follow its lock and transaction protocol. It does not
 guarantee race safety against direct external edits, and it never rewrites Git history or undoes commits. `repair` may
