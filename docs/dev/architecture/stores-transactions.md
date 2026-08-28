@@ -88,6 +88,13 @@ Repair inspects residual journals and compares each target's current digest with
 - `repair_transaction` acquires an exclusive lock, reports pending journals, and exposes the repair model view and narrowed Ref publication used by repair.
 - `unlocked_read_only_transaction` reads a snapshot without the RuntimeStore lock for already-isolated contexts, such as Installation-local model access.
 
+### Single-file runtime hook publication
+
+The post-checkout hook updates only `runtime.json`. It acquires the RuntimeStore exclusive lock, reads and transforms
+that one document, publishes it with the same atomic-write primitive, and runs physical Installation alignment before
+releasing the lock. It does not create a journal because the complete four-file model can be inconsistent during a Git
+branch switch.
+
 ## Coordination
 
 `StoreCoordinator` is a plain coordination object; it does not own a command lock. A normal RuntimeStore transaction that observes a residual journal raises `RepairRequired`; the coordinator runs `repair_core` outside the failed transaction and retries the operation. Explicit repair remains the `repair(store, cache)` entry point in the repair workflow.
@@ -118,3 +125,4 @@ Commands needing both domains acquire cache access before RuntimeStore access.
 | File primitives and locks | [store/files.py](../../../src/python/whero/doctidex/store/files.py) |
 | Command coordination and repair retry | [coordination.py](../../../src/python/whero/doctidex/coordination.py) |
 | Repair workflow | [repair.py](../../../src/python/whero/doctidex/repair.py) |
+| Single-file runtime hook publication | [hooks.py](../../../src/python/whero/doctidex/hooks.py), [store/runtime.py](../../../src/python/whero/doctidex/store/runtime.py) |

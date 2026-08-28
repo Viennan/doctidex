@@ -87,6 +87,8 @@ An `InstallationRuntimeModelView` exposes Installation-local records. It sets `p
 | **CustomBoundaryPoint** | A tracked boundary declared directly by `boundary-set add`. |
 | **StructuredLinkAnnotation** | A `doctidex` HTML-comment YAML block attached to one Markdown link. |
 | **CacheItem** | A cached bare repository identity and publication state. |
+| **InstallationShare** | A runtime-local relation that owns one shared Installation worktree and its cross-branch references. |
+| **BranchSnapshot** | One branch's untracked runtime history stored in `runtime.json`. |
 | **RuntimeState** | The merged tracked and runtime model view. |
 
 ### Installation
@@ -101,6 +103,14 @@ with `installation.restore.required` when a tracked selected Installation is not
 Revision selectors are resolution inputs, not live tracking relationships. A branch or tag resolves once to `commit-hash`; a direct commit is reused by URL and commit.
 
 Multiple Installations that resolve the same source to the same commit share one physical Git worktree through the [Installation share store](installation-shares.md).
+
+### Branch snapshot
+
+`runtime.json` records `branch-snapshots` keyed by branch name. A snapshot stores the branch's untracked
+Installations, Worktrees, and Installation shares without the `branch-snapshots` field itself. The post-checkout hook
+uses this history to restore branch-specific untracked Installation state while keeping Worktrees repository-global.
+See [stores-transactions.md](stores-transactions.md#single-file-runtime-hook-publication) for its single-file lock
+behavior.
 
 ### Ref
 
@@ -150,6 +160,15 @@ Commands: `init`
 `init` establishes the `.doctidex-git` workspace, empty state projections, and Git ignore protection. A non-empty
 workspace is already initialized; `validate --model-structure` or `repair` is the next step.
 
+### Hook service
+
+Commands: `hook install`, `hook post-checkout`
+
+`hook install` writes supported Git hook scripts using the resolved command path and is idempotent. Successful first
+initialization installs the same hooks. `hook post-checkout` is the worker invoked by the post-checkout hook; it saves
+and restores branch snapshots, updates only `runtime.json` under the RuntimeStore exclusive lock, and then aligns
+physical Installation objects while still holding that lock.
+
 ### Boundary management service
 
 Commands: `boundary-set add`, `boundary-set remove`, `boundary-set parse`
@@ -189,6 +208,9 @@ The RuntimeStore owns tracked and runtime JSON projections. The CacheStore owns 
 
 The stores are not database transactions. Their objective is recoverable model state under cooperating `doctidex-git` processes, not reversal of every filesystem or Git side effect.
 
+The hook service is a single-file RuntimeStore exception: it uses the exclusive lock and atomic `runtime.json`
+publication without a journal, because the complete multi-file work model can be inconsistent during a branch switch.
+
 ## Cross-cutting rules
 
 - The CLI emits machine-readable JSON.
@@ -207,6 +229,7 @@ The stores are not database transactions. Their objective is recoverable model s
 | Domain records | [model.py](../../../src/python/whero/doctidex/model.py) |
 | Shared model relations and link scans | [model_view.py](../../../src/python/whero/doctidex/model_view.py) |
 | Installation-context resolution and owner routing | [installation.py](../../../src/python/whero/doctidex/installation.py) |
+| Git hook installation and post-checkout workflow | [hooks.py](../../../src/python/whero/doctidex/hooks.py) |
 | Store protocol and journals | [store/](../../../src/python/whero/doctidex/store/) |
 | Git source access and cache | [repository.py](../../../src/python/whero/doctidex/repository.py), [git_cache.py](../../../src/python/whero/doctidex/git_cache.py) |
 | Command workflows | [boundary.py](../../../src/python/whero/doctidex/boundary.py), [imports.py](../../../src/python/whero/doctidex/imports.py), [worktree.py](../../../src/python/whero/doctidex/worktree.py), [initialization.py](../../../src/python/whero/doctidex/initialization.py), [validate.py](../../../src/python/whero/doctidex/validate.py), [repair.py](../../../src/python/whero/doctidex/repair.py) |

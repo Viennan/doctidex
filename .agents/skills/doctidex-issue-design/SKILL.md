@@ -13,7 +13,7 @@ When a user comments on an Issue Note, code, or another artifact, first infer in
 
 ## Authorization boundary
 
-Authorization to produce a design does not authorize using [doctidex-issue-impl](../doctidex-issue-impl/SKILL.md) to create an implementation plan. Implementation planning requires separate explicit user authorization.
+Authorization to produce a design does not authorize creating an implementation plan—whether through [doctidex-issue-impl](../doctidex-issue-impl/SKILL.md) or otherwise. Implementation planning requires separate explicit user authorization.
 
 ## Workflow
 

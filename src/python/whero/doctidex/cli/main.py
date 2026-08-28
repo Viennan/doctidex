@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Concatenate, NoReturn, ParamSpec
 
 from whero.doctidex import boundary as boundary_workflow
+from whero.doctidex import hooks as hook_workflow
 from whero.doctidex import imports as import_workflow
 from whero.doctidex import repair as repair_workflow
 from whero.doctidex import validate as validate_workflow
@@ -41,11 +42,12 @@ from whero.doctidex.store.runtime import RuntimeStore
 
 from .results import argument_error, error, success
 
-COMMANDS = ("init", "boundary-set", "import", "worktree", "validate", "repair")
+COMMANDS = ("init", "boundary-set", "import", "worktree", "validate", "repair", "hook")
 SUBCOMMANDS = {
     "boundary-set": {"add", "remove", "parse"},
     "import": {"install", "restore", "track", "remove", "ref", "unref", "query"},
     "worktree": {"create", "remove", "query"},
+    "hook": {"install", "post-checkout"},
 }
 
 
@@ -132,6 +134,7 @@ def build_parser() -> CliArgumentParser:
     _add_import_parser(commands)
     _add_worktree_parser(commands)
     _add_validate_parser(commands)
+    _add_hook_parser(commands)
     commands.add_parser("repair", help="Align physical state with the JSON work model.")
     return parser
 
@@ -186,6 +189,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_worktree(invocation, args)
     if args.command == "validate":
         return _run_validate(invocation, args)
+    if args.command == "hook":
+        return _run_hook(invocation, args)
     return _run_repair(invocation)
 
 
@@ -307,7 +312,7 @@ def _installation_context_preflight(command: str, context: InstallationContext |
 def _is_forbidden_installation_command(command: str) -> bool:
     """Return whether an Installation-context command is prohibited outright."""
 
-    if command == "init" or command.startswith("worktree"):
+    if command == "init" or command.startswith("worktree") or command.startswith("hook"):
         return True
     return command in {
         "import install",
@@ -475,6 +480,15 @@ def _run_repair(operation: ResolvedInvocation) -> CommandPayload:
     return success(command=operation.command)
 
 
+@_command_result()
+def _run_hook(operation: ResolvedInvocation, args: argparse.Namespace) -> CommandPayload:
+    if args.hook_command == "install":
+        hook_workflow.install_hooks(operation.root)
+        return success(command=operation.command)
+    hook_workflow.run_post_checkout(operation.root, args.hook_args)
+    return success(command=operation.command)
+
+
 def _command_failure(invocation: ParsedInvocation | ResolvedInvocation, exc: CommandFailure) -> dict[str, object]:
     return error(
         command=invocation.command,
@@ -582,6 +596,7 @@ def _run_init(invocation: ParsedInvocation) -> int:
         )
     else:
         if result.created:
+            hook_workflow.install_hooks(resolved.root)
             payload = success(command="init")
         else:
             payload = success(
@@ -682,6 +697,15 @@ def _add_validate_parser(commands: argparse._SubParsersAction[argparse.ArgumentP
     mode.add_argument("--model-structure", action="store_true", help="Validate only the work-model structure.")
 
 
+def _add_hook_parser(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    hook = commands.add_parser("hook", help="Manage Git hooks for doctidex-git.")
+    subcommands = hook.add_subparsers(dest="hook_command", required=True, metavar="COMMAND")
+
+    subcommands.add_parser("install", help="Install the configured doctidex-git Git hooks.")
+    post_checkout = subcommands.add_parser("post-checkout", help="Run the doctidex-git post-checkout worker.")
+    post_checkout.add_argument("hook_args", nargs="*", metavar="HOOK-ARG")
+
+
 def _validate_revision_arguments(args: argparse.Namespace) -> None:
     if args.command == "import" and args.import_command == "install":
         if sum(bool(value) for value in (args.branch, args.tag, args.commit)) != 1:
@@ -709,7 +733,7 @@ def _validate_revision_arguments(args: argparse.Namespace) -> None:
 
 def _command_path(args: argparse.Namespace) -> str:
     parts = [args.command]
-    for name in ("boundary_command", "import_command", "worktree_command"):
+    for name in ("boundary_command", "import_command", "worktree_command", "hook_command"):
         value = getattr(args, name, None)
         if value:
             parts.append(value)

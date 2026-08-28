@@ -47,17 +47,21 @@ def validate(
     scope = _scope(store.git_root, None if model_structure else subdir)
     check = _check_model(store, scope)
     diagnostics = list(check.diagnostics)
-    if model_structure:
-        diagnostics.sort(key=lambda item: (str(item.get("path", "")), int(item.get("line", 0)), str(item["rule"])))
-        return ValidationResult(not diagnostics, scope, tuple(diagnostics))
-    if check.model is None:
-        diagnostics.sort(key=lambda item: (str(item.get("path", "")), int(item.get("line", 0)), str(item["rule"])))
-        return ValidationResult(not diagnostics, scope, tuple(diagnostics))
+    if model_structure or check.model is None:
+        return _finalize(diagnostics, scope)
     # Content scanning relies on complete, valid work-model files. Any model
     # diagnostic means those files are not trustworthy, so skip the scan.
     if not check.diagnostics:
         diagnostics.extend(_content_diagnostics(store.git_root, check.model, scope))
-    diagnostics.sort(key=lambda item: (str(item.get("path", "")), int(item.get("line", 0)), str(item["rule"])))
+    return _finalize(diagnostics, scope)
+
+
+def _finalize(diagnostics: list[dict[str, object]], scope: str) -> ValidationResult:
+    """Sort diagnostics and return the final validation result."""
+
+    diagnostics.sort(
+        key=lambda item: (str(item.get("path", "")), int(item.get("line", 0)), str(item["rule"]))
+    )
     return ValidationResult(not diagnostics, scope, tuple(diagnostics))
 
 
@@ -67,7 +71,6 @@ class _ModelCheck:
 
     model: RuntimeModelView | None
     diagnostics: tuple[dict[str, object], ...]
-    requires_recovery: bool = False
 
 
 def _check_model(store: RuntimeStore, scope: str) -> _ModelCheck:
@@ -115,7 +118,7 @@ def _check_model(store: RuntimeStore, scope: str) -> _ModelCheck:
                         content_scan="skipped",
                     )
                 )
-                return _ModelCheck(None, tuple(diagnostics), requires_recovery=True)
+                return _ModelCheck(None, tuple(diagnostics))
             state = transaction.state
             model = transaction.model_view()
             if scope != "/" and model.first_boundary(scope) is not None:
@@ -161,48 +164,70 @@ def _specific_model_violation(workspace: Path, fallback: dict[str, object]) -> d
     except (OSError, UnicodeError, json.JSONDecodeError):
         return fallback
     if artifact == "imports.json" and isinstance(document, list):
-        for index, record in enumerate(document):
-            if isinstance(record, dict) and record.get("tracked") is False:
-                return {
-                    "code": "installation.projection.misplaced",
-                    "path": "/.doctidex-git/imports.json",
-                    "message": "An untracked installation is stored in the tracked projection.",
-                    "details": {
-                        "install-id": record.get("install-id"),
-                        "actual-state-file": "/.doctidex-git/imports.json",
-                        "expected-state-file": "/.doctidex-git/runtime.json",
-                        "record-index": index,
-                    },
-                }
+        return _imports_projection_violation(document, fallback)
     if artifact == "runtime.json" and isinstance(document, dict):
-        runtime_imports = document.get("imports")
-        if isinstance(runtime_imports, list):
-            for index, record in enumerate(runtime_imports):
-                if isinstance(record, dict) and record.get("tracked") is True:
-                    return {
-                        "code": "installation.projection.misplaced",
-                        "path": "/.doctidex-git/runtime.json",
-                        "message": "A tracked installation is stored in the runtime projection.",
-                        "details": {
-                            "install-id": record.get("install-id"),
-                            "actual-state-file": "/.doctidex-git/runtime.json",
-                            "expected-state-file": "/.doctidex-git/imports.json",
-                            "record-index": index,
-                        },
-                    }
+        return _runtime_projection_violation(document, fallback)
     if artifact == "boundary-set.json" and isinstance(document, list):
-        for index, record in enumerate(document):
-            if isinstance(record, dict) and record.get("type") != "custom":
-                return {
-                    "code": "boundary-point.custom.invalid",
-                    "path": "/.doctidex-git/boundary-set.json",
-                    "message": "The tracked boundary-set contains a non-custom boundary point.",
-                    "details": {
-                        "boundary-path": record.get("path"),
-                        "reason": "non-custom-type",
-                        "record-index": index,
-                    },
-                }
+        return _boundary_set_projection_violation(document, fallback)
+    return fallback
+
+
+def _imports_projection_violation(document: object, fallback: dict[str, object]) -> dict[str, object]:
+    if not isinstance(document, list):
+        return fallback
+    for index, record in enumerate(document):
+        if isinstance(record, dict) and record.get("tracked") is False:
+            return {
+                "code": "installation.projection.misplaced",
+                "path": "/.doctidex-git/imports.json",
+                "message": "An untracked installation is stored in the tracked projection.",
+                "details": {
+                    "install-id": record.get("install-id"),
+                    "actual-state-file": "/.doctidex-git/imports.json",
+                    "expected-state-file": "/.doctidex-git/runtime.json",
+                    "record-index": index,
+                },
+            }
+    return fallback
+
+
+def _runtime_projection_violation(document: object, fallback: dict[str, object]) -> dict[str, object]:
+    if not isinstance(document, dict):
+        return fallback
+    runtime_imports = document.get("imports")
+    if not isinstance(runtime_imports, list):
+        return fallback
+    for index, record in enumerate(runtime_imports):
+        if isinstance(record, dict) and record.get("tracked") is True:
+            return {
+                "code": "installation.projection.misplaced",
+                "path": "/.doctidex-git/runtime.json",
+                "message": "A tracked installation is stored in the runtime projection.",
+                "details": {
+                    "install-id": record.get("install-id"),
+                    "actual-state-file": "/.doctidex-git/runtime.json",
+                    "expected-state-file": "/.doctidex-git/imports.json",
+                    "record-index": index,
+                },
+            }
+    return fallback
+
+
+def _boundary_set_projection_violation(document: object, fallback: dict[str, object]) -> dict[str, object]:
+    if not isinstance(document, list):
+        return fallback
+    for index, record in enumerate(document):
+        if isinstance(record, dict) and record.get("type") != "custom":
+            return {
+                "code": "boundary-point.custom.invalid",
+                "path": "/.doctidex-git/boundary-set.json",
+                "message": "The tracked boundary-set contains a non-custom boundary point.",
+                "details": {
+                    "boundary-path": record.get("path"),
+                    "reason": "non-custom-type",
+                    "record-index": index,
+                },
+            }
     return fallback
 
 
@@ -234,17 +259,35 @@ def _scope_failure(git_root: Path, path: str, reason: str) -> CommandFailure:
 
 
 def _model_violations(git_root: Path, state: RuntimeState) -> list[dict[str, object]]:
+    installations = {item.install_id: item for item in state.installations}
+    return [
+        *_missing_artifact_violations(git_root),
+        *_duplicate_record_violations(state),
+        *_share_record_violations(state),
+        *_ref_installation_violations(state, installations),
+        *_managed_path_violations(state),
+        *_installation_physical_violations(git_root, state),
+        *_share_physical_violations(git_root, state, installations),
+        *_ref_physical_violations(git_root, state, installations),
+        *_worktree_physical_violations(git_root, state),
+    ]
+
+
+def _missing_artifact_violations(git_root: Path) -> list[dict[str, object]]:
+    return [
+        {
+            "code": "workspace.artifact.missing",
+            "path": f"/.doctidex-git/{artifact}",
+            "message": "A required doctidex-git workspace artifact is missing.",
+            "details": {"required-artifact": artifact},
+        }
+        for artifact in WORKSPACE_ARTIFACTS
+        if not (git_root / ".doctidex-git" / artifact).is_file()
+    ]
+
+
+def _duplicate_record_violations(state: RuntimeState) -> list[dict[str, object]]:
     violations: list[dict[str, object]] = []
-    for artifact in WORKSPACE_ARTIFACTS:
-        if not (git_root / ".doctidex-git" / artifact).is_file():
-            violations.append(
-                {
-                    "code": "workspace.artifact.missing",
-                    "path": f"/.doctidex-git/{artifact}",
-                    "message": "A required doctidex-git workspace artifact is missing.",
-                    "details": {"required-artifact": artifact},
-                }
-            )
 
     def duplicate(items: tuple[object, ...], attribute: str, artifact: str) -> None:
         values: dict[object, list[int]] = {}
@@ -273,6 +316,50 @@ def _model_violations(git_root: Path, state: RuntimeState) -> list[dict[str, obj
     duplicate(state.refs, "target_dir", "import-refs.json")
     duplicate(state.worktrees, "work_path", "runtime.json")
     duplicate(state.custom_boundary_points, "path", "boundary-set.json")
+    return violations
+
+
+def _share_record_violations(state: RuntimeState) -> list[dict[str, object]]:
+    violations: list[dict[str, object]] = []
+
+    def branch_ref_duplicates(shares: tuple[object, ...], *, snapshot: str | None = None) -> None:
+        for share_index, share in enumerate(shares):
+            branch_refs = getattr(share, "branch_refs", ())
+            positions: dict[str, list[int]] = {}
+            for branch_index, branch in enumerate(branch_refs):
+                positions.setdefault(branch, []).append(branch_index)
+            for branch, indexes in positions.items():
+                if len(indexes) > 1:
+                    details: dict[str, object] = {
+                        "identity-field": "installation-share-branch-ref",
+                        "identity-value": branch,
+                        "conflicting-state-files": ["/.doctidex-git/runtime.json"],
+                        "record-indexes": [share_index],
+                        "branch-ref-indexes": indexes,
+                    }
+                    if snapshot is not None:
+                        details["branch-snapshot"] = snapshot
+                    violations.append(
+                        {
+                            "code": "state-record.invalid",
+                            "path": "/.doctidex-git/runtime.json",
+                            "message": "An installation share repeats a branch reference.",
+                            "details": details,
+                        }
+                    )
+
+    branch_ref_duplicates(state.installation_shares)
+    for branch, snapshot in state.branch_snapshots.items():
+        if not branch:
+            violations.append(
+                {
+                    "code": "state-record.invalid",
+                    "path": "/.doctidex-git/runtime.json",
+                    "message": "A branch snapshot has an empty branch key.",
+                    "details": {"identity-field": "branch-snapshot-key", "identity-value": branch},
+                }
+            )
+        branch_ref_duplicates(snapshot.installation_shares, snapshot=branch)
 
     share_by_commit: dict[tuple[str, str], list[int]] = {}
     for index, item in enumerate(state.installation_shares):
@@ -292,7 +379,14 @@ def _model_violations(git_root: Path, state: RuntimeState) -> list[dict[str, obj
                     },
                 }
             )
-    installations = {item.install_id: item for item in state.installations}
+    return violations
+
+
+def _ref_installation_violations(
+    state: RuntimeState,
+    installations: dict[str, Installation],
+) -> list[dict[str, object]]:
+    violations: list[dict[str, object]] = []
     for reference in state.refs:
         installation = installations.get(reference.install_id)
         if installation is None:
@@ -313,6 +407,11 @@ def _model_violations(git_root: Path, state: RuntimeState) -> list[dict[str, obj
                     "details": {"install-id": reference.install_id, "target-dir": reference.target_dir},
                 }
             )
+    return violations
+
+
+def _managed_path_violations(state: RuntimeState) -> list[dict[str, object]]:
+    violations: list[dict[str, object]] = []
     managed: dict[str, str] = {}
     for item in state.installations:
         managed[item.install_path] = f"installation:{item.install_id}"
@@ -340,6 +439,11 @@ def _model_violations(git_root: Path, state: RuntimeState) -> list[dict[str, obj
                     },
                 }
             )
+    return violations
+
+
+def _installation_physical_violations(git_root: Path, state: RuntimeState) -> list[dict[str, object]]:
+    violations: list[dict[str, object]] = []
     for item in state.installations:
         target = repo_path_to_fs(git_root, item.install_path)
         if not item.tracked and not target.exists():
@@ -374,7 +478,15 @@ def _model_violations(git_root: Path, state: RuntimeState) -> list[dict[str, obj
                     "details": {"install-id": item.install_id, "install-path": item.install_path},
                 }
             )
-    installations_by_id = {item.install_id: item for item in state.installations}
+    return violations
+
+
+def _share_physical_violations(
+    git_root: Path,
+    state: RuntimeState,
+    installations_by_id: dict[str, Installation],
+) -> list[dict[str, object]]:
+    violations: list[dict[str, object]] = []
     for share in state.installation_shares:
         share_path = repo_path_to_fs(git_root, share.install_path)
         if not share_path.exists() or not _is_git_worktree(share_path):
@@ -434,8 +546,17 @@ def _model_violations(git_root: Path, state: RuntimeState) -> list[dict[str, obj
                         },
                     }
                 )
+    return violations
+
+
+def _ref_physical_violations(
+    git_root: Path,
+    state: RuntimeState,
+    installations_by_id: dict[str, Installation],
+) -> list[dict[str, object]]:
+    violations: list[dict[str, object]] = []
     for reference in state.refs:
-        installation = installations.get(reference.install_id)
+        installation = installations_by_id.get(reference.install_id)
         if installation is None:
             continue
         source = repo_path_to_fs(git_root, installation.install_path) / reference.src_sub_dir.lstrip("/")
@@ -468,6 +589,11 @@ def _model_violations(git_root: Path, state: RuntimeState) -> list[dict[str, obj
                     },
                 }
             )
+    return violations
+
+
+def _worktree_physical_violations(git_root: Path, state: RuntimeState) -> list[dict[str, object]]:
+    violations: list[dict[str, object]] = []
     for worktree in state.worktrees:
         target = repo_path_to_fs(git_root, worktree.work_path)
         if not target.exists() or not _worktree_matches(target, worktree.url):
@@ -495,12 +621,7 @@ def _installation_matches(target: Path, installation: Installation) -> bool:
 
 def _is_git_worktree(target: Path) -> bool:
     try:
-        result = subprocess.run(
-            ["git", "-C", str(target), "rev-parse", "--is-inside-work-tree"],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
+        result = _run_git(target, "rev-parse", "--is-inside-work-tree", check=False)
     except OSError:
         return False
     return result.returncode == 0 and result.stdout.strip() == "true"
@@ -519,20 +640,28 @@ def _git_worktree_dirty(target: Path) -> bool:
     """Return whether a Git worktree has tracked or untracked uncommitted changes."""
 
     try:
-        result = subprocess.run(
-            ["git", "-C", str(target), "status", "--porcelain", "--untracked-files=all"],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+        result = _run_git(target, "status", "--porcelain", "--untracked-files=all")
     except (OSError, subprocess.CalledProcessError):
         return False
     return bool(result.stdout.strip())
 
 
 def _git_output(target: Path, *arguments: str) -> str:
-    result = subprocess.run(["git", "-C", str(target), *arguments], check=True, capture_output=True, text=True)
+    result = _run_git(target, *arguments)
     return result.stdout.strip()
+
+
+def _run_git(
+    target: Path,
+    *arguments: str,
+    check: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(target), *arguments],
+        check=check,
+        capture_output=True,
+        text=True,
+    )
 
 
 def _gitignore_violations(git_root: Path, state: RuntimeState) -> list[dict[str, object]]:

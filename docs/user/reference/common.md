@@ -73,6 +73,7 @@ The following commands are forbidden inside an Installation:
 - `boundary-set add`
 - `boundary-set remove`
 - `repair`
+- `hook`
 
 Other commands are not yet available in Installation context.
 

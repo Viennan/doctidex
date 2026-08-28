@@ -26,6 +26,7 @@ def test_init_creates_a_complete_ignored_workspace(git_root: Path, cli: CliRunne
         "imports": [],
         "worktrees": [],
         "installation-shares": [],
+        "branch-snapshots": {},
     }
     assert (workspace / "config.toml").read_text() == ""
     assert not (git_root / "index.md").exists()
@@ -62,6 +63,7 @@ def test_init_reports_existing_workspace_and_keeps_its_state(initialized_root: P
             }
         ],
         "installation-shares": [],
+        "branch-snapshots": {},
     }
     write_json(workspace / "boundary-set.json", boundary_set)
     write_json(workspace / "imports.json", imports)

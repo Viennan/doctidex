@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from conftest import CliRunner, git_head, read_json
+from conftest import CliRunner, git_head, read_json, write_json
 
 
 def _runtime_shares(root: Path) -> list[dict[str, object]]:
@@ -56,6 +56,7 @@ def test_branch_links_to_share_path_and_direct_commit_owns_share_path(
         branch.payload["install-id"],
         direct.payload["install-id"],
     }
+    assert share["branch-refs"] == ["main"]
 
 
 def test_branch_and_tag_both_link_to_one_share_path(
@@ -231,3 +232,42 @@ def test_query_and_untracked_selection_use_recorded_installations(
     runtime = read_json(initialized_root / ".doctidex-git" / "runtime.json")
     assert runtime["imports"] == []
     assert runtime["installation-shares"] == []
+
+
+def test_removing_current_branch_keeps_share_for_other_branch_ref(
+    initialized_root: Path,
+    source_repository: Path,
+    cache_home: Path,
+    cli: CliRunner,
+) -> None:
+    installed = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "install",
+        "--untracked",
+        "--url",
+        str(source_repository),
+        "--branch",
+        "main",
+    )
+    runtime_path = initialized_root / ".doctidex-git" / "runtime.json"
+    runtime = read_json(runtime_path)
+    runtime["installation-shares"][0]["branch-refs"] = ["main", "feature"]
+    write_json(runtime_path, runtime)
+
+    removed = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "remove",
+        "--install-id",
+        installed.payload["install-id"],
+    )
+
+    assert removed.code == 0
+    shares = _runtime_shares(initialized_root)
+    assert len(shares) == 1
+    assert shares[0]["install-ids"] == []
+    assert shares[0]["branch-refs"] == ["feature"]
+    assert (initialized_root / shares[0]["install-path"].lstrip("/")).is_dir()

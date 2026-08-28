@@ -32,7 +32,8 @@ Representative persisted shape:
       "install-id": "<OWNER-SIDE-INSTALL-ID>",
       "owner-install-id": "<PARENT-INSTALLATION-INSTALL-ID>"
     }
-  ]
+  ],
+  "branch-refs": ["<BRANCH>"]
 }
 ```
 
@@ -42,6 +43,7 @@ Fields:
 - `install-path` is the single repository-internal path of the shared detached Git worktree.
 - `install-ids` lists every Installation that resolves to this commit.
 - `context-references` records which parent Installation produced an InstallationContext sub-Installation.
+- `branch-refs` records branch names that have used this share.
 
 The `install-ids` order has no physical meaning. `install-path` is the authority for physical worktree ownership.
 
@@ -63,7 +65,9 @@ Every selector kind follows one sequence:
 
 ## Removal
 
-Removing an Installation removes its `install-id` and physical path. The share and its real worktree survive while any `install-id` or `context-reference` remains. When the last reference disappears, the share and worktree are deleted together.
+Removing an Installation removes its `install-id` and physical path. The share and its real worktree survive while any
+`install-id`, `context-reference`, or `branch-refs` entry remains. When the last reference disappears, the share and
+worktree are deleted together.
 
 There is no physical-owner transfer among Installations and no synthetic backing Installation.
 

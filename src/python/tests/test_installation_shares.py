@@ -5,7 +5,14 @@ from pathlib import Path
 import pytest
 from conftest import CliRunner, write_json
 
-from whero.doctidex.model import InstallationContextReference, InstallationShare, ModelFormatError, RuntimeState
+from whero.doctidex.model import (
+    BranchSnapshot,
+    InstallationContextReference,
+    InstallationShare,
+    ModelFormatError,
+    RuntimeState,
+    Worktree,
+)
 
 
 def _share(
@@ -15,6 +22,7 @@ def _share(
     install_path: str = "/.doctidex-git/imports/example/0123456789abcdef",
     install_ids: tuple[str, ...] = ("install",),
     context_references: tuple[InstallationContextReference, ...] = (),
+    branch_refs: tuple[str, ...] = (),
 ) -> InstallationShare:
     return InstallationShare(
         git_url=git_url,
@@ -22,6 +30,7 @@ def _share(
         install_path=install_path,
         install_ids=install_ids,
         context_references=context_references,
+        branch_refs=branch_refs,
     )
 
 
@@ -42,6 +51,7 @@ def test_runtime_state_round_trips_installation_shares() -> None:
             "imports": [],
             "worktrees": [],
             "installation-shares": [share.to_json()],
+            "branch-snapshots": {},
         },
     }
 
@@ -62,7 +72,7 @@ def test_runtime_state_requires_installation_shares() -> None:
             boundary_set=[],
             imports=[],
             import_refs=[],
-            runtime={"imports": [], "worktrees": []},
+            runtime={"imports": [], "worktrees": [], "branch-snapshots": {}},
         )
 
     assert exc_info.value.artifact == "runtime.json"
@@ -78,6 +88,7 @@ def test_runtime_state_rejects_a_malformed_installation_share() -> None:
                 "imports": [],
                 "worktrees": [],
                 "installation-shares": [{"git-url": "https://example.test/repository.git"}],
+                "branch-snapshots": {},
             },
         )
 
@@ -90,7 +101,12 @@ def test_validate_reports_conflicting_installation_shares(
     second = _share(install_ids=("second",)).to_json()
     write_json(
         initialized_root / ".doctidex-git" / "runtime.json",
-        {"imports": [], "worktrees": [], "installation-shares": [first, second]},
+        {
+            "imports": [],
+            "worktrees": [],
+            "installation-shares": [first, second],
+            "branch-snapshots": {},
+        },
     )
 
     result = cli.run("--repos-path", str(initialized_root), "validate", "--model-structure")
@@ -106,3 +122,68 @@ def test_validate_reports_conflicting_installation_shares(
         item["code"] == "state-record.invalid" and item["details"]["identity-field"] == "installation-share-commit"
         for item in violations
     )
+
+
+def test_runtime_state_round_trips_branch_snapshots_and_share_branch_refs() -> None:
+    share = _share(branch_refs=("main", "feature/topic"))
+    snapshot = BranchSnapshot(
+        installations=(),
+        worktrees=(
+            Worktree(
+                url="https://example.test/work.git",
+                install_id=None,
+                base_commit_hash="0123456789abcdef",
+                work_path="/work",
+            ),
+        ),
+        installation_shares=(share,),
+    )
+    state = RuntimeState.from_documents(
+        boundary_set=[],
+        imports=[],
+        import_refs=[],
+        runtime={
+            "imports": [],
+            "worktrees": [],
+            "installation-shares": [],
+            "branch-snapshots": {"main": snapshot.to_json()},
+        },
+    )
+
+    assert state.branch_snapshots == {"main": snapshot}
+    assert state.to_documents()["runtime.json"]["branch-snapshots"] == {"main": snapshot.to_json()}
+
+
+def test_runtime_state_requires_branch_snapshots() -> None:
+    with pytest.raises(ModelFormatError) as exc_info:
+        RuntimeState.from_documents(
+            boundary_set=[],
+            imports=[],
+            import_refs=[],
+            runtime={"imports": [], "worktrees": [], "installation-shares": []},
+        )
+
+    assert exc_info.value.artifact == "runtime.json"
+
+
+def test_installation_share_requires_branch_refs() -> None:
+    with pytest.raises(ModelFormatError):
+        RuntimeState.from_documents(
+            boundary_set=[],
+            imports=[],
+            import_refs=[],
+            runtime={
+                "imports": [],
+                "worktrees": [],
+                "installation-shares": [
+                    {
+                        "git-url": "https://example.test/repository.git",
+                        "commit-hash": "0123456789abcdef",
+                        "install-path": "/.doctidex-git/imports/example/0123456789abcdef",
+                        "install-ids": [],
+                        "context-references": [],
+                    }
+                ],
+                "branch-snapshots": {},
+            },
+        )

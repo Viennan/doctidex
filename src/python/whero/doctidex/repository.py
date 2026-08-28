@@ -54,6 +54,61 @@ def resolve_git_root(repos_path: str | None, *, cwd: Path | None = None) -> Path
     return root
 
 
+def current_branch_name(repository: Path) -> str | None:
+    """Return the current branch short name, or ``None`` for a detached HEAD."""
+
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(repository), "symbolic-ref", "--quiet", "--short", "HEAD"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError as exc:
+        raise GitRootUnresolved(str(repository), repository) from exc
+    if completed.returncode != 0 or not completed.stdout.strip():
+        return None
+    return completed.stdout.strip()
+
+
+def branch_name_from_ref(reference: str) -> str | None:
+    """Return the branch short name for one Git branch ref, or ``None``."""
+
+    prefix = "refs/heads/"
+    if not reference.startswith(prefix) or reference == prefix:
+        return None
+    return reference[len(prefix) :]
+
+
+def branch_has_workspace(repository: Path, branch_name: str) -> bool:
+    """Return whether one branch tree has a tracked doctidex-git work model."""
+
+    required_artifact = ".doctidex-git/config.toml"
+    try:
+        completed = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repository),
+                "ls-tree",
+                "-r",
+                "--name-only",
+                f"refs/heads/{branch_name}",
+                "--",
+                ".doctidex-git",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError as exc:
+        raise GitRootUnresolved(str(repository), repository) from exc
+    if completed.returncode != 0:
+        return False
+    tracked = set(completed.stdout.splitlines())
+    return required_artifact in tracked
+
+
 def repository_location(git_url: str) -> tuple[str, tuple[str, ...]]:
     """Return the Git URL domain and repository path without a trailing ``.git``."""
 
