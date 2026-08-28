@@ -25,10 +25,10 @@ Each Issue Note belongs to one path-encoded class from the closed set below.
 | `bug-fix` | Corrects a defect or closes a gap a postmortem surfaced. |
 | `simplification` | Removes code, behavior, or surface area without adding a capability. |
 | `architecture` | A structural decision about the **shipped source** — how packages relate, what the runtime vocabulary is. |
-| `process` | Tooling, policy, or workflow **around** the code — gates, the package manager, vendoring — not runtime behavior. |
+| `process` | Tooling, policy, or workflow for developing and maintaining **this repository** — its gates, package manager, vendoring — not a runtime feature of the product being built. |
 | `testing` | Test infrastructure and strategy. |
 
-The `architecture` / `process` line: **architecture** is about the source we ship; **process** is the surrounding tooling and workflow. (`refactor` is deliberately absent — it overlaps `simplification`, whose discriminator, "does observable behavior change?", already covers it.)
+The `architecture` / `process` line: **architecture** is about the source shipped as the product; **process** is about developing and maintaining this repository, not about a user- or model-facing product capability. (`refactor` is deliberately absent — it overlaps `simplification`, whose discriminator, "does observable behavior change?", already covers it.)
 
 ## The file format
 
