@@ -226,7 +226,7 @@ def test_import_branch_revision_replacement_retains_managed_ref(
     )
 
     assert updated.payload["install-path"] == initial.payload["install-path"]
-    assert updated.payload["install-id"] != initial.payload["install-id"]
+    assert updated.payload["install-id"] == initial.payload["install-id"]
     assert git_head(initialized_root / updated.payload["install-path"].lstrip("/")) == new_commit
     imports = read_json(initialized_root / ".doctidex-git" / "imports.json")
     refs = read_json(initialized_root / ".doctidex-git" / "import-refs.json")
@@ -280,7 +280,7 @@ def test_import_tag_revision_replacement(
     )
 
     assert updated.payload["install-path"] == initial.payload["install-path"]
-    assert updated.payload["install-id"] != initial.payload["install-id"]
+    assert updated.payload["install-id"] == initial.payload["install-id"]
     assert git_head(initialized_root / updated.payload["install-path"].lstrip("/")) == new_commit
 
 
@@ -316,6 +316,45 @@ def test_import_commit_install_reuses_same_source_and_commit(
 
     assert repeated.payload == initial.payload
     assert initial.payload["install-path"].endswith(f"/{commit}")
+
+
+def test_branch_and_tag_with_same_name_have_distinct_ids_and_paths(
+    initialized_root: Path,
+    source_repository: Path,
+    cache_home: Path,
+    cli: CliRunner,
+) -> None:
+    assert git(source_repository, "branch", "v1").returncode == 0
+
+    branch = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "install",
+        "--untracked",
+        "--url",
+        str(source_repository),
+        "--branch",
+        "v1",
+    )
+    tag = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "install",
+        "--untracked",
+        "--url",
+        str(source_repository),
+        "--tag",
+        "v1",
+    )
+
+    assert branch.code == 0
+    assert tag.code == 0
+    assert len(branch.payload["install-id"]) == 16
+    assert len(tag.payload["install-id"]) == 16
+    assert branch.payload["install-id"] != tag.payload["install-id"]
+    assert branch.payload["install-path"] != tag.payload["install-path"]
 
 
 def test_import_query_by_install_path_and_ref_path(

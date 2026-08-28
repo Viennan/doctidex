@@ -262,3 +262,46 @@ def test_validate_reports_duplicate_share_branch_refs(
         and item["details"]["identity-field"] == "installation-share-branch-ref"
         for item in violations
     )
+
+
+def test_validate_reports_missing_context_reference_owner(
+    initialized_root: Path,
+    cli: CliRunner,
+) -> None:
+    write_json(
+        initialized_root / ".doctidex-git" / "runtime.json",
+        {
+            "imports": [],
+            "worktrees": [],
+            "installation-shares": [
+                {
+                    "git-url": "https://example.test/repository.git",
+                    "commit-hash": "0123456789abcdef",
+                    "install-path": "/.doctidex-git/imports/example/0123456789abcdef",
+                    "install-ids": [],
+                    "context-references": [
+                        {
+                            "install-id": "sub-id",
+                            "owner-install-id": "missing-owner-id",
+                        }
+                    ],
+                    "branch-refs": [],
+                }
+            ],
+            "branch-snapshots": {},
+        },
+    )
+
+    result = cli.run("--repos-path", str(initialized_root), "validate", "--model-structure")
+
+    assert result.code == 1
+    violations = [
+        item
+        for diagnostic in result.payload["diagnostics"]
+        if diagnostic["rule"] == "work-model.valid"
+        for item in diagnostic["details"]["violations"]
+    ]
+    assert any(
+        item["code"] == "installation.context-reference.owner.missing"
+        for item in violations
+    )

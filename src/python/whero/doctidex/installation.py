@@ -236,20 +236,6 @@ class InstallationRuntimeModelView:
 
         return self._mapped_installation(self._installation_view.installation_at(install_path))
 
-    def installation_for_selector(self, git_url: str, *, branch: str, tag: str) -> Installation | None:
-        """Return the Installation matching one source selector, mapped to its owner path."""
-
-        return self._mapped_installation(
-            self._installation_view.installation_for_selector(git_url, branch=branch, tag=tag)
-        )
-
-    def installation_for_commit(self, git_url: str, commit_hash: str) -> Installation | None:
-        """Return the Installation matching one commit, mapped to its owner path."""
-
-        return self._mapped_installation(
-            self._installation_view.installation_for_commit(git_url, commit_hash)
-        )
-
     def ref(self, target_dir: str) -> Ref | None:
         """Return the Installation-local Ref at ``target_dir``."""
 
@@ -259,21 +245,6 @@ class InstallationRuntimeModelView:
         """Return the Installation-local refs for one installation."""
 
         return self._installation_view.refs_for(installation)
-
-    def worktree(self, work_path: str) -> Worktree | None:
-        """Return the Installation-local worktree at ``work_path``."""
-
-        return self._installation_view.worktree(work_path)
-
-    def custom_boundary_point(self, path: str) -> BoundaryPoint | None:
-        """Return the Installation-local custom boundary point at ``path``."""
-
-        return self._installation_view.custom_boundary_point(path)
-
-    def boundary_point(self, path: str) -> BoundaryPoint | None:
-        """Return the first Installation-local boundary point at ``path``."""
-
-        return self._installation_view.boundary_point(path)
 
     def first_boundary(self, path: str) -> BoundaryPoint | None:
         """Return the first Installation-local boundary ancestor of ``path``."""
@@ -298,14 +269,19 @@ class InstallationRuntimeModelView:
     def _mapped_installation(self, local: Installation | None) -> Installation | None:
         if local is None:
             return None
-        owner_installation = self._owner_view.installation(local.install_id)
+        owner_installation = self._owner_view.installation_at(self.context.install_path)
         if owner_installation is None:
+            return replace(local, presentation_path=None)
+        context = self._owner_view.context_reference(owner_installation.install_id, local.install_id)
+        if context is None:
+            return replace(local, presentation_path=None)
+        share, _ = context
+        owner_path = repo_path_to_fs(self.context.owner_root, share.install_path)
+        if not owner_path.exists():
             return replace(local, presentation_path=None)
         return replace(
             local,
-            presentation_path=str(
-                repo_path_to_fs(self.context.owner_root, owner_installation.install_path)
-            ),
+            presentation_path=str(owner_path),
         )
 
 

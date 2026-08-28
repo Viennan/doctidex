@@ -41,15 +41,18 @@ Fields:
 
 - `git-url` and `commit-hash` identify the shared revision.
 - `install-path` is the single repository-internal path of the shared detached Git worktree.
-- `install-ids` lists every Installation that resolves to this commit.
-- `context-references` records which parent Installation produced an InstallationContext sub-Installation.
+- `install-ids` lists owner-side Installations that resolve to this commit.
+- `context-references` records Installation-local sub-Installations by `(owner-install-id, install-id)`; these are not
+  owner-side Installations and do not appear in `install-ids`.
 - `branch-refs` records branch names that have used this share.
 
 The `install-ids` order has no physical meaning. `install-path` is the authority for physical worktree ownership.
 
 ## Physical storage
 
-The share creates its real Git worktree at `install-path`. A direct commit Installation uses this exact path as its `install-path`. A branch or tag Installation keeps its selector-derived `install-path` and has a symlink to `share.install-path`.
+The share creates its real Git worktree at `install-path`. A direct commit Installation uses this exact path as its
+`install-path`. A branch or tag Installation keeps a selector-derived `install-path` that includes the selector kind
+(`/branch/<value>` or `/tag/<value>`) and has a symlink to `share.install-path`.
 
 ## Install and restore
 
@@ -74,16 +77,18 @@ There is no physical-owner transfer among Installations and no synthetic backing
 ## InstallationContext
 
 `import restore` with `--installation-context <INSTALL-ID>` resolves the parent Installation by its recorded
-`install-id`, records or reuses the owner-side Installation under the local `install-id`, and adds that id to the
-owner share. The corresponding `InstallationContextReference` preserves which parent produced the sub-Installation.
-The query surface reports owner-side restore state through `presentation-path`.
+`install-id`, ensures the owner `InstallationShare` for the sub-Installation's `(git-url, commit-hash)`, and records
+one `InstallationContextReference` in that share. It does not create an owner-side Installation and does not add the
+sub-Installation id to `share.install-ids`. The query surface reports owner-side restore state through the share path
+as `presentation-path`.
 
 ## Validation and repair
 
 Validation checks:
 
 - the share worktree exists and is a detached Git worktree;
-- every share `install-id` resolves to a recorded Installation;
+- every share `install-id` resolves to a recorded owner-side Installation;
+- every `context-reference` names a recorded owner Installation and is unique by `(owner-install-id, install-id)`;
 - direct commit Installations use `share.install-path`;
 - branch and tag Installations symlink to `share.install-path`.
 

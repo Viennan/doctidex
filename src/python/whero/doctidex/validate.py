@@ -264,6 +264,7 @@ def _model_violations(git_root: Path, state: RuntimeState) -> list[dict[str, obj
         *_missing_artifact_violations(git_root),
         *_duplicate_record_violations(state),
         *_share_record_violations(state),
+        *_context_reference_violations(state),
         *_ref_installation_violations(state, installations),
         *_managed_path_violations(state),
         *_installation_physical_violations(git_root, state),
@@ -379,6 +380,49 @@ def _share_record_violations(state: RuntimeState) -> list[dict[str, object]]:
                     },
                 }
             )
+    return violations
+
+
+def _context_reference_violations(state: RuntimeState) -> list[dict[str, object]]:
+    violations: list[dict[str, object]] = []
+    installations_by_id = {item.install_id for item in state.installations}
+    seen: dict[tuple[str, str], str] = {}
+    for share in state.installation_shares:
+        for reference in share.context_references:
+            key = (reference.owner_install_id, reference.install_id)
+            if key in seen:
+                existing_share = seen[key]
+                violations.append(
+                    {
+                        "code": "state-record.invalid",
+                        "path": "/.doctidex-git/runtime.json",
+                        "message": "Multiple context references claim the same owner and sub-install pair.",
+                        "details": {
+                            "identity-field": "installation-context-reference",
+                            "identity-value": {
+                                "owner-install-id": reference.owner_install_id,
+                                "install-id": reference.install_id,
+                            },
+                            "conflicting-state-files": ["/.doctidex-git/runtime.json"],
+                            "owner-share-install-path": existing_share,
+                        },
+                    }
+                )
+                continue
+            seen[key] = share.install_path
+            if reference.owner_install_id not in installations_by_id:
+                violations.append(
+                    {
+                        "code": "installation.context-reference.owner.missing",
+                        "path": "/.doctidex-git/runtime.json",
+                        "message": "A context reference names an unknown owner Installation.",
+                        "details": {
+                            "owner-install-id": reference.owner_install_id,
+                            "install-id": reference.install_id,
+                            "share-install-path": share.install_path,
+                        },
+                    }
+                )
     return violations
 
 

@@ -73,9 +73,15 @@ An `InstallationRuntimeStore` coordinates two stores without merging their state
 - the owner RuntimeStore, which owns the outer repository work model;
 - the Installation RuntimeStore, which owns declarations inside the selected Installation.
 
-An `InstallationRuntimeModelView` exposes Installation-local records. It sets `presentation-path` to the owner-side Installation with the same `install-id` when one exists; otherwise the field is absent. The Installation and owner models remain separate.
+An `InstallationRuntimeModelView` exposes Installation-local records. It maps a local sub-Installation to the owner
+through `InstallationShare.context-references` keyed by `(owner-install-id, install-id)`, then sets
+`presentation-path` to the owner share path when the share is present; otherwise the field is absent. The Installation
+and owner models remain separate.
 
-`import restore` with `--installation-context` reads the requested Installation from the local model, then installs it into the owner work model as an untracked Installation. It never creates a nested Installation inside the current Installation; the local Installation is flattened into the owner repository's runtime projection. The result keeps the local Installation identity and supplies the owner-side `presentation-path`.
+`import restore` with `--installation-context` reads the requested Installation from the local model, ensures the
+owner `InstallationShare` for its commit, and records a `context-reference`. It does not create an owner-side
+Installation or nested Installation. The result keeps the local Installation identity and supplies the owner-side
+`presentation-path`.
 
 ## Domain model
 

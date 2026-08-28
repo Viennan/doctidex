@@ -95,6 +95,52 @@ that one document, publishes it with the same atomic-write primitive, and runs p
 releasing the lock. It does not create a journal because the complete four-file model can be inconsistent during a Git
 branch switch.
 
+## InstallationContext store and transaction
+
+`InstallationRuntimeStore` is a RuntimeStore-shaped adapter for one selected Installation. It does not introduce a new
+durable store or journal model. It coordinates two RuntimeStores without merging their state:
+
+- the owner RuntimeStore, whose work model owns the outer repository;
+- the Installation RuntimeStore, whose work model owns declarations inside the selected Installation.
+
+The adapter is created only after `InstallationContext` resolves an owner root and a recorded `install-path`. Both
+stores must already have a `.doctidex-git` workspace; a missing owner workspace fails as `work-model.uninitialized`,
+and a missing Installation-local workspace fails as `installation.context.unavailable`.
+
+### Read-only transaction
+
+`InstallationRuntimeStore.read_only_transaction` returns an `InstallationReadOnlyTransaction` that opens:
+
+1. an owner RuntimeStore shared-lock read-only transaction;
+2. an Installation RuntimeStore `unlocked_read_only_transaction`.
+
+The Installation-local snapshot is unlocked because it is read inside an already-isolated, owner-managed Installation;
+the owner snapshot still takes the shared lock and enforces the owner work model's recovery gate. The combined
+`InstallationRuntimeModelView` exposes Installation-local records and maps them to owner-side state through
+`context-references`, without copying either RuntimeState into the other.
+
+### Diagnostic read
+
+`read_diagnostic_transaction` delegates to the owner RuntimeStore diagnostic transaction. It is used for context
+resolution and path preflight, where the caller needs owner journal visibility and model errors converted to the
+Installation-context command contract.
+
+### Restore import
+
+`restore_import` is the only mutating InstallationContext operation. It does not open an InstallationRuntimeStore
+write transaction and does not write the Installation-local RuntimeStore. It reads the requested Installation through an
+Installation-local unlocked read transaction, then performs the owner-side write through
+`import restore`'s existing workflow:
+
+1. resolve the parent owner Installation by `install-path`;
+2. run cache-before-RuntimeStore coordination through `WorkflowCoordinator.with_repository`;
+3. open the owner RuntimeStore write transaction;
+4. ensure the owner `InstallationShare` and add the `InstallationContextReference`;
+5. return the Installation-local record with an owner-side `presentation-path`.
+
+Owner-side publication therefore still uses the normal RuntimeStore journal protocol. No Installation-local journal is
+created because the selected Installation's declarations remain read-only from the owner's perspective.
+
 ## Coordination
 
 `StoreCoordinator` is a plain coordination object; it does not own a command lock. A normal RuntimeStore transaction that observes a residual journal raises `RepairRequired`; the coordinator runs `repair_core` outside the failed transaction and retries the operation. Explicit repair remains the `repair(store, cache)` entry point in the repair workflow.
@@ -126,3 +172,4 @@ Commands needing both domains acquire cache access before RuntimeStore access.
 | Command coordination and repair retry | [coordination.py](../../../src/python/whero/doctidex/coordination.py) |
 | Repair workflow | [repair.py](../../../src/python/whero/doctidex/repair.py) |
 | Single-file runtime hook publication | [hooks.py](../../../src/python/whero/doctidex/hooks.py), [store/runtime.py](../../../src/python/whero/doctidex/store/runtime.py) |
+| InstallationContext store and transaction | [installation.py](../../../src/python/whero/doctidex/installation.py) |

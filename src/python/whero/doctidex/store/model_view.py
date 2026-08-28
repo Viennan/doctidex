@@ -6,7 +6,15 @@ from collections.abc import Iterable
 from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 
-from whero.doctidex.model import BoundaryPoint, Installation, InstallationShare, Ref, RuntimeState, Worktree
+from whero.doctidex.model import (
+    BoundaryPoint,
+    Installation,
+    InstallationContextReference,
+    InstallationShare,
+    Ref,
+    RuntimeState,
+    Worktree,
+)
 
 if TYPE_CHECKING:
     from .runtime import (
@@ -62,20 +70,17 @@ class RuntimeModelView:
 
         return self._transaction._installations_by_path.get(install_path)
 
-    def installation_for_selector(self, git_url: str, *, branch: str, tag: str) -> Installation | None:
-        """Return the installation matching one branch or tag selector."""
-
-        return self._transaction._installations_by_source.get((git_url, branch, tag))
-
-    def installation_for_commit(self, git_url: str, commit_hash: str) -> Installation | None:
-        """Return the installation matching one Git URL and commit."""
-
-        return self._transaction._installations_by_commit.get((git_url, commit_hash))
-
     def installation_share(self, git_url: str, commit_hash: str) -> InstallationShare | None:
         """Return the installation share matching one Git URL and commit."""
 
         return self._transaction._installation_shares_by_commit.get((git_url, commit_hash))
+
+    def context_reference(
+        self, owner_install_id: str, install_id: str
+    ) -> tuple[InstallationShare, InstallationContextReference] | None:
+        """Return the owner share and context reference for one parent/sub-install pair."""
+
+        return self._transaction._context_references_by_owner_install.get((owner_install_id, install_id))
 
     def ref(self, target_dir: str) -> Ref | None:
         """Return the Ref at ``target_dir``, if present."""
@@ -98,7 +103,7 @@ class RuntimeModelView:
         return self._transaction._custom_boundary_points_by_path.get(path)
 
     def boundary_point(self, path: str) -> BoundaryPoint | None:
-        """Return the first boundary point at or above ``path``."""
+        """Return the boundary point at exactly ``path``, if present."""
 
         return self._transaction._boundary_points_by_path.get(path)
 
@@ -180,18 +185,6 @@ class RuntimeWriteModelView(RuntimeModelView):
         if self.installation(installation.install_id) is None:
             installations = (*installations, installation)
         self._write_transaction._replace_collections(installations=installations)
-
-    def replace_installation(self, existing: Installation, replacement: Installation) -> None:
-        """Replace one installation and update refs to its new install-id."""
-
-        installations = tuple(
-            replacement if item.install_id == existing.install_id else item for item in self.state.installations
-        )
-        refs = tuple(
-            replace(item, install_id=replacement.install_id) if item.install_id == existing.install_id else item
-            for item in self.state.refs
-        )
-        self._write_transaction._replace_collections(installations=installations, refs=refs)
 
     def remove_installations(self, install_ids: Iterable[str]) -> None:
         """Remove installations whose install-ids are selected."""

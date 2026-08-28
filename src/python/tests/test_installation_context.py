@@ -644,11 +644,9 @@ def test_installation_context_queries_local_install_and_restores_to_owner(
     assert restored_candidate["restore-state"] == "available"
 
     runtime = read_json(initialized_root / ".doctidex-git" / "runtime.json")
-    nested_record = next(item for item in runtime["imports"] if item["install-id"] == "nested-id")
-    assert nested_record["tracked"] is False
-    assert nested_record["commit-hash"] == nested_commit
+    assert all(item["install-id"] != "nested-id" for item in runtime["imports"])
     share = runtime["installation-shares"][0]
-    assert "nested-id" in share["install-ids"]
+    assert "nested-id" not in share["install-ids"]
     assert any(
         reference["install-id"] == "nested-id"
         and reference["owner-install-id"] == installed_id

@@ -13,6 +13,7 @@ from typing import Literal, Self
 from whero.doctidex.model import (
     BoundaryPoint,
     Installation,
+    InstallationContextReference,
     InstallationShare,
     ModelFormatError,
     Ref,
@@ -330,9 +331,10 @@ class RuntimeTransaction:
         self._snapshot_hashes: dict[str, str | None] = {}
         self._installations_by_id: dict[str, Installation] = {}
         self._installations_by_path: dict[str, Installation] = {}
-        self._installations_by_source: dict[tuple[str, str, str], Installation] = {}
-        self._installations_by_commit: dict[tuple[str, str], Installation] = {}
         self._installation_shares_by_commit: dict[tuple[str, str], InstallationShare] = {}
+        self._context_references_by_owner_install: dict[
+            tuple[str, str], tuple[InstallationShare, InstallationContextReference]
+        ] = {}
         self._refs_by_target_dir: dict[str, Ref] = {}
         self._refs_by_installation: dict[str, tuple[Ref, ...]] = {}
         self._worktrees_by_path: dict[str, Worktree] = {}
@@ -386,15 +388,16 @@ class RuntimeTransaction:
 
         self._installations_by_id = {item.install_id: item for item in self.state.installations}
         self._installations_by_path = {item.install_path: item for item in self.state.installations}
-        self._installations_by_source = {}
-        self._installations_by_commit = {}
-        for item in self.state.installations:
-            if item.branch or item.tag:
-                self._installations_by_source.setdefault((item.git_url, item.branch, item.tag), item)
-            self._installations_by_commit.setdefault((item.git_url, item.commit_hash), item)
         self._installation_shares_by_commit = {
             (item.git_url, item.commit_hash): item for item in self.state.installation_shares
         }
+        self._context_references_by_owner_install = {}
+        for share in self.state.installation_shares:
+            for reference in share.context_references:
+                key = (reference.owner_install_id, reference.install_id)
+                if key in self._context_references_by_owner_install:
+                    raise ModelFormatError("runtime.json", "unique context references")
+                self._context_references_by_owner_install[key] = (share, reference)
         self._refs_by_target_dir = {item.target_dir: item for item in self.state.refs}
         refs_by_installation: dict[str, list[Ref]] = {}
         for reference in self.state.refs:
