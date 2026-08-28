@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from conftest import CliRunner
+from conftest import CliRunner, write_json
 
 
 def _write_markdown(root: Path, body: str = "") -> None:
@@ -187,3 +187,78 @@ def test_validate_reports_dirty_installation(
         "install-id": installed.payload["install-id"],
         "install-path": installed.payload["install-path"],
     }
+
+
+def test_validate_does_not_physically_check_inactive_branch_snapshots(
+    initialized_root: Path,
+    cli: CliRunner,
+) -> None:
+    snapshot = {
+        "imports": [
+            {
+                "tracked": False,
+                "git-url": "https://example.test/repository.git",
+                "commit-hash": "0123456789abcdef",
+                "install-id": "inactive",
+                "install-path": "/.doctidex-git/imports/example/inactive",
+                "keys": ["repository"],
+                "branch": "",
+                "tag": "",
+            }
+        ],
+        "worktrees": [],
+        "installation-shares": [],
+    }
+    write_json(
+        initialized_root / ".doctidex-git" / "runtime.json",
+        {
+            "imports": [],
+            "worktrees": [],
+            "installation-shares": [],
+            "branch-snapshots": {"feature": snapshot},
+        },
+    )
+
+    result = cli.run("--repos-path", str(initialized_root), "validate", "--model-structure")
+
+    assert result.code == 0
+    assert result.payload["valid"] is True
+
+
+def test_validate_reports_duplicate_share_branch_refs(
+    initialized_root: Path,
+    cli: CliRunner,
+) -> None:
+    write_json(
+        initialized_root / ".doctidex-git" / "runtime.json",
+        {
+            "imports": [],
+            "worktrees": [],
+            "installation-shares": [
+                {
+                    "git-url": "https://example.test/repository.git",
+                    "commit-hash": "0123456789abcdef",
+                    "install-path": "/.doctidex-git/imports/example/0123456789abcdef",
+                    "install-ids": [],
+                    "context-references": [],
+                    "branch-refs": ["main", "main"],
+                }
+            ],
+            "branch-snapshots": {},
+        },
+    )
+
+    result = cli.run("--repos-path", str(initialized_root), "validate", "--model-structure")
+
+    assert result.code == 1
+    violations = [
+        item
+        for diagnostic in result.payload["diagnostics"]
+        if diagnostic["rule"] == "work-model.valid"
+        for item in diagnostic["details"]["violations"]
+    ]
+    assert any(
+        item["code"] == "state-record.invalid"
+        and item["details"]["identity-field"] == "installation-share-branch-ref"
+        for item in violations
+    )

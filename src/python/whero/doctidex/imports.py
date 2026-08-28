@@ -26,6 +26,7 @@ from whero.doctidex.paths import (
 )
 from whero.doctidex.repository import (
     GitCommitUnavailable,
+    current_branch_name,
     ensure_commit_available,
     repository_location,
     resolve_revision,
@@ -549,6 +550,7 @@ def _ensure_share_for_commit(
         install_path=install_path,
         install_ids=(),
         context_references=(),
+        branch_refs=_current_branch_refs(store),
     )
     view.upsert_installation_share(share)
     return share
@@ -576,7 +578,11 @@ def _ensure_installation_in_share(
         )
         if context_reference.install_id not in {item.install_id for item in share.context_references}:
             context_references = (*context_references, context_reference)
-    share = replace(share, install_ids=install_ids, context_references=context_references)
+    branch_refs = share.branch_refs
+    current_branch = current_branch_name(store.git_root)
+    if current_branch is not None and current_branch not in branch_refs:
+        branch_refs = (*branch_refs, current_branch)
+    share = replace(share, install_ids=install_ids, context_references=context_references, branch_refs=branch_refs)
     view.upsert_installation_share(share)
     if installation.branch or installation.tag:
         _ensure_symlink(store, installation.install_path, share.install_path)
@@ -626,6 +632,14 @@ def _remove_from_installation_share(
     if remaining:
         view.upsert_installation_share(
             replace(share, install_ids=remaining, context_references=context_references)
+        )
+        return
+
+    current_branch = current_branch_name(store.git_root)
+    branch_refs = tuple(item for item in share.branch_refs if item != current_branch)
+    if branch_refs:
+        view.upsert_installation_share(
+            replace(share, install_ids=(), context_references=(), branch_refs=branch_refs)
         )
     else:
         _remove_path(repo_path_to_fs(store.git_root, share.install_path))
@@ -927,6 +941,11 @@ def _remove_path(path: Path) -> None:
         path.unlink()
     elif path.exists():
         shutil.rmtree(path)
+
+
+def _current_branch_refs(store: RuntimeStore) -> tuple[str, ...]:
+    branch = current_branch_name(store.git_root)
+    return (branch,) if branch is not None else ()
 
 
 def _default_keys(git_url: str, *, branch: str, tag: str) -> tuple[str, ...]:

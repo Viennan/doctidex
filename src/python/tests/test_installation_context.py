@@ -222,7 +222,10 @@ def test_installation_runtime_store_exposes_only_read_only_transaction_surface(
     workspace = source_repository / ".doctidex-git"
     write_json(workspace / "boundary-set.json", [])
     write_json(workspace / "import-refs.json", [])
-    write_json(workspace / "runtime.json", {"imports": [], "worktrees": [], "installation-shares": []})
+    write_json(
+        workspace / "runtime.json",
+        {"imports": [], "worktrees": [], "installation-shares": [], "branch-snapshots": {}},
+    )
     write_json(workspace / "imports.json", [])
     assert git(source_repository, "add", ".doctidex-git").returncode == 0
     assert git(source_repository, "commit", "--quiet", "-m", "workspace").returncode == 0
@@ -436,7 +439,10 @@ def test_available_installation_with_malformed_local_workspace_reports_work_mode
     workspace = source_repository / ".doctidex-git"
     write_json(workspace / "boundary-set.json", [])
     write_json(workspace / "import-refs.json", [])
-    write_json(workspace / "runtime.json", {"imports": [], "worktrees": [], "installation-shares": []})
+    write_json(
+        workspace / "runtime.json",
+        {"imports": [], "worktrees": [], "installation-shares": [], "branch-snapshots": {}},
+    )
     write_json(workspace / "imports.json", [])
     assert git(source_repository, "add", ".doctidex-git").returncode == 0
     assert git(source_repository, "commit", "--quiet", "-m", "workspace").returncode == 0
@@ -531,7 +537,10 @@ def test_installation_context_queries_local_install_and_restores_to_owner(
     workspace = source_repository / ".doctidex-git"
     write_json(workspace / "boundary-set.json", [])
     write_json(workspace / "import-refs.json", [])
-    write_json(workspace / "runtime.json", {"imports": [], "worktrees": [], "installation-shares": []})
+    write_json(
+        workspace / "runtime.json",
+        {"imports": [], "worktrees": [], "installation-shares": [], "branch-snapshots": {}},
+    )
     write_json(
         workspace / "imports.json",
         [

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Literal
 
@@ -209,6 +209,7 @@ class InstallationShare:
     install_path: str
     install_ids: tuple[str, ...]
     context_references: tuple[InstallationContextReference, ...] = ()
+    branch_refs: tuple[str, ...] = ()
 
     @classmethod
     def from_json(cls, value: object, *, artifact: str) -> InstallationShare:
@@ -222,12 +223,16 @@ class InstallationShare:
             InstallationContextReference.from_json(item, artifact=artifact)
             for item in _list(record.get("context-references"), artifact=artifact)
         )
+        branch_refs = record.get("branch-refs")
+        if not isinstance(branch_refs, list) or not all(isinstance(item, str) for item in branch_refs):
+            raise ModelFormatError(artifact, "an installation share with a string branch-refs array")
         return cls(
             git_url=_string(record, "git-url", artifact=artifact),
             commit_hash=_string(record, "commit-hash", artifact=artifact),
             install_path=_string(record, "install-path", artifact=artifact, path=True),
             install_ids=tuple(install_ids),
             context_references=context_references,
+            branch_refs=tuple(branch_refs),
         )
 
     def to_json(self) -> dict[str, object]:
@@ -239,6 +244,50 @@ class InstallationShare:
             "install-path": self.install_path,
             "install-ids": list(self.install_ids),
             "context-references": [item.to_json() for item in self.context_references],
+            "branch-refs": list(self.branch_refs),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class BranchSnapshot:
+    """One branch's runtime history without its branch-snapshots field."""
+
+    installations: tuple[Installation, ...]
+    worktrees: tuple[Worktree, ...]
+    installation_shares: tuple[InstallationShare, ...]
+
+    @classmethod
+    def from_json(cls, value: object, *, artifact: str) -> BranchSnapshot:
+        """Reconstruct one branch snapshot from a persisted runtime-shaped document."""
+
+        record = _mapping(value, artifact=artifact)
+        installations = tuple(
+            Installation.from_json(item, artifact=artifact)
+            for item in _list(record.get("imports"), artifact=artifact)
+        )
+        if any(item.tracked for item in installations):
+            raise ModelFormatError(artifact, "a branch snapshot with untracked installation records")
+        worktrees = tuple(
+            Worktree.from_json(item, artifact=artifact)
+            for item in _list(record.get("worktrees"), artifact=artifact)
+        )
+        installation_shares = tuple(
+            InstallationShare.from_json(item, artifact=artifact)
+            for item in _list(record.get("installation-shares"), artifact=artifact)
+        )
+        return cls(
+            installations=installations,
+            worktrees=worktrees,
+            installation_shares=installation_shares,
+        )
+
+    def to_json(self) -> dict[str, object]:
+        """Return the branch snapshot as a runtime document without branch history."""
+
+        return {
+            "imports": [item.to_json() for item in self.installations],
+            "worktrees": [item.to_json() for item in self.worktrees],
+            "installation-shares": [item.to_json() for item in self.installation_shares],
         }
 
 
@@ -283,6 +332,7 @@ class RuntimeState:
     refs: tuple[Ref, ...]
     worktrees: tuple[Worktree, ...]
     installation_shares: tuple[InstallationShare, ...]
+    branch_snapshots: dict[str, BranchSnapshot] = field(default_factory=dict)
 
     @property
     def boundary_points(self) -> tuple[BoundaryPoint, ...]:
@@ -299,7 +349,14 @@ class RuntimeState:
     def empty(cls) -> RuntimeState:
         """Return an empty state with no boundary points, installations, refs, worktrees, or shares."""
 
-        return cls(custom_boundary_points=(), installations=(), refs=(), worktrees=(), installation_shares=())
+        return cls(
+            custom_boundary_points=(),
+            installations=(),
+            refs=(),
+            worktrees=(),
+            installation_shares=(),
+            branch_snapshots={},
+        )
 
     @classmethod
     def from_documents(
@@ -343,6 +400,10 @@ class RuntimeState:
             InstallationShare.from_json(item, artifact="runtime.json")
             for item in _list(runtime_record.get("installation-shares"), artifact="runtime.json")
         )
+        branch_snapshots = {
+            branch: BranchSnapshot.from_json(value, artifact="runtime.json")
+            for branch, value in _mapping(runtime_record.get("branch-snapshots"), artifact="runtime.json").items()
+        }
         installations = (*tracked, *untracked)
         return cls(
             custom_boundary_points=boundaries,
@@ -350,6 +411,7 @@ class RuntimeState:
             refs=refs,
             worktrees=worktrees,
             installation_shares=installation_shares,
+            branch_snapshots=branch_snapshots,
         )
 
     def to_documents(self) -> dict[str, object]:
@@ -363,6 +425,9 @@ class RuntimeState:
                 "imports": [item.to_json() for item in self.installations if not item.tracked],
                 "worktrees": [item.to_json() for item in self.worktrees],
                 "installation-shares": [item.to_json() for item in self.installation_shares],
+                "branch-snapshots": {
+                    branch: snapshot.to_json() for branch, snapshot in self.branch_snapshots.items()
+                },
             },
         }
 

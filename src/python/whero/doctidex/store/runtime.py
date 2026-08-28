@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal, Self
@@ -155,6 +156,39 @@ class RuntimeStore:
 
         with self.read_only_transaction() as transaction:
             return transaction.state
+
+    def update_runtime_json(
+        self,
+        update: Callable[[dict[str, object]], dict[str, object]],
+        *,
+        after_update: Callable[[dict[str, object]], None] | None = None,
+    ) -> None:
+        """Atomically update ``runtime.json`` under the RuntimeStore exclusive lock.
+
+        ``after_update`` runs after the file is published and before the lock is released.
+        """
+
+        self._lock.acquire_exclusive()
+        try:
+            document = _decode_json(
+                read_bytes(self.workspace_path / "runtime.json", store="runtime", phase="read"),
+                artifact="runtime.json",
+            )
+            if not isinstance(document, dict):
+                raise ModelFormatError("runtime.json", "an object")
+            updated = update(document)
+            if not isinstance(updated, dict):
+                raise ModelFormatError("runtime.json", "an object")
+            atomic_write_bytes(
+                self.workspace_path / "runtime.json",
+                _encode_json(updated),
+                store="runtime",
+                phase="hook",
+            )
+            if after_update is not None:
+                after_update(updated)
+        finally:
+            self._lock.release()
 
     def clean_journal(self, directory: Path, *, phase: str = "recovery") -> None:
         """Remove one transaction journal directory and sync its parent."""

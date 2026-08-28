@@ -274,6 +274,49 @@ def _model_violations(git_root: Path, state: RuntimeState) -> list[dict[str, obj
     duplicate(state.worktrees, "work_path", "runtime.json")
     duplicate(state.custom_boundary_points, "path", "boundary-set.json")
 
+    def share_branch_ref_duplicates(
+        shares: tuple[object, ...],
+        *,
+        snapshot: str | None = None,
+    ) -> None:
+        for share_index, share in enumerate(shares):
+            branch_refs = getattr(share, "branch_refs", ())
+            positions: dict[str, list[int]] = {}
+            for branch_index, branch in enumerate(branch_refs):
+                positions.setdefault(branch, []).append(branch_index)
+            for branch, indexes in positions.items():
+                if len(indexes) > 1:
+                    details: dict[str, object] = {
+                        "identity-field": "installation-share-branch-ref",
+                        "identity-value": branch,
+                        "conflicting-state-files": ["/.doctidex-git/runtime.json"],
+                        "record-indexes": [share_index],
+                        "branch-ref-indexes": indexes,
+                    }
+                    if snapshot is not None:
+                        details["branch-snapshot"] = snapshot
+                    violations.append(
+                        {
+                            "code": "state-record.invalid",
+                            "path": "/.doctidex-git/runtime.json",
+                            "message": "An installation share repeats a branch reference.",
+                            "details": details,
+                        }
+                    )
+
+    share_branch_ref_duplicates(state.installation_shares)
+    for branch, snapshot in state.branch_snapshots.items():
+        if not branch:
+            violations.append(
+                {
+                    "code": "state-record.invalid",
+                    "path": "/.doctidex-git/runtime.json",
+                    "message": "A branch snapshot has an empty branch key.",
+                    "details": {"identity-field": "branch-snapshot-key", "identity-value": branch},
+                }
+            )
+        share_branch_ref_duplicates(snapshot.installation_shares, snapshot=branch)
+
     share_by_commit: dict[tuple[str, str], list[int]] = {}
     for index, item in enumerate(state.installation_shares):
         share_by_commit.setdefault((item.git_url, item.commit_hash), []).append(index)

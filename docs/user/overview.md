@@ -10,7 +10,8 @@ The tool manages:
 - managed symbolic Refs into Installations;
 - editable Worktrees;
 - custom boundary points;
-- validation and repair.
+- validation and repair;
+- Git hooks that keep untracked runtime state consistent across branch switches.
 
 The command architecture is defined by [overview.md](../dev/architecture/overview.md).
 
@@ -59,7 +60,7 @@ boundary. It is a usage illustration, not a required directory-tree standard.
 │   ├── boundary-set.json                 # custom BoundaryPoints
 │   ├── imports.json                      # tracked Installations
 │   ├── import-refs.json                  # Refs
-│   ├── runtime.json                      # untracked Installations, Worktrees, shares
+│   ├── runtime.json                      # untracked Installations, Worktrees, shares, branch snapshots
 │   ├── imports/
 │   │   └── github.com/
 │   │       └── example/
@@ -104,6 +105,7 @@ The diagram maps to the retained concepts:
 | Restore state | Whether a tracked Installation's physical worktree is present or requires `import restore`. |
 | BoundaryPoint | A path where the current repository's link and scan rules stop. |
 | StructuredLinkAnnotation | A `doctidex` comment that records the first BoundaryPoint crossed by a Markdown link. |
+| Branch snapshot | A branch-specific runtime history used to restore untracked Installation state after checkout. |
 
 `index.md` has no special role. `init` creates only the `.doctidex-git` workspace and its state files; it does not create
 or modify `index.md`.
@@ -133,6 +135,7 @@ See [common.md](reference/common.md#installation-context) for the complete behav
 | Worktrees | Create an editable worktree from an Installation or URL. | Use `worktree create`, `worktree query`, and `worktree remove`. |
 | Custom boundaries | Add or remove custom escape paths. | Use `boundary-set add`, `boundary-set remove`, and `boundary-set parse`. |
 | Validation and repair | Observe problems without changes, then repair recoverable physical state. | Use `validate` first; use `repair` to align model and physical objects. |
+| Git hooks | Keep untracked runtime state branch-consistent across `git checkout`. | `init` installs hooks; use `hook install` and `hook post-checkout`. |
 | Result contract | Every command emits machine-readable JSON. | Success uses `status: "ok"`; `validate` adds `valid`; failures use stable `message.code`. |
 | Cache | The CLI caches bare repositories under the doctidex-git home. | Configure with `DOCTIDEX-GIT-HOME` and `config.toml`; see [common.md](reference/common.md#cache-configuration). |
 | Installation context | Select an Installation with `--installation-context`; the allowed command set is restricted. | Only `validate`, `boundary-set parse`, `import query`, and `import restore` are allowed; `import restore` flattens the local Installation into the owner repository. |
@@ -149,12 +152,16 @@ See [common.md](reference/common.md#installation-context) for the complete behav
 | Manage Worktrees | [worktree.md](reference/worktree.md) |
 | Validate the model and links | [validate.md](reference/validate.md) |
 | Align physical state with the model | [repair.md](reference/repair.md) |
+| Install and run Git hooks | [hook.md](reference/hook.md) |
 
 ## Usage boundaries
 
 Do not edit state JSON under `.doctidex-git/` by hand. Do not commit managed Installation or Worktree directories.
 Installation directories are read-only; create a Worktree when you need to modify or commit from a fixed revision. Use
 `validate` to observe problems and `repair` to align recoverable physical state.
+
+`hook install` and successful first-time `init` install a `post-checkout` hook. That hook keeps untracked Installation
+and share state branch-consistent; see [hook.md](reference/hook.md).
 
 `doctidex-git` coordinates only `doctidex-git` processes that follow its lock and transaction protocol. It does not
 guarantee race safety against direct external edits, and it never rewrites Git history or undoes commits. `repair` may

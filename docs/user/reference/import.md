@@ -102,6 +102,9 @@ doctidex-git import remove \
 
 Removal is blocked when a tracked Installation still has a Ref or an in-scope Markdown link crosses its boundary.
 
+Removing an Installation removes its share membership. The shared physical worktree survives while another branch
+still references the same share.
+
 ## Handleable errors
 
 | Code | Cause and next step |

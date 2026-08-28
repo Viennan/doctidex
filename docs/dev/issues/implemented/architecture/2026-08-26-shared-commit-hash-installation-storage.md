@@ -93,3 +93,7 @@ Rejected: which Installations resolve to the same commit is a machine-local runt
 The change removes redundant worktrees for Installations that resolve to the same commit while preserving stable branch and tag paths. The share is the single authority for physical worktree ownership, and Installation identities remain separate from physical storage.
 
 The cost is a new runtime-only share relation and additional validation/repair rules. Branch and tag `install-path` values are now symlinks, so physical checks and repair must distinguish symlink paths from the share's real worktree.
+
+## Related
+
+- [Support Git branch switching with post-checkout runtime snapshots](../feature/2026-08-28-support-git-branch-switching-with-post-checkout-runtime-snapshots.md)
