@@ -25,8 +25,8 @@ def install_hooks(git_root: Path) -> None:
 
     hooks_path = _hooks_path(git_root)
     command_path = _command_path()
-    _write_hook(hooks_path / "post-checkout", _post_checkout_script(command_path))
-    _write_hook(hooks_path / "pre-commit", _pre_commit_script(command_path))
+    for hook_name in ("post-checkout", "pre-commit"):
+        _install_hook(hooks_path / hook_name, hook_name, command_path)
 
 
 def run_post_checkout(git_root: Path, hook_args: list[str]) -> None:
@@ -89,6 +89,84 @@ def run_pre_commit(git_root: Path) -> None:
             subject={"kind": "workspace", "path": "/.doctidex-git"},
             details={"diagnostics": list(result.diagnostics)},
         )
+
+
+def _install_hook(path: Path, hook_name: str, command_path: str) -> None:
+    try:
+        content = path.read_text() if path.is_file() else ""
+    except OSError as exc:
+        raise CommandFailure(
+            code="hook.install.unavailable",
+            summary="The existing Git hook could not be read.",
+            subject={"kind": "git-hook", "path": str(path)},
+            details={"operation": "read"},
+        ) from exc
+    if not content.strip():
+        content = "#!/bin/sh\n"
+    _write_hook(path, _inject_hook(content, hook_name, command_path))
+
+
+def _inject_hook(content: str, hook_name: str, command_path: str) -> str:
+    lines = content.splitlines()
+    if _has_current_injected_block(lines, hook_name, command_path):
+        return content
+    lines = _remove_doctidex_block(lines, hook_name)
+    block = _injected_block(hook_name, command_path).splitlines()
+    insertion = [""] + block + [""]
+    index = _first_non_comment_index(lines)
+    if index is None:
+        lines.extend(insertion)
+    else:
+        lines[index:index] = insertion
+    return "\n".join(lines) + "\n"
+
+
+def _has_current_injected_block(lines: list[str], hook_name: str, command_path: str) -> bool:
+    block = _injected_block(hook_name, command_path).splitlines()
+    index = _first_non_comment_index(lines)
+    if index is None or index < 1 or index + 1 >= len(lines):
+        return False
+    return (
+        lines[index - 1].strip() == block[0].strip()
+        and lines[index].strip() == block[1].strip()
+        and lines[index + 1].strip() == block[2].strip()
+    )
+
+
+def _injected_block(hook_name: str, command_path: str) -> str:
+    quoted = shlex.quote(command_path)
+    return (
+        f"# doctidex-git begin {hook_name}\n"
+        f"{quoted} hook {hook_name} \"$@\" || exit $?\n"
+        f"# doctidex-git end {hook_name}"
+    )
+
+
+def _remove_doctidex_block(lines: list[str], hook_name: str) -> list[str]:
+    begin = f"# doctidex-git begin {hook_name}"
+    end = f"# doctidex-git end {hook_name}"
+    result = list(lines)
+    while True:
+        begin_index = None
+        end_index = None
+        for index, line in enumerate(result):
+            stripped = line.strip()
+            if begin_index is None and stripped == begin:
+                begin_index = index
+            elif begin_index is not None and stripped == end:
+                end_index = index
+                break
+        if begin_index is None or end_index is None:
+            return result
+        del result[begin_index : end_index + 1]
+
+
+def _first_non_comment_index(lines: list[str]) -> int | None:
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            return index
+    return None
 
 
 def _save_snapshot(document: dict[str, object], branch: str) -> dict[str, object]:
@@ -270,16 +348,6 @@ def _command_path() -> str:
         subject={"kind": "command", "name": "doctidex-git"},
         details={"operation": "install"},
     )
-
-
-def _post_checkout_script(command_path: str) -> str:
-    quoted = shlex.quote(command_path)
-    return f"#!/bin/sh\nexec {quoted} hook post-checkout \"$@\"\n"
-
-
-def _pre_commit_script(command_path: str) -> str:
-    quoted = shlex.quote(command_path)
-    return f"#!/bin/sh\nexec {quoted} hook pre-commit \"$@\"\n"
 
 
 def _write_hook(path: Path, content: str) -> None:

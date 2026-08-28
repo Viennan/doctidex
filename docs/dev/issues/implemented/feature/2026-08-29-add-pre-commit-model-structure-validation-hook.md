@@ -57,6 +57,7 @@ does not make commits depend on Markdown link scanning or managed physical-objec
 
 ## Related
 
+- [Write Git hook scripts in a tool-compatible way](../simplification/2026-08-29-write-git-hook-scripts-in-a-tool-compatible-way.md)
 - [Support Git branch switching with post-checkout runtime snapshots](2026-08-28-support-git-branch-switching-with-post-checkout-runtime-snapshots.md)
 
 ## Alternatives considered

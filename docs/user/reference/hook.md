@@ -11,9 +11,11 @@ See [common.md](common.md) for shared interface and errors.
 doctidex-git [--repos-path <REPOSITORY-ROOT-PATH>] hook install
 ```
 
-`hook install` writes the supported `post-checkout` and `pre-commit` hook scripts under the repository's Git hooks
-directory. It uses the resolved `doctidex-git` command path in each script, so hook execution does not depend on
-`PATH`. The command is idempotent.
+`hook install` injects a marked doctidex block into the supported `post-checkout` and `pre-commit` hook scripts. The
+block is placed after leading comments and before the original first non-comment line, preserving existing hook
+content. It uses the resolved `doctidex-git` command path, so hook execution does not depend on `PATH`. The injected
+command runs first; if it fails, the script exits and the existing hook content does not run. The command is
+idempotent.
 
 Successful first-time `init` installs the same hooks automatically; explicit `hook install` remains available and safe
 to rerun.

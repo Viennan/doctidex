@@ -170,12 +170,13 @@ workspace is already initialized; `validate --model-structure` or `repair` is th
 
 Commands: `hook install`, `hook post-checkout`, `hook pre-commit`
 
-`hook install` writes supported Git hook scripts using the resolved command path and is idempotent. Successful first
-initialization installs the same hooks. `hook post-checkout` is the worker invoked by the post-checkout hook; it saves
-and restores branch snapshots, updates only `runtime.json` under the RuntimeStore exclusive lock, and then aligns
-physical Installation objects while still holding that lock. `hook pre-commit` is the worker invoked by the
-pre-commit hook; it returns success when `.doctidex-git` is absent or the work-model structure is valid, and otherwise
-fails with `hook.pre-commit.validation.failed`.
+`hook install` injects marked doctidex blocks into supported Git hook scripts using the resolved command path and is
+idempotent. Existing hook content is preserved below the injected block. Successful first initialization installs the
+same hooks. `hook post-checkout` is the worker invoked by the post-checkout hook; it saves and restores branch
+snapshots, updates only `runtime.json` under the RuntimeStore exclusive lock, and then aligns physical Installation
+objects while still holding that lock. `hook pre-commit` is the worker invoked by the pre-commit hook; it returns
+success when `.doctidex-git` is absent or the work-model structure is valid, and otherwise fails with
+`hook.pre-commit.validation.failed`.
 
 ### Boundary management service
 
