@@ -342,6 +342,7 @@ class RuntimeTransaction:
         self._custom_boundary_points_by_path: dict[str, BoundaryPoint] = {}
         self._boundary_points: tuple[BoundaryPoint, ...] = ()
         self._boundary_points_by_path: dict[str, BoundaryPoint] = {}
+        self._indexes_dirty = False
         self._reindex()
 
     def __enter__(self) -> Self:
@@ -353,6 +354,7 @@ class RuntimeTransaction:
             self._set_state(self.store._load_state())
             self._snapshot_hashes = self.store._snapshot_hashes()
             self._after_enter()
+            self.ensure_indexes_current()
         except Exception:
             self.store._lock.release()
             raise
@@ -372,6 +374,13 @@ class RuntimeTransaction:
 
         return RuntimeModelView(self)
 
+    def ensure_indexes_current(self) -> None:
+        """Rebuild transaction indexes when they are stale."""
+
+        if self._indexes_dirty:
+            self._reindex()
+            self._indexes_dirty = False
+
     def _after_enter(self) -> None:
         """Allow write transactions to persist their transaction marker."""
 
@@ -382,7 +391,7 @@ class RuntimeTransaction:
 
     def _set_state(self, state: RuntimeState) -> None:
         self.state = state
-        self._reindex()
+        self._indexes_dirty = True
 
     def _reindex(self) -> None:
         """Rebuild the private lookup indexes consumed by the current ModelView."""
@@ -430,6 +439,7 @@ class RuntimeUnlockedReadOnlyTransaction(RuntimeTransaction):
     def __enter__(self) -> Self:
         self._set_state(self.store._load_state())
         self._snapshot_hashes = self.store._snapshot_hashes()
+        self.ensure_indexes_current()
         return self
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> bool:
@@ -452,6 +462,7 @@ class RuntimeReadDiagnosticTransaction(RuntimeTransaction):
             # validation before a potentially inconsistent projection is read.
             if not any(journal.state in {"prepared", "publishing"} for journal in self.pending_journals):
                 self._set_state(self.store._load_state())
+                self.ensure_indexes_current()
         except Exception:
             self.store._lock.release()
             raise
@@ -474,6 +485,7 @@ class RuntimeRepairTransaction(RuntimeTransaction):
             self.pending_journals = self.store._inspect_pending_journals()
             if not any(journal.state in {"prepared", "publishing"} for journal in self.pending_journals):
                 self._set_state(self.store._load_state())
+                self.ensure_indexes_current()
         except Exception:
             self.store._lock.release()
             raise
@@ -484,6 +496,7 @@ class RuntimeRepairTransaction(RuntimeTransaction):
 
         self._set_state(self.store._load_state())
         self._snapshot_hashes = self.store._snapshot_hashes()
+        self.ensure_indexes_current()
 
     def repair_model_view(self):
         """Return the narrow repair view for this transaction."""

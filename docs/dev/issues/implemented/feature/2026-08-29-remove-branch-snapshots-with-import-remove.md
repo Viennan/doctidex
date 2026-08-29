@@ -105,6 +105,8 @@ break a later checkout or restore and is incompatible with the existing share-ow
 
 ## Related
 
+- [Batch RuntimeWriteModelView index
+  rebuilds](../architecture/2026-08-29-batch-runtime-write-view-index-rebuilds.md)
 - [Support Git branch switching with post-checkout runtime
   snapshots](2026-08-28-support-git-branch-switching-with-post-checkout-runtime-snapshots.md)
 - [Shared commit-hash Installation storage](../architecture/2026-08-26-shared-commit-hash-installation-storage.md)

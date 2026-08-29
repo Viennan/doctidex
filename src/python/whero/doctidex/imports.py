@@ -195,8 +195,7 @@ def remove(
                     },
                     details={"blocked-installations": blocked},
                 )
-            for item in selected:
-                _remove_installation_reference(store, view, item)
+            _remove_installations_batch(store, view, selected)
 
         if deleted_branches:
             _remove_branch_snapshot_history(store, view, deleted_branches)
@@ -985,11 +984,10 @@ def _remove_branch_snapshot_history(
     share_groups = _share_groups(all_shares)
     orphan_keys = _orphaned_share_keys(share_groups)
 
-    for share in active_shares:
-        if _share_key(share) not in orphan_keys:
-            view.upsert_installation_share(share)
-    for key in orphan_keys:
-        view.remove_installation_share(*key)
+    final_active_shares = tuple(
+        share for share in active_shares if _share_key(share) not in orphan_keys
+    )
+    view.replace_installation_shares(final_active_shares)
 
     view.replace_branch_snapshots(
         {
@@ -1067,22 +1065,53 @@ def _current_branch_removal_failure(branch: str) -> CommandFailure:
     )
 
 
-def _remove_installation_reference(
+def _remove_installations_batch(
     store: RuntimeStore,
     view: RuntimeWriteModelView,
-    installation: Installation,
+    selected: tuple[Installation, ...],
 ) -> None:
-    """Remove an Installation record and then detach its share membership."""
+    """Remove several Installations and publish the resulting share collection once."""
 
-    if installation.branch or installation.tag:
-        _remove_path(repo_path_to_fs(store.git_root, installation.install_path))
-    view.remove_installations((installation.install_id,))
+    removed_ids = {item.install_id for item in selected}
+    current_branch = current_branch_name(store.git_root)
 
-    share = view.installation_share(installation.git_url, installation.commit_hash)
-    if share is None:
-        return
+    for item in selected:
+        if item.branch or item.tag:
+            _remove_path(repo_path_to_fs(store.git_root, item.install_path))
 
-    _remove_from_installation_share(store, view, share, installation)
+    final_shares: list[InstallationShare] = []
+    orphaned_shares: list[InstallationShare] = []
+    for share in view.state.installation_shares:
+        if not any(install_id in removed_ids for install_id in share.install_ids) and not any(
+            reference.owner_install_id in removed_ids for reference in share.context_references
+        ):
+            final_shares.append(share)
+            continue
+
+        install_ids = tuple(item for item in share.install_ids if item not in removed_ids)
+        context_references = tuple(
+            reference for reference in share.context_references if reference.owner_install_id not in removed_ids
+        )
+        branch_refs = share.branch_refs
+        if not install_ids:
+            branch_refs = tuple(branch for branch in branch_refs if branch != current_branch)
+
+        if install_ids or context_references or branch_refs:
+            final_shares.append(
+                replace(
+                    share,
+                    install_ids=install_ids,
+                    context_references=context_references,
+                    branch_refs=branch_refs,
+                )
+            )
+        else:
+            orphaned_shares.append(share)
+
+    view.remove_installations(removed_ids)
+    view.replace_installation_shares(final_shares)
+    for share in orphaned_shares:
+        _remove_path(repo_path_to_fs(store.git_root, share.install_path))
 
 
 def _installation_failure(code: str, installation: Installation, details: dict[str, object]) -> CommandFailure:

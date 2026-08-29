@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import replace
+from functools import wraps
 from typing import TYPE_CHECKING, cast
 
 from whero.doctidex.model import (
@@ -23,6 +24,14 @@ if TYPE_CHECKING:
         RuntimeTransaction,
         RuntimeWriteTransaction,
     )
+
+def _requires_current_indexes[**P, R](method: Callable[P, R]) -> Callable[P, R]:
+    @wraps(method)
+    def wrapper(self: RuntimeModelView, *args: P.args, **kwargs: P.kwargs) -> R:
+        self._transaction.ensure_indexes_current()
+        return method(self, *args, **kwargs)
+
+    return wrapper
 
 
 class RuntimeModelView:
@@ -56,26 +65,31 @@ class RuntimeModelView:
         return self.state.worktrees
 
     @property
+    @_requires_current_indexes
     def boundary_points(self) -> tuple[BoundaryPoint, ...]:
         """Return all boundary points, including derived ones."""
 
         return self._transaction._boundary_points
 
+    @_requires_current_indexes
     def installation(self, install_id: str) -> Installation | None:
         """Return the installation with ``install_id``, if present."""
 
         return self._transaction._installations_by_id.get(install_id)
 
+    @_requires_current_indexes
     def installation_at(self, install_path: str) -> Installation | None:
         """Return the installation at ``install_path``, if present."""
 
         return self._transaction._installations_by_path.get(install_path)
 
+    @_requires_current_indexes
     def installation_share(self, git_url: str, commit_hash: str) -> InstallationShare | None:
         """Return the installation share matching one Git URL and commit."""
 
         return self._transaction._installation_shares_by_commit.get((git_url, commit_hash))
 
+    @_requires_current_indexes
     def context_reference(
         self, owner_install_id: str, install_id: str
     ) -> tuple[InstallationShare, InstallationContextReference] | None:
@@ -83,26 +97,31 @@ class RuntimeModelView:
 
         return self._transaction._context_references_by_owner_install.get((owner_install_id, install_id))
 
+    @_requires_current_indexes
     def ref(self, target_dir: str) -> Ref | None:
         """Return the Ref at ``target_dir``, if present."""
 
         return self._transaction._refs_by_target_dir.get(target_dir)
 
+    @_requires_current_indexes
     def refs_for(self, installation: Installation) -> tuple[Ref, ...]:
         """Return the refs that point into ``installation``."""
 
         return self._transaction._refs_by_installation.get(installation.install_id, ())
 
+    @_requires_current_indexes
     def worktree(self, work_path: str) -> Worktree | None:
         """Return the worktree at ``work_path``, if present."""
 
         return self._transaction._worktrees_by_path.get(work_path)
 
+    @_requires_current_indexes
     def custom_boundary_point(self, path: str) -> BoundaryPoint | None:
         """Return the custom boundary point at ``path``, if present."""
 
         return self._transaction._custom_boundary_points_by_path.get(path)
 
+    @_requires_current_indexes
     def boundary_point(self, path: str) -> BoundaryPoint | None:
         """Return the boundary point at exactly ``path``, if present."""
 
@@ -113,6 +132,7 @@ class RuntimeModelView:
 
         return self.first_boundaries((path,))[0]
 
+    @_requires_current_indexes
     def first_boundaries(self, paths: Iterable[str]) -> tuple[BoundaryPoint | None, ...]:
         """Return the first boundary ancestor for each requested path."""
 
@@ -218,6 +238,11 @@ class RuntimeWriteModelView(RuntimeModelView):
                 if (item.git_url, item.commit_hash) != (git_url, commit_hash)
             )
         )
+
+    def replace_installation_shares(self, shares: Iterable[InstallationShare]) -> None:
+        """Replace the complete active Installation share collection."""
+
+        self._write_transaction._replace_collections(installation_shares=tuple(shares))
 
     def upsert_ref(self, reference: Ref) -> None:
         """Insert or replace one Ref by target-dir."""

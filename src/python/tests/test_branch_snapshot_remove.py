@@ -9,6 +9,7 @@ from whero.doctidex.errors import CommandFailure
 from whero.doctidex.imports import remove
 from whero.doctidex.model import BranchSnapshot, InstallationShare, RuntimeState
 from whero.doctidex.paths import repo_path_to_fs
+from whero.doctidex.store.model_view import RuntimeWriteModelView
 from whero.doctidex.store.runtime import RuntimeStore
 
 
@@ -162,3 +163,38 @@ def test_remove_auto_deletes_orphaned_share_and_worktree(initialized_root: Path)
     assert state.branch_snapshots == {}
     assert state.installation_shares == ()
     assert not repo_path_to_fs(initialized_root, share.install_path).exists()
+
+
+def test_branch_snapshot_removal_publishes_active_shares_once(
+    initialized_root: Path,
+    monkeypatch,
+) -> None:
+    share = _share(branch_refs=("main", "feature"))
+    snapshot = BranchSnapshot(installations=(), worktrees=(), installation_shares=(share,))
+    _write_state(
+        initialized_root,
+        shares=(share,),
+        branch_snapshots={"feature": snapshot},
+    )
+    calls: list[tuple[InstallationShare, ...]] = []
+    original_replace = RuntimeWriteModelView.replace_installation_shares
+
+    def recording_replace(
+        view: RuntimeWriteModelView,
+        shares: tuple[InstallationShare, ...],
+    ) -> None:
+        calls.append(shares)
+        original_replace(view, shares)
+
+    monkeypatch.setattr(RuntimeWriteModelView, "replace_installation_shares", recording_replace)
+
+    remove(
+        RuntimeStore(initialized_root),
+        None,
+        untracked=False,
+        auto=False,
+        branches=("feature",),
+    )
+
+    assert len(calls) == 1
+    assert calls[0][0].branch_refs == ("main",)
