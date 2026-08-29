@@ -82,7 +82,9 @@ def test_init_reports_existing_workspace_and_keeps_its_state(initialized_root: P
 
 
 def test_init_does_not_validate_existing_workspace(initialized_root: Path, cli: CliRunner) -> None:
-    (initialized_root / "index.md").write_text("[missing](/missing.md)\n")
+    (initialized_root / "external").mkdir()
+    cli.run("--repos-path", str(initialized_root), "boundary-set", "add", "--path", "/external")
+    (initialized_root / "index.md").write_text("[missing](/external/missing.md)\n")
 
     result = cli.run("--repos-path", str(initialized_root), "init")
 

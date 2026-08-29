@@ -17,7 +17,7 @@ from whero.doctidex.model import (
     InstallationShare,
     Ref,
 )
-from whero.doctidex.model_view import scan_markdown_links
+from whero.doctidex.model_view import scan_cross_boundary_links
 from whero.doctidex.paths import (
     is_managed_imports_path,
     is_managed_worktrees_path,
@@ -253,7 +253,7 @@ def unref(store: RuntimeStore, target_dir: str) -> None:
             return
         blocking_links = [
             link.reference_details()
-            for link in scan_markdown_links(store.git_root, view)
+            for link in scan_cross_boundary_links(store.git_root, view)
             if link.ref == record
         ]
         if blocking_links:
@@ -982,7 +982,7 @@ def _blocked_installations(
     git_root: Path, model: RuntimeModelView, selected: tuple[Installation, ...]
 ) -> list[dict[str, object]]:
     links = {item.install_id: [] for item in selected if item.tracked}
-    for link in scan_markdown_links(git_root, model):
+    for link in scan_cross_boundary_links(git_root, model):
         if link.installation is not None and link.installation.install_id in links:
             links[link.installation.install_id].append(link.reference_details())
     result: list[dict[str, object]] = []

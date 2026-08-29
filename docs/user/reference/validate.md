@@ -1,6 +1,6 @@
 # `validate`
 
-`validate` read-only checks the work model, Markdown links, and managed Worktrees.
+`validate` read-only checks the work model, cross-boundary Markdown links, and managed Worktrees.
 
 See [common.md](common.md) for shared interface and errors.
 
@@ -43,12 +43,14 @@ Diagnostics are not execution failures. `validate` returns `status: "ok"` with `
 | Rule | Meaning |
 |---|---|
 | `work-model.valid` | Workspace, projections, relationships, managed paths, or ignore rules are invalid. |
-| `link.path.conforms` | Local link cannot normalize to a repository-internal path. |
-| `link.target.exists` | Local link target does not exist. |
+| `link.target.exists` | Cross-boundary link target does not exist. |
 | `link.annotation.required` | Cross-boundary link lacks a matching annotation. |
 | `import.link.tracked` | Link crosses an untracked Installation. |
 | `worktree.clean` | Managed Worktree has uncommitted changes. |
 | `installation.worktree.dirty` | An Installation has uncommitted changes; reported inside `work-model.valid`. |
+
+`validate` scans Markdown links only when they cross a BoundaryPoint. It does not report path-conformance or
+target-existence diagnostics for ordinary local links.
 
 When a tracked Installation's physical directory is absent, validation does not restore it or require its link
 targets. This is expected after cloning tracked metadata; use `import query` to see `restore-state` and

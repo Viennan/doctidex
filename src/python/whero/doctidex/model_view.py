@@ -6,7 +6,7 @@ from whero.doctidex.markdown_links import (
     parse_inline_annotation,
     resolve_inline_annotation_boundary,
     resolve_local_link,
-    scan_markdown_links,
+    scan_cross_boundary_links,
 )
 from whero.doctidex.store.model_view import RuntimeModelView, RuntimeRepairModelView, RuntimeWriteModelView
 
@@ -20,5 +20,5 @@ __all__ = [
     "resolve_inline_annotation_boundary",
     "resolve_local_link",
     "scan_managed_symlinks",
-    "scan_markdown_links",
+    "scan_cross_boundary_links",
 ]

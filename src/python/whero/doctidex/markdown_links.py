@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import functools
+import json
 import os
+import shutil
+import subprocess
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -12,6 +17,7 @@ from markdown_it import MarkdownIt
 from markdown_it.rules_inline.link import link as _markdown_link_rule
 from markdown_it.rules_inline.state_inline import StateInline
 
+from whero.doctidex.errors import CommandFailure
 from whero.doctidex.model import BoundaryPoint, InlineAnnotation, Installation, Ref
 from whero.doctidex.paths import fs_path_to_repo_path, normalize_repo_path, repo_path_to_fs
 from whero.doctidex.store.model_view import RuntimeModelView
@@ -36,56 +42,21 @@ class MarkdownLink:
         return {"path": self.path, "line": self.line, "link-path": self.link_path}
 
 
-def scan_markdown_links(
+def scan_cross_boundary_links(
     git_root: Path,
     model: RuntimeModelView,
     *,
     scope: str = "/",
 ) -> tuple[MarkdownLink, ...]:
-    """Scan Markdown under ``scope`` and associate each local link with its boundary."""
+    """Scan Markdown under ``scope`` and return only links that cross a boundary."""
 
     scope = normalize_repo_path(scope, parameter="scope")
     root = repo_path_to_fs(git_root, scope)
-    candidates: list[tuple[str, _LocalLink, str | None]] = []
     boundaries = {point.path for point in model.boundary_points}
-
-    for directory, child_directories, files in os.walk(root):
-        current_path = fs_path_to_repo_path(git_root, Path(directory))
-        child_directories[:] = [
-            name
-            for name in child_directories
-            if name != ".doctidex-git" and _join_repo_path(current_path, name) not in boundaries
-        ]
-        for name in files:
-            document = Path(directory) / name
-            if not name.endswith(".md") or fs_path_to_repo_path(git_root, document) in boundaries:
-                continue
-            try:
-                content = document.read_text()
-            except OSError:
-                continue
-            document_path = fs_path_to_repo_path(git_root, document)
-            for link in _local_link_paths(content):
-                target_path = resolve_local_link(document_path, link.link_path)
-                candidates.append((document_path, link, target_path))
-
-    boundaries = iter(model.first_boundaries(item[2] for item in candidates if item[2] is not None))
-    links: list[MarkdownLink] = []
-    for document_path, local_link, target_path in candidates:
-        boundary = next(boundaries) if target_path is not None else None
-        links.append(
-            MarkdownLink(
-                path=document_path,
-                line=local_link.line,
-                link_path=local_link.link_path,
-                source_end=local_link.source_end,
-                target_path=target_path,
-                boundary_point=boundary,
-                installation=model.installation_for_boundary(boundary),
-                ref=model.ref_for_boundary(boundary),
-            )
-        )
-    return tuple(links)
+    documents = _rg_candidate_documents(git_root, root, boundaries, model) if _rg_available() else None
+    if documents is None:
+        documents = _walk_candidate_documents(git_root, root, boundaries)
+    return _precise_scan_documents(documents, git_root, model)
 
 
 def resolve_local_link(document_path: str, link_path: str) -> str | None:
@@ -100,6 +71,106 @@ def resolve_local_link(document_path: str, link_path: str) -> str | None:
         return normalize_repo_path(candidate, parameter="link-path")
     except Exception:
         return None
+
+
+@functools.lru_cache(maxsize=1)
+def _rg_available() -> bool:
+    """Return whether ripgrep with PCRE2 support is available."""
+
+    if shutil.which("rg") is None:
+        return False
+    try:
+        completed = subprocess.run(
+            ["rg", "--pcre2-version"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return False
+    return completed.returncode == 0
+
+
+def _rg_candidate_documents(
+    git_root: Path,
+    root: Path,
+    boundaries: set[str],
+    model: RuntimeModelView,
+) -> set[str] | None:
+    """Return documents that may contain a boundary-crossing link, or ``None`` on fallback."""
+
+    documents: set[str] = set()
+    try:
+        for pattern in (_INLINE_CANDIDATE_PATTERN, _REFERENCE_CANDIDATE_PATTERN):
+            for document_path, raw_candidate in _iter_rg_candidates(git_root, root, boundaries, pattern):
+                classification, target = _coarse_classify(document_path, raw_candidate)
+                if classification == "outside-repository":
+                    continue
+                if classification == "unresolved" or (
+                    target is not None and model.first_boundary(target) is not None
+                ):
+                    documents.add(document_path)
+    except (_RipgrepFailure, OSError, ValueError):
+        return None
+    return documents
+
+
+def _walk_candidate_documents(git_root: Path, root: Path, boundaries: set[str]) -> set[str]:
+    """Return in-scope Markdown documents using the current filesystem walk."""
+
+    documents: set[str] = set()
+    for directory, child_directories, files in os.walk(root):
+        current_path = fs_path_to_repo_path(git_root, Path(directory))
+        child_directories[:] = [
+            name
+            for name in child_directories
+            if name != ".doctidex-git" and _join_repo_path(current_path, name) not in boundaries
+        ]
+        for name in files:
+            document = Path(directory) / name
+            if not name.endswith(".md"):
+                continue
+            document_path = fs_path_to_repo_path(git_root, document)
+            if document_path in boundaries:
+                continue
+            documents.add(document_path)
+    return documents
+
+
+def _precise_scan_documents(
+    documents: set[str],
+    git_root: Path,
+    model: RuntimeModelView,
+) -> tuple[MarkdownLink, ...]:
+    """Precisely parse selected documents and return only cross-boundary links."""
+
+    links: list[MarkdownLink] = []
+    for document_path in sorted(documents):
+        document = repo_path_to_fs(git_root, document_path)
+        try:
+            content = document.read_text()
+        except OSError:
+            continue
+        for link in _local_link_paths(content):
+            target_path = resolve_local_link(document_path, link.link_path)
+            if target_path is None:
+                continue
+            boundary = model.first_boundary(target_path)
+            if boundary is None:
+                continue
+            links.append(
+                MarkdownLink(
+                    path=document_path,
+                    line=link.line,
+                    link_path=link.link_path,
+                    source_end=link.source_end,
+                    target_path=target_path,
+                    boundary_point=boundary,
+                    installation=model.installation_for_boundary(boundary),
+                    ref=model.ref_for_boundary(boundary),
+                )
+            )
+    return tuple(links)
 
 
 def parse_inline_annotation(content: str, position: int) -> InlineAnnotation | None:
@@ -155,6 +226,124 @@ def _parse_annotation_block(block: str) -> InlineAnnotation | None:
     if not isinstance(cross_boundary_point, str):
         return None
     return InlineAnnotation(cross_boundary_point=cross_boundary_point)
+
+
+_INLINE_CANDIDATE_PATTERN = (
+    r"\]\(\K(?<dest>(?:[^()\\]|\\.|\((?:[^()\\]|\\.|(?&dest))*\))*)(?=\))"
+)
+_REFERENCE_CANDIDATE_PATTERN = r"(?m)^ {0,3}\[[^\]\n]+\]:[ \t]*\K[^\n]*"
+
+
+class _RipgrepFailure(Exception):
+    """Ripgrep could not produce a reliable candidate stream."""
+
+
+def _rg_command(root: Path, boundaries: set[str], pattern: str) -> list[str]:
+    command = [
+        "rg",
+        "--json",
+        "-U",
+        "--pcre2",
+        "--multiline-dotall",
+        "--hidden",
+        "--no-ignore",
+        "--no-messages",
+        "-g",
+        "*.md",
+        "-g",
+        "!.doctidex-git",
+        "-g",
+        "!.doctidex-git/**",
+    ]
+    for boundary in sorted(boundaries):
+        if boundary == "/" or boundary == "/.doctidex-git" or boundary.startswith("/.doctidex-git/"):
+            continue
+        relative = boundary.lstrip("/")
+        command.extend(("-g", f"!{relative}", "-g", f"!{relative}/**"))
+    command.extend(("--", pattern, str(root)))
+    return command
+
+
+def _iter_rg_candidates(
+    git_root: Path,
+    root: Path,
+    boundaries: set[str],
+    pattern: str,
+) -> Iterator[tuple[str, str]]:
+    command = _rg_command(root, boundaries, pattern)
+    try:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    except OSError as exc:
+        raise _RipgrepFailure from exc
+    assert process.stdout is not None
+    try:
+        for line in process.stdout:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise _RipgrepFailure from exc
+            if record.get("type") != "match":
+                continue
+            data = record.get("data", {})
+            path_text = data.get("path", {}).get("text")
+            if not path_text:
+                continue
+            document_path = fs_path_to_repo_path(git_root, Path(path_text))
+            for submatch in data.get("submatches", ()):
+                match_text = submatch.get("match", {}).get("text")
+                if match_text is not None:
+                    yield document_path, match_text
+    finally:
+        returncode = process.wait()
+    if returncode not in (0, 1):
+        raise _RipgrepFailure
+
+
+def _coarse_classify(document_path: str, raw_candidate: str) -> tuple[str, str | None]:
+    """Classify one raw candidate for the document prefilter."""
+
+    destination = _extract_destination(raw_candidate)
+    if destination is None:
+        return "unresolved", None
+    parsed = urlsplit(destination)
+    if parsed.scheme or parsed.netloc:
+        return "outside-repository", None
+    try:
+        path = unquote(parsed.path) if parsed.path else document_path
+    except Exception:
+        return "unresolved", None
+    candidate = path if path.startswith("/") else _join_repo_path(_parent_path(document_path), path)
+    try:
+        return "target", normalize_repo_path(candidate, parameter="link-path")
+    except CommandFailure:
+        return "outside-repository", None
+    except Exception:
+        return "unresolved", None
+
+
+def _extract_destination(raw_candidate: str) -> str | None:
+    text = raw_candidate.strip()
+    if not text:
+        return None
+    if text.startswith("<"):
+        end = text.find(">")
+        if end < 0:
+            return None
+        return text[1:end]
+    escaped = False
+    for index, character in enumerate(text):
+        if escaped:
+            escaped = False
+            continue
+        if character == "\\":
+            escaped = True
+            continue
+        if character.isspace():
+            return text[:index]
+    return text
 
 
 def _path_prefix(prefix: str, path: str) -> bool:
@@ -253,5 +442,5 @@ __all__ = [
     "parse_inline_annotation",
     "resolve_inline_annotation_boundary",
     "resolve_local_link",
-    "scan_markdown_links",
+    "scan_cross_boundary_links",
 ]

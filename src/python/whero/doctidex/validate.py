@@ -7,7 +7,6 @@ import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlsplit
 
 from whero.doctidex.errors import CommandFailure
 from whero.doctidex.initialization import RUNTIME_IGNORE_PATHS, WORKSPACE_ARTIFACTS
@@ -16,7 +15,7 @@ from whero.doctidex.model_view import (
     MarkdownLink,
     parse_inline_annotation,
     resolve_inline_annotation_boundary,
-    scan_markdown_links,
+    scan_cross_boundary_links,
 )
 from whero.doctidex.paths import normalize_repo_path, repo_path_to_fs
 from whero.doctidex.store.files import StoreFailure
@@ -743,15 +742,8 @@ def _gitignore_violations(git_root: Path, state: RuntimeState) -> list[dict[str,
 
 def _content_diagnostics(git_root: Path, model: RuntimeModelView, scope: str) -> list[dict[str, object]]:
     diagnostics: list[dict[str, object]] = []
-    for link in scan_markdown_links(git_root, model, scope=scope):
-        if _is_external(link.link_path):
-            continue
+    for link in scan_cross_boundary_links(git_root, model, scope=scope):
         if link.target_path is None:
-            diagnostics.append(
-                _link_diagnostic(
-                    "link.path.conforms", link, "The local link cannot be normalized.", {"reason": "outside-repository"}
-                )
-            )
             continue
         target = repo_path_to_fs(git_root, link.target_path)
         missing_install = bool(
@@ -821,11 +813,6 @@ def _content_diagnostics(git_root: Path, model: RuntimeModelView, scope: str) ->
 
 def _within(scope: str, path: str) -> bool:
     return scope == "/" or path == scope or path.startswith(f"{scope.rstrip('/')}/")
-
-
-def _is_external(value: str) -> bool:
-    parsed = urlsplit(value)
-    return bool(parsed.scheme or parsed.netloc)
 
 
 def _annotation_for_link(path: Path, source_end: int | None) -> InlineAnnotation | None:

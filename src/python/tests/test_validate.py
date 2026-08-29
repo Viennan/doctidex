@@ -26,7 +26,9 @@ def test_validate_model_structure_reports_uninitialized_workspace(git_root: Path
 
 
 def test_validate_model_structure_skips_directory_tree_checks(initialized_root: Path, cli: CliRunner) -> None:
-    _write_markdown(initialized_root, "[missing](/missing.md)\n")
+    (initialized_root / "external").mkdir()
+    cli.run("--repos-path", str(initialized_root), "boundary-set", "add", "--path", "/external")
+    _write_markdown(initialized_root, "[missing](/external/missing.md)\n")
 
     structure = cli.run("--repos-path", str(initialized_root), "validate", "--model-structure")
     complete = cli.run("--repos-path", str(initialized_root), "validate")
@@ -36,6 +38,15 @@ def test_validate_model_structure_skips_directory_tree_checks(initialized_root: 
     assert structure.payload["scope"] == {"repos-path": str(initialized_root), "subdir": "/"}
     assert complete.code == 1
     assert any(item["rule"] == "link.target.exists" for item in complete.payload["diagnostics"])
+
+
+def test_validate_ignores_ordinary_missing_link(initialized_root: Path, cli: CliRunner) -> None:
+    _write_markdown(initialized_root, "[missing](/missing.md)\n")
+
+    result = cli.run("--repos-path", str(initialized_root), "validate")
+
+    assert result.code == 0
+    assert result.payload["valid"] is True
 
 
 def test_validate_model_structure_ignores_index_document_content(initialized_root: Path, cli: CliRunner) -> None:
@@ -48,7 +59,9 @@ def test_validate_model_structure_ignores_index_document_content(initialized_roo
 
 
 def test_validate_valid_root_and_missing_link_include_scope_and_line(initialized_root: Path, cli: CliRunner) -> None:
-    _write_markdown(initialized_root, "[missing](/missing.md)\n")
+    (initialized_root / "external").mkdir()
+    cli.run("--repos-path", str(initialized_root), "boundary-set", "add", "--path", "/external")
+    _write_markdown(initialized_root, "[missing](/external/missing.md)\n")
 
     result = cli.run("--repos-path", str(initialized_root), "validate")
 
@@ -57,7 +70,7 @@ def test_validate_valid_root_and_missing_link_include_scope_and_line(initialized
     diagnostic = next(item for item in result.payload["diagnostics"] if item["rule"] == "link.target.exists")
     assert diagnostic["path"] == "/index.md"
     assert diagnostic["line"] == 1
-    assert diagnostic["details"]["target-path"] == "/missing.md"
+    assert diagnostic["details"]["target-path"] == "/external/missing.md"
 
 
 def test_validate_extracts_each_link_annotation_from_its_own_comment_sequence(

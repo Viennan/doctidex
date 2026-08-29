@@ -21,6 +21,9 @@ The command architecture is defined by [overview.md](../dev/architecture/overvie
 - Linux or macOS.
 - A Git worktree.
 - `doctidex-git` on `PATH`.
+- `rg` (ripgrep) with PCRE2 support is strongly recommended for fast Markdown link scanning. When `rg` is
+  unavailable, `doctidex-git` falls back to a per-file Python scan with the same behavior but reduced performance on
+  large repositories.
 
 ## Quick start
 
