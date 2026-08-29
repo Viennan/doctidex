@@ -5,7 +5,12 @@ from pathlib import Path
 import pytest
 from conftest import commit_file, git
 
-from whero.doctidex.repository import branch_has_workspace, branch_name_from_ref, current_branch_name
+from whero.doctidex.repository import (
+    branch_has_workspace,
+    branch_name_from_ref,
+    current_branch_name,
+    local_branch_names,
+)
 
 
 def test_current_branch_name_returns_short_branch(git_root: Path) -> None:
@@ -17,6 +22,28 @@ def test_current_branch_name_returns_none_for_detached_head(git_root: Path) -> N
     assert git(git_root, "checkout", "--detach", head).returncode == 0
 
     assert current_branch_name(git_root) is None
+
+
+def test_local_branch_names_is_empty_for_unborn_branch(git_root: Path) -> None:
+    assert current_branch_name(git_root) == "main"
+    assert local_branch_names(git_root) == ()
+
+
+def test_local_branch_names_returns_all_local_branches(git_root: Path) -> None:
+    commit_file(git_root, "readme.md", "readme\n")
+    assert git(git_root, "checkout", "-b", "feature/topic").returncode == 0
+    assert git(git_root, "checkout", "-b", "z").returncode == 0
+
+    assert local_branch_names(git_root) == ("feature/topic", "main", "z")
+
+
+def test_local_branch_names_are_available_on_detached_head(git_root: Path) -> None:
+    head = commit_file(git_root, "readme.md", "readme\n")
+    assert git(git_root, "checkout", "-b", "feature/topic").returncode == 0
+    assert git(git_root, "checkout", "--detach", head).returncode == 0
+
+    assert current_branch_name(git_root) is None
+    assert local_branch_names(git_root) == ("feature/topic", "main")
 
 
 @pytest.mark.parametrize(

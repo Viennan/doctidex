@@ -71,6 +71,23 @@ def current_branch_name(repository: Path) -> str | None:
     return completed.stdout.strip()
 
 
+def local_branch_names(repository: Path) -> tuple[str, ...]:
+    """Return the short names of all local Git branches in stable order."""
+
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(repository), "for-each-ref", "--format=%(refname:short)", "refs/heads"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError as exc:
+        raise GitRootUnresolved(str(repository), repository) from exc
+    if completed.returncode != 0:
+        return ()
+    return tuple(sorted(line for line in completed.stdout.splitlines() if line))
+
+
 def branch_name_from_ref(reference: str) -> str | None:
     """Return the branch short name for one Git branch ref, or ``None``."""
 

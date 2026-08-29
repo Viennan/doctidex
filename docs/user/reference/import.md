@@ -95,15 +95,24 @@ it available. An untracked Installation with a missing physical path is `missing
 
 ```bash
 doctidex-git import remove \
-  (--install-id <INSTALL-ID> | --untracked | --auto)
+  (--install-id <INSTALL-ID> | --untracked | --auto | --branch <BRANCH>...)
 ```
 
 `--install-id` selects one Installation. `--untracked` selects all untracked Installations. `--auto` selects untracked Installations and Installations without managed Refs.
+
+`--branch` is repeatable and selects branch snapshots by branch short name. The currently checked-out branch cannot be
+selected; an unknown branch name is a no-op.
+
+`--auto` additionally removes branch snapshots whose branch no longer exists locally. The current branch is never
+removed by `--auto`.
 
 Removal is blocked when a tracked Installation still has a Ref or an in-scope Markdown link crosses its boundary.
 
 Removing an Installation removes its share membership. The shared physical worktree survives while another branch
 still references the same share.
+
+Removing a branch snapshot also removes that branch from `InstallationShare.branch-refs`. When a share has no
+remaining `install-ids`, `context-references`, or `branch-refs`, the share and its physical worktree are deleted.
 
 ## Handleable errors
 
@@ -117,6 +126,8 @@ still references the same share.
 | `installation.restore.unavailable` | Tracked Installation cannot be restored at its commit. |
 | `installation.restore.required` | A tracked Installation is not restored; run `import restore`. |
 | `installation.remove.blocked` | Ref or cross-boundary link still depends on the Installation. |
+| `import.branch-snapshot.remove.current-branch` | `--branch` named the currently checked-out branch. |
+| `import.branch-snapshot.reconcile.failed` | A share or physical worktree could not be cleaned during snapshot removal. |
 | `ref.source.unavailable` | Installation or `src-sub-dir` cannot be a link source. |
 | `ref.target.unavailable` | Target is occupied, is under a managed directory, is below an existing boundary point, or cannot be created. |
 | `ref.target.inconsistent` | Physical symlink does not match the Ref record. |

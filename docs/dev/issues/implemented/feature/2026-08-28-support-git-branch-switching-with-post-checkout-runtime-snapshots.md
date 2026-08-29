@@ -86,10 +86,10 @@ diagnostic and can be completed by rerunning the worker.
 The trade-off is a new runtime-only `branch-snapshots` object, a `branch-refs` field on Installation shares, and a
 single-file RuntimeStore publication path that intentionally bypasses the normal journaled transaction.
 
-## Out of scope
+## Deferred
 
-Maintaining `branch-refs` after a branch snapshot is removed, or when a share becomes unreachable from every branch,
-is deferred to a future `import remove` option.
+Branch snapshot removal and orphaned share cleanup are implemented by
+[Remove branch snapshots from import remove](2026-08-29-remove-branch-snapshots-with-import-remove.md).
 
 ## Alternatives considered
 
@@ -112,5 +112,6 @@ references.
 ## Related
 
 - [Add a pre-commit model-structure validation hook](2026-08-29-add-pre-commit-model-structure-validation-hook.md)
+- [Remove branch snapshots from import remove](2026-08-29-remove-branch-snapshots-with-import-remove.md)
 - [Shared commit-hash Installation storage](../architecture/2026-08-26-shared-commit-hash-installation-storage.md)
 - [Select Installation context by install-id argument](../architecture/2026-08-27-select-installation-context-by-install-id.md)

@@ -12,6 +12,7 @@ from pathlib import Path
 from whero.doctidex.errors import CommandFailure
 from whero.doctidex.model import (
     BoundaryPoint,
+    BranchSnapshot,
     Installation,
     InstallationContextReference,
     InstallationShare,
@@ -28,6 +29,7 @@ from whero.doctidex.repository import (
     GitCommitUnavailable,
     current_branch_name,
     ensure_commit_available,
+    local_branch_names,
     repository_location,
     resolve_revision,
 )
@@ -167,25 +169,37 @@ def remove(
     *,
     untracked: bool,
     auto: bool,
+    branches: tuple[str, ...] = (),
 ) -> None:
     """Remove selected Installations after confirming no link or Ref blocks them."""
 
     with store.write_transaction() as transaction:
         view = transaction.write_model_view()
-        selected = _select_installations(view, install_id, untracked=untracked, auto=auto)
-        blocked = _blocked_installations(store.git_root, view, selected)
-        if blocked:
-            raise CommandFailure(
-                code="installation.remove.blocked",
-                summary="The selected installation is still referenced by the current doctidex tree.",
-                subject={
-                    "kind": "installation" if install_id else "installation-selection",
-                    **({"install-id": install_id} if install_id else {}),
-                },
-                details={"blocked-installations": blocked},
-            )
-        for item in selected:
-            _remove_installation_reference(store, view, item)
+        if branches:
+            deleted_branches = _explicit_branch_snapshot_names(store, view, branches)
+        elif auto:
+            deleted_branches = _stale_branch_snapshot_names(store, view)
+        else:
+            deleted_branches = ()
+
+        if not branches:
+            selected = _select_installations(view, install_id, untracked=untracked, auto=auto)
+            blocked = _blocked_installations(store.git_root, view, selected)
+            if blocked:
+                raise CommandFailure(
+                    code="installation.remove.blocked",
+                    summary="The selected installation is still referenced by the current doctidex tree.",
+                    subject={
+                        "kind": "installation" if install_id else "installation-selection",
+                        **({"install-id": install_id} if install_id else {}),
+                    },
+                    details={"blocked-installations": blocked},
+                )
+            for item in selected:
+                _remove_installation_reference(store, view, item)
+
+        if deleted_branches:
+            _remove_branch_snapshot_history(store, view, deleted_branches)
 
 
 def ref(store: RuntimeStore, install_id: str, src_sub_dir: str, target_dir: str) -> Ref:
@@ -915,6 +929,141 @@ def _select_installations(
         item
         for item in model.installations
         if not item.tracked or not model.refs_for(item)
+    )
+
+
+def _explicit_branch_snapshot_names(
+    store: RuntimeStore,
+    view: RuntimeWriteModelView,
+    branches: tuple[str, ...],
+) -> tuple[str, ...]:
+    current = current_branch_name(store.git_root)
+    if current is not None and any(branch == current for branch in branches):
+        raise _current_branch_removal_failure(current)
+    return tuple(branch for branch in branches if branch in view.state.branch_snapshots)
+
+
+def _stale_branch_snapshot_names(
+    store: RuntimeStore,
+    view: RuntimeWriteModelView,
+) -> tuple[str, ...]:
+    local_branches = set(local_branch_names(store.git_root))
+    current = current_branch_name(store.git_root)
+    return tuple(
+        branch
+        for branch in view.state.branch_snapshots
+        if branch not in local_branches and branch != current
+    )
+
+
+def _remove_branch_snapshot_history(
+    store: RuntimeStore,
+    view: RuntimeWriteModelView,
+    branches: tuple[str, ...],
+) -> None:
+    deleted = set(branches)
+    view.remove_branch_snapshots(deleted)
+
+    active_shares = tuple(
+        _without_deleted_branch_refs(share, deleted)
+        for share in view.state.installation_shares
+    )
+    remaining_snapshots: dict[str, BranchSnapshot] = {
+        branch: replace(
+            snapshot,
+            installation_shares=tuple(
+                _without_deleted_branch_refs(share, deleted)
+                for share in snapshot.installation_shares
+            ),
+        )
+        for branch, snapshot in view.state.branch_snapshots.items()
+    }
+    all_shares = (
+        *active_shares,
+        *(share for snapshot in remaining_snapshots.values() for share in snapshot.installation_shares),
+    )
+    share_groups = _share_groups(all_shares)
+    orphan_keys = _orphaned_share_keys(share_groups)
+
+    for share in active_shares:
+        if _share_key(share) not in orphan_keys:
+            view.upsert_installation_share(share)
+    for key in orphan_keys:
+        view.remove_installation_share(*key)
+
+    view.replace_branch_snapshots(
+        {
+            branch: replace(
+                snapshot,
+                installation_shares=tuple(
+                    share
+                    for share in snapshot.installation_shares
+                    if _share_key(share) not in orphan_keys
+                ),
+            )
+            for branch, snapshot in remaining_snapshots.items()
+        }
+    )
+
+    for key in orphan_keys:
+        _remove_orphaned_share_path(store, share_groups[key][0])
+
+
+def _without_deleted_branch_refs(
+    share: InstallationShare,
+    deleted: set[str],
+) -> InstallationShare:
+    branch_refs = tuple(branch for branch in share.branch_refs if branch not in deleted)
+    if branch_refs == share.branch_refs:
+        return share
+    return replace(share, branch_refs=branch_refs)
+
+
+def _share_key(share: InstallationShare) -> tuple[str, str]:
+    return (share.git_url, share.commit_hash)
+
+
+def _share_groups(
+    shares: tuple[InstallationShare, ...],
+) -> dict[tuple[str, str], tuple[InstallationShare, ...]]:
+    grouped: dict[tuple[str, str], list[InstallationShare]] = {}
+    for share in shares:
+        grouped.setdefault(_share_key(share), []).append(share)
+    return {key: tuple(records) for key, records in grouped.items()}
+
+
+def _orphaned_share_keys(
+    groups: dict[tuple[str, str], tuple[InstallationShare, ...]],
+) -> set[tuple[str, str]]:
+    return {
+        key
+        for key, records in groups.items()
+        if all(_is_empty_installation_share(record) for record in records)
+    }
+
+
+def _is_empty_installation_share(share: InstallationShare) -> bool:
+    return not share.install_ids and not share.context_references and not share.branch_refs
+
+
+def _remove_orphaned_share_path(store: RuntimeStore, share: InstallationShare) -> None:
+    try:
+        _remove_path(repo_path_to_fs(store.git_root, share.install_path))
+    except OSError as exc:
+        raise CommandFailure(
+            code="import.branch-snapshot.reconcile.failed",
+            summary="The orphaned Installation share could not be removed.",
+            subject={"kind": "installation-share", "install-path": share.install_path},
+            details={"operation": "remove-orphaned-share"},
+        ) from exc
+
+
+def _current_branch_removal_failure(branch: str) -> CommandFailure:
+    return CommandFailure(
+        code="import.branch-snapshot.remove.current-branch",
+        summary="The currently checked-out branch snapshot cannot be removed.",
+        subject={"kind": "branch-snapshot", "branch": branch},
+        details={"operation": "remove"},
     )
 
 

@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, cast
 
 from whero.doctidex.model import (
     BoundaryPoint,
+    BranchSnapshot,
     Installation,
     InstallationContextReference,
     InstallationShare,
@@ -248,6 +249,25 @@ class RuntimeWriteModelView(RuntimeModelView):
         self._write_transaction._replace_collections(
             worktrees=tuple(item for item in self.state.worktrees if item.work_path not in selected_paths)
         )
+
+    def replace_branch_snapshots(self, branch_snapshots: dict[str, BranchSnapshot]) -> None:
+        """Replace the branch snapshot map in the current state."""
+
+        self._write_transaction._replace_collections(branch_snapshots=branch_snapshots)
+
+    def remove_branch_snapshots(self, branch_names: Iterable[str]) -> None:
+        """Remove branch snapshots whose branch names are selected."""
+
+        selected_names = set(branch_names)
+        if not selected_names:
+            return
+        updated = {
+            branch: snapshot
+            for branch, snapshot in self.state.branch_snapshots.items()
+            if branch not in selected_names
+        }
+        if updated != self.state.branch_snapshots:
+            self.replace_branch_snapshots(updated)
 
     @property
     def _write_transaction(self) -> RuntimeWriteTransaction:

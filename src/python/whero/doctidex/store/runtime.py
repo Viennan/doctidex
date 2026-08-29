@@ -12,6 +12,7 @@ from typing import Literal, Self
 
 from whero.doctidex.model import (
     BoundaryPoint,
+    BranchSnapshot,
     Installation,
     InstallationContextReference,
     InstallationShare,
@@ -515,18 +516,18 @@ class RuntimeWriteTransaction(RuntimeTransaction):
         self._transaction_id: str | None = None
         self._directory: Path | None = None
 
-    def replace_state(self, state: RuntimeState) -> None:
-        """Replace the transaction state and mark it for publication."""
-
-        self._set_state(state)
-        self._changed = True
-
     def write_model_view(self):
         """Return the write view for this transaction."""
 
         from .model_view import RuntimeWriteModelView
 
         return RuntimeWriteModelView(self)
+
+    def _replace_state(self, state: RuntimeState) -> None:
+        """Replace the transaction state and mark it for publication."""
+
+        self._set_state(state)
+        self._changed = True
 
     def _after_enter(self) -> None:
         transaction_id = uuid.uuid4().hex
@@ -559,9 +560,11 @@ class RuntimeWriteTransaction(RuntimeTransaction):
         refs: tuple[Ref, ...] | None = None,
         worktrees: tuple[Worktree, ...] | None = None,
         installation_shares: tuple[InstallationShare, ...] | None = None,
+        branch_snapshots: dict[str, BranchSnapshot] | None = None,
     ) -> None:
-        self.replace_state(
-            RuntimeState(
+        self._replace_state(
+            replace(
+                self.state,
                 custom_boundary_points=(
                     custom_boundary_points if custom_boundary_points is not None else self.state.custom_boundary_points
                 ),
@@ -571,6 +574,7 @@ class RuntimeWriteTransaction(RuntimeTransaction):
                 installation_shares=(
                     installation_shares if installation_shares is not None else self.state.installation_shares
                 ),
+                branch_snapshots=branch_snapshots if branch_snapshots is not None else self.state.branch_snapshots,
             )
         )
 

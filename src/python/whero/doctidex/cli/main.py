@@ -399,7 +399,13 @@ def _run_import(operation: ResolvedInvocation, args: argparse.Namespace) -> Comm
                 **{"install-id": item.install_id, "install-path": item.install_path},
             )
         if name == "remove":
-            import_workflow.remove(store, args.install_id, untracked=args.untracked, auto=args.auto)
+            import_workflow.remove(
+                store,
+                args.install_id,
+                untracked=args.untracked,
+                auto=args.auto,
+                branches=tuple(args.branch or ()),
+            )
             return success(command=operation.command)
         if name == "ref":
             import_workflow.ref(store, args.install_id, args.src_sub_dir or "", args.target_dir)
@@ -654,6 +660,7 @@ def _add_import_parser(commands: argparse._SubParsersAction[argparse.ArgumentPar
     selection.add_argument("--install-id", type=_non_empty, metavar="INSTALL-ID")
     selection.add_argument("--untracked", action="store_true", help="Select all untracked installations.")
     selection.add_argument("--auto", action="store_true", help="Select installations eligible for automatic cleanup.")
+    selection.add_argument("--branch", action="append", default=[], type=_non_empty, metavar="BRANCH")
 
     ref = subcommands.add_parser("ref", help="Create a managed installation reference.")
     ref.add_argument("--install-id", required=True, type=_non_empty, metavar="INSTALL-ID")
