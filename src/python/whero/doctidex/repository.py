@@ -10,6 +10,8 @@ from urllib.parse import urlsplit
 
 from whero.doctidex.errors import CommandFailure
 
+_SHALLOW_FETCH_ARGS = ("fetch", "--depth=1", "origin")
+
 
 @dataclass(frozen=True, slots=True)
 class GitRootUnresolved(RuntimeError):
@@ -150,7 +152,7 @@ def repository_location(git_url: str) -> tuple[str, tuple[str, ...]]:
 
 
 def resolve_revision(repository: Path, git_url: str, *, kind: str, value: str) -> str:
-    """Synchronize or fetch one selector and return its resolved commit hash."""
+    """Fetch one selector with depth one and return its resolved commit hash."""
 
     if kind == "branch":
         _git_revision(
@@ -158,8 +160,7 @@ def resolve_revision(repository: Path, git_url: str, *, kind: str, value: str) -
             git_url,
             kind,
             value,
-            "fetch",
-            "origin",
+            *_SHALLOW_FETCH_ARGS,
             f"+refs/heads/{value}:refs/heads/{value}",
         )
         return _git_revision(
@@ -177,8 +178,7 @@ def resolve_revision(repository: Path, git_url: str, *, kind: str, value: str) -
             git_url,
             kind,
             value,
-            "fetch",
-            "origin",
+            *_SHALLOW_FETCH_ARGS,
             f"+refs/tags/{value}:refs/tags/{value}",
         )
         return _git_revision(
@@ -190,18 +190,18 @@ def resolve_revision(repository: Path, git_url: str, *, kind: str, value: str) -
             "--verify",
             f"refs/tags/{value}^{{commit}}",
         )
-    _git_revision(repository, git_url, kind, value, "fetch", "origin", value)
+    _git_revision(repository, git_url, kind, value, *_SHALLOW_FETCH_ARGS, value)
     return _git_revision(repository, git_url, kind, value, "rev-parse", "--verify", f"{value}^{{commit}}")
 
 
 def ensure_commit_available(repository: Path, git_url: str, commit_hash: str) -> None:
-    """Ensure a bare repository contains one commit without reselecting a revision."""
+    """Ensure one commit is present, fetching it shallow when missing."""
 
     if _contains_commit(repository, git_url, commit_hash):
         return
     try:
         subprocess.run(
-            ["git", "-C", str(repository), "fetch", "origin", commit_hash],
+            ["git", "-C", str(repository), *_SHALLOW_FETCH_ARGS, commit_hash],
             check=True,
             capture_output=True,
             text=True,

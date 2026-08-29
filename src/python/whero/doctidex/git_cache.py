@@ -206,7 +206,12 @@ def _cache_path_component(value: str, *, fallback: str) -> str:
 
 def _git_clone_bare(git_url: str, target: Path) -> None:
     try:
-        subprocess.run(["git", "clone", "--bare", git_url, str(target)], check=True, capture_output=True, text=True)
+        subprocess.run(
+            ["git", "clone", "--bare", "--depth=1", git_url, str(target)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
     except (OSError, subprocess.CalledProcessError) as exc:
         raise _cache_failure(git_url, operation="clone") from exc
 

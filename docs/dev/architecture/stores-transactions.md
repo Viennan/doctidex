@@ -38,7 +38,7 @@ A write transaction acquires an exclusive lock, performs startup recovery, and s
 
 ### Startup recovery
 
-On entry, every `preparing` CacheItem is treated as an interrupted publication. Its validated cache-local directory is removed and the record is dropped. A later cache miss can create a fresh `preparing` record, clone the bare repository, then publish it.
+On entry, every `preparing` CacheItem is treated as an interrupted publication. Its validated cache-local directory is removed and the record is dropped. A later cache miss can create a fresh `preparing` record, clone a shallow bare repository with `git clone --bare --depth=1`, then publish it.
 
 Bare Git object changes are real external side effects and are not reversed by CacheStore.
 
