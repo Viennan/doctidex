@@ -182,7 +182,7 @@ def cli() -> CliRunner:
 
 
 @pytest.fixture
-def initialized_root(git_root: Path, cli: CliRunner) -> Path:
+def initialized_root(git_root: Path, cache_home: Path, cli: CliRunner) -> Path:
     result = cli.run("--repos-path", str(git_root), "init")
     assert result.code == 0, result.payload
     return git_root

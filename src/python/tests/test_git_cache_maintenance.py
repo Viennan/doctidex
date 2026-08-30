@@ -11,13 +11,13 @@ from whero.doctidex.model import CacheItemStatus
 def test_write_transaction_exposes_and_replaces_records(tmp_path: Path) -> None:
     cache_path = tmp_path / "cache"
     write_json(
-        cache_path / "status.json",
+        cache_path / "cache-status.json",
         {
             "records": [
                 {
                     "status": "published",
                     "git-url": "https://example.test/repository.git",
-                    "path": "repositories/repository.git",
+                    "path": "data/repositories/repository.git",
                 }
             ]
         },
@@ -28,7 +28,7 @@ def test_write_transaction_exposes_and_replaces_records(tmp_path: Path) -> None:
         assert transaction.records[0].status == CacheItemStatus.PUBLISHED
         transaction.replace_records(())
 
-    assert read_json(cache_path / "status.json")["records"] == []
+    assert read_json(cache_path / "cache-status.json")["records"] == []
 
 
 def test_live_worktree_heads_ignore_the_bare_repository(
@@ -65,7 +65,7 @@ def test_cache_clean_removes_unused_repository(
     install_id = installed.payload["install-id"]
     assert cli.run("--repos-path", str(initialized_root), "import", "remove", "--install-id", install_id).code == 0
 
-    status_path = cache_home / "cache" / "status.json"
+    status_path = cache_home / "cache" / "cache-status.json"
     record = read_json(status_path)["records"][0]
     repository = cache_home / "cache" / record["path"]
     assert repository.exists()
@@ -99,14 +99,14 @@ def test_cache_clean_retains_live_worktree_repository(
     cleaned = cli.run("cache", "clean")
 
     assert cleaned.code == 0
-    status_path = cache_home / "cache" / "status.json"
+    status_path = cache_home / "cache" / "cache-status.json"
     records = read_json(status_path)["records"]
     assert len(records) == 1
     assert (cache_home / "cache" / records[0]["path"]).exists()
 
 
 def test_cache_clean_reuses_preparing_recovery(cache_home: Path, cli: CliRunner) -> None:
-    status_path = cache_home / "cache" / "status.json"
+    status_path = cache_home / "cache" / "cache-status.json"
     write_json(
         status_path,
         {
@@ -114,12 +114,12 @@ def test_cache_clean_reuses_preparing_recovery(cache_home: Path, cli: CliRunner)
                 {
                     "status": "preparing",
                     "git-url": "https://example.test/repository.git",
-                    "path": "repositories/repository.git",
+                    "path": "data/repositories/repository.git",
                 }
             ]
         },
     )
-    repository = cache_home / "cache" / "repositories" / "repository.git"
+    repository = cache_home / "cache" / "data" / "repositories" / "repository.git"
     repository.mkdir(parents=True)
 
     cleaned = cli.run("cache", "clean")

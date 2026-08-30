@@ -7,7 +7,7 @@ from conftest import CliRunner, commit_file, git, git_head, read_json
 
 
 def _cache_repository(cache_home: Path) -> Path:
-    status = read_json(cache_home / "cache" / "status.json")
+    status = read_json(cache_home / "cache" / "cache-status.json")
     record = status["records"][0]
     return cache_home / "cache" / record["path"]
 

@@ -43,7 +43,7 @@ def test_cache_miss_and_hit_reuse_one_published_repository(
 
     assert first.code == 0
     assert second.payload == first.payload
-    status = read_json(cache_home / "cache" / "status.json")
+    status = read_json(cache_home / "cache" / "cache-status.json")
     assert len(status["records"]) == 1
     assert status["records"][0]["status"] == "published"
 
@@ -54,7 +54,7 @@ def test_interrupted_preparing_cache_record_is_cleaned_before_install(
     cache_home: Path,
     cli: CliRunner,
 ) -> None:
-    status_path = cache_home / "cache" / "status.json"
+    status_path = cache_home / "cache" / "cache-status.json"
     write_json(
         status_path,
         {
@@ -62,7 +62,7 @@ def test_interrupted_preparing_cache_record_is_cleaned_before_install(
                 {
                     "status": "preparing",
                     "git-url": str(source_repository),
-                    "path": "repositories/preparing.git",
+                    "path": "data/repositories/preparing.git",
                 }
             ]
         },
@@ -97,12 +97,12 @@ def test_cache_read_transaction_cleans_preparing_without_network(
                 {
                     "status": "preparing",
                     "git-url": "https://example.test/repository.git",
-                    "path": "repositories/preparing.git",
+                    "path": "data/repositories/preparing.git",
                 }
             ]
         },
     )
-    target = store.cache_path / "repositories" / "preparing.git"
+    target = store.cache_path / "data" / "repositories" / "preparing.git"
     target.mkdir(parents=True)
 
     with store.read_only_transaction() as transaction:
@@ -125,7 +125,7 @@ def test_cache_read_transaction_recovery_exhaustion_reports_store_failure(
                 {
                     "status": "preparing",
                     "git-url": "https://example.test/repository.git",
-                    "path": "repositories/preparing.git",
+                    "path": "data/repositories/preparing.git",
                 }
             ]
         },
@@ -133,7 +133,7 @@ def test_cache_read_transaction_recovery_exhaustion_reports_store_failure(
     preparing = CacheItem(
         status=CacheItemStatus.PREPARING,
         git_url="https://example.test/repository.git",
-        path="repositories/preparing.git",
+        path="data/repositories/preparing.git",
     )
 
     def keep_preparing(_transaction: CacheReadOnlyTransaction) -> None:

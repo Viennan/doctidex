@@ -221,6 +221,13 @@ write lock and do not touch the RuntimeStore work model.
 
 ## Store and coordination services
 
+### Config service
+
+[config.py](../../../src/python/whero/doctidex/config.py) owns the single `Config` read for an invocation. It resolves
+the doctidex-git home, auto-creates the global `config.toml` when absent, merges global and repository config, records
+which file declared each option, and resolves a relative `cache-path` from that declaring file's directory. Cache-aware
+commands construct `GitCache` from that resolved `Config` rather than reading `config.toml` again.
+
 The RuntimeStore owns tracked and runtime JSON projections. The CacheStore owns bare repository cache records. The StoreCoordinator coordinates retry and cache-before-RuntimeStore lock order; it performs repair outside a failed RuntimeStore transaction and retries the actual operation without serializing the whole command. Explicit repair is owned by the repair service. Commands needing both domains acquire cache access before RuntimeStore access.
 
 The stores are not database transactions. Their objective is recoverable model state under cooperating `doctidex-git` processes, not reversal of every filesystem or Git side effect.
@@ -244,6 +251,7 @@ publication without a journal, because the complete multi-file work model can be
 |---|---|
 | CLI envelope and argument contract | [cli/main.py](../../../src/python/whero/doctidex/cli/main.py), [cli/results.py](../../../src/python/whero/doctidex/cli/results.py) |
 | Domain records | [model.py](../../../src/python/whero/doctidex/model.py) |
+| Config resolution | [config.py](../../../src/python/whero/doctidex/config.py) |
 | Shared model relations and link scans | [model_view.py](../../../src/python/whero/doctidex/model_view.py) |
 | Installation-context resolution and owner routing | [installation.py](../../../src/python/whero/doctidex/installation.py) |
 | Git hook installation and hook workers | [hooks.py](../../../src/python/whero/doctidex/hooks.py) |

@@ -18,6 +18,7 @@ from whero.doctidex import imports as import_workflow
 from whero.doctidex import repair as repair_workflow
 from whero.doctidex import validate as validate_workflow
 from whero.doctidex import worktree as worktree_workflow
+from whero.doctidex.config import Config
 from whero.doctidex.coordination import StoreCoordinator
 from whero.doctidex.errors import CommandFailure
 from whero.doctidex.git_cache import GitCache
@@ -331,9 +332,10 @@ def _is_forbidden_installation_command(command: str) -> bool:
 
 @_command_result()
 def _run_boundary(operation: ResolvedInvocation, args: argparse.Namespace) -> CommandPayload:
+    cache = _git_cache(operation.root)
     coordinator = StoreCoordinator(
         _command_runtime_store(operation.root, operation.context),
-        GitCache.from_environment(),
+        cache,
     )
     store = coordinator.store
 
@@ -351,10 +353,11 @@ def _run_boundary(operation: ResolvedInvocation, args: argparse.Namespace) -> Co
 
 @_command_result()
 def _run_import(operation: ResolvedInvocation, args: argparse.Namespace) -> CommandPayload:
+    cache = _git_cache(operation.root)
     context = operation.context
     if context is not None and args.import_command == "restore":
         store = InstallationRuntimeStore(context)
-        coordinator = StoreCoordinator(store, GitCache.from_environment())
+        coordinator = StoreCoordinator(store, cache)
         item = coordinator.run(lambda: store.restore_import(coordinator, args.install_id))
         fields: dict[str, object] = {
             "install-id": item.install_id,
@@ -369,7 +372,7 @@ def _run_import(operation: ResolvedInvocation, args: argparse.Namespace) -> Comm
 
     coordinator = StoreCoordinator(
         _command_runtime_store(operation.root, operation.context),
-        GitCache.from_environment(),
+        cache,
     )
     store = coordinator.store
 
@@ -435,7 +438,8 @@ def _run_import(operation: ResolvedInvocation, args: argparse.Namespace) -> Comm
 
 @_command_result()
 def _run_worktree(operation: ResolvedInvocation, args: argparse.Namespace) -> CommandPayload:
-    coordinator = StoreCoordinator(_runtime_store(operation.root), GitCache.from_environment())
+    cache = _git_cache(operation.root)
+    coordinator = StoreCoordinator(_runtime_store(operation.root), cache)
     store = coordinator.store
 
     def execute() -> CommandPayload:
@@ -486,7 +490,8 @@ def _run_validate(operation: ResolvedInvocation, args: argparse.Namespace) -> Co
 
 @_command_result()
 def _run_repair(operation: ResolvedInvocation) -> CommandPayload:
-    repair_workflow.repair(_runtime_store(operation.root), GitCache.from_environment())
+    cache = _git_cache(operation.root)
+    repair_workflow.repair(_runtime_store(operation.root), cache)
     return success(command=operation.command)
 
 
@@ -506,7 +511,7 @@ def _run_cache(invocation: ParsedInvocation, args: argparse.Namespace) -> int:
     """Run a user-level cache maintenance command without Git-root resolution."""
 
     try:
-        cache = GitCache.from_environment()
+        cache = _git_cache(None)
         if args.cache_command == "clean":
             removed = cache.clean()
             payload = success(command=invocation.command, removed=list(removed))
@@ -565,6 +570,12 @@ def _store_or_model_failure(invocation: ParsedInvocation | ResolvedInvocation, e
         details={"violations": [{"artifact": exc.artifact, "expected": exc.expected_shape}]},
         repos_path=invocation.repos_path,
     )
+
+
+def _git_cache(root: Path | None) -> GitCache:
+    """Build one GitCache from one invocation-scoped Config load."""
+
+    return GitCache.from_config(Config.from_environment(root))
 
 
 def _runtime_store(root: Path) -> RuntimeStore:

@@ -3,6 +3,11 @@
 `cache` maintains the user-level Git cache. See [common.md](common.md#cache-configuration) for cache location and
 configuration.
 
+## Storage layout
+
+The cache root is selected by `cache-path`. `cache-status.json` sits directly in that root, and bare repositories are
+stored under `data/<domain>/<repository...>`.
+
 ## Clean
 
 ```bash

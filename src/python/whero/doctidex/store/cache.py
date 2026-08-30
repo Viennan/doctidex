@@ -19,7 +19,7 @@ class CacheStore:
 
     def __init__(self, cache_path: Path) -> None:
         self.cache_path = cache_path
-        self.status_path = cache_path / "status.json"
+        self.status_path = cache_path / "cache-status.json"
         self._lock = FileLock(cache_path / ".lock", store="cache")
 
     def read_only_transaction(self) -> CacheReadOnlyTransaction:
@@ -36,7 +36,7 @@ class CacheStore:
         if not self.status_path.exists():
             return ()
         document = _decode_status(read_bytes(self.status_path, store="cache", phase="read"))
-        records = tuple(CacheItem.from_json(item, artifact="status.json") for item in document["records"])
+        records = tuple(CacheItem.from_json(item, artifact="cache-status.json") for item in document["records"])
         _validate_records(records)
         return records
 
@@ -52,7 +52,7 @@ class CacheStore:
     def _path_for_record(self, record: CacheItem) -> Path:
         relative = Path(record.path)
         if relative.is_absolute() or relative == Path(".") or ".." in relative.parts or not record.path:
-            raise ModelFormatError("status.json", "cache item paths relative to cache-path")
+            raise ModelFormatError("cache-status.json", "cache item paths relative to cache-path")
         return self.cache_path / relative
 
 
@@ -152,21 +152,21 @@ def _decode_status(content: bytes) -> dict[str, object]:
     try:
         document = json.loads(content)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ModelFormatError("status.json", "an object with a records array") from exc
+        raise ModelFormatError("cache-status.json", "an object with a records array") from exc
     if not isinstance(document, dict) or not isinstance(document.get("records"), list):
-        raise ModelFormatError("status.json", "an object with a records array")
+        raise ModelFormatError("cache-status.json", "an object with a records array")
     return document
 
 
 def _validate_records(records: tuple[CacheItem, ...]) -> None:
     urls = [record.git_url for record in records]
     if len(urls) != len(set(urls)):
-        raise ModelFormatError("status.json", "records with unique git-url values")
+        raise ModelFormatError("cache-status.json", "records with unique git-url values")
     for record in records:
         if not record.git_url:
-            raise ModelFormatError("status.json", "cache records with non-empty git-url values")
+            raise ModelFormatError("cache-status.json", "cache records with non-empty git-url values")
         if not record.path:
-            raise ModelFormatError("status.json", "cache records with non-empty relative paths")
+            raise ModelFormatError("cache-status.json", "cache records with non-empty relative paths")
 
 
 def _encode_status(records: tuple[CacheItem, ...]) -> bytes:

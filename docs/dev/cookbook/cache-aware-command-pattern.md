@@ -64,7 +64,8 @@ def _run_example(
 
 2. Cache miss path:
    - Run the command against a new Git URL.
-   - Confirm `status.json` receives a published `CacheItem` and the bare repository is usable.
+   - Confirm `cache-status.json` receives a published `CacheItem` and the bare repository is usable under
+     `data/<domain>/<repository...>`.
 
 3. Interrupted cache publication:
    - Simulate a `preparing` record with an invalid or missing cache directory.

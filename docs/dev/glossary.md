@@ -12,12 +12,13 @@ Quick lookup for development and design terms. Each entry links to its authorita
 | Worktree | A managed, untracked editable Git worktree based on a recorded base commit. | [overview.md](architecture/overview.md#worktree) |
 | CustomBoundaryPoint | A tracked boundary declared directly by `boundary-set add`. | [overview.md](architecture/overview.md#boundary-points) |
 | CacheItem | A cached bare repository identity and publication state. | [overview.md](architecture/overview.md#domain-model) |
+| Config | One invocation's resolved home, merged options, option sources, and repository config directory. | [overview.md](architecture/overview.md#config-service) |
 | RuntimeState | The merged tracked and runtime work-model view. | [overview.md](architecture/overview.md#domain-model) |
 | InstallationContext | Owner root and install path for an Installation selected by `install-id`. | [overview.md](architecture/overview.md#context-detection) |
 | InstallationRuntimeStore | A RuntimeStore adapter that coordinates owner and Installation stores without merging state. | [overview.md](architecture/overview.md#model-adaptation) |
 | InstallationShare | One runtime-local relation for a Git URL and commit; it owns the shared physical worktree path and referencing Installation identities. | [installation-shares.md](architecture/installation-shares.md#installationshare) |
 | InstallationContextReference | Provenance for a sub-Installation restored from InstallationContext. | [installation-shares.md](architecture/installation-shares.md#installationcontext) |
-| CacheStore | The user-level `status.json` store for cached bare repositories. | [stores-transactions.md](architecture/stores-transactions.md#cachestore-transactions) |
+| CacheStore | The user-level `cache-status.json` store for cached bare repositories. | [stores-transactions.md](architecture/stores-transactions.md#cachestore-transactions) |
 | RuntimeStore | The repository-local journaled store for the work model. | [stores-transactions.md](architecture/stores-transactions.md#runtimestore-transactions) |
 | StoreCoordinator | Command-level coordination for RuntimeStore repair and cache transaction selection. | [stores-transactions.md](architecture/stores-transactions.md#coordination) |
 | Cache-aware command | A command that accesses a bare repository through `StoreCoordinator.with_repository`. | [cache-aware-command-pattern.md](cookbook/cache-aware-command-pattern.md#pattern) |

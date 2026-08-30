@@ -10,7 +10,7 @@ Two stores serve different lifecycles:
 
 | Store | Authority | Durable unit |
 |---|---|---|
-| CacheStore | Cached bare Git repositories | `status.json` |
+| CacheStore | Cached bare Git repositories | `cache-status.json` |
 | RuntimeStore | One Git root's managed work model | `boundary-set.json`, `imports.json`, `import-refs.json`, `runtime.json` |
 
 ## Common primitives
@@ -26,15 +26,16 @@ These primitives provide serialization and durable publication without a general
 
 ## CacheStore transactions
 
-CacheStore publishes one `status.json` document containing `CacheItem` records.
+CacheStore publishes one `cache-status.json` document containing `CacheItem` records. `cache-status.json` is stored
+directly under the cache root; bare repositories are stored under `data/<domain>/<repository...>`.
 
 ### Read-only transaction
 
-A read-only transaction enters with a shared lock, reads `status.json`, and exposes the resulting records. If `preparing` records are present, it releases the shared lock, acquires an exclusive lock, removes the interrupted `preparing` records and their cache directories, publishes the cleaned record set, reacquires the shared lock, and checks again. It repeats that recovery at most three times and fails if `preparing` records remain.
+A read-only transaction enters with a shared lock, reads `cache-status.json`, and exposes the resulting records. If `preparing` records are present, it releases the shared lock, acquires an exclusive lock, removes the interrupted `preparing` records and their cache directories, publishes the cleaned record set, reacquires the shared lock, and checks again. It repeats that recovery at most three times and fails if `preparing` records remain.
 
 ### Write transaction
 
-A write transaction acquires an exclusive lock, performs startup recovery, and supports `replace_records`. A record replacement writes `status.json` atomically and becomes visible immediately. It does not journal the replacement.
+A write transaction acquires an exclusive lock, performs startup recovery, and supports `replace_records`. A record replacement writes `cache-status.json` atomically and becomes visible immediately. It does not journal the replacement.
 
 ### Startup recovery
 

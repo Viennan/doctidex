@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 import shutil
 import subprocess
@@ -11,6 +10,7 @@ from pathlib import Path
 from typing import Self
 from urllib.parse import urlsplit
 
+from whero.doctidex.config import Config
 from whero.doctidex.errors import CommandFailure
 from whero.doctidex.model import CacheItem, CacheItemStatus
 from whero.doctidex.store.cache import CacheReadOnlyTransaction, CacheStore, CacheWriteTransaction
@@ -24,11 +24,10 @@ class GitCache:
         self.store = CacheStore(cache_path)
 
     @classmethod
-    def from_environment(cls) -> GitCache:
-        """Build the default cache selected by the documented process environment."""
+    def from_config(cls, config: Config) -> GitCache:
+        """Build a cache from one already-resolved invocation config."""
 
-        home = Path(os.environ.get("DOCTIDEX-GIT-HOME", str(Path.home() / ".doctidex-git")))
-        return cls(_configured_cache_path(home))
+        return cls(config.cache_path)
 
     def read_only_transaction(self) -> GitCacheReadOnlyTransaction:
         """Open cache access that cannot load a missing bare repository."""
@@ -226,33 +225,6 @@ def _remove_cache_repository(repository: Path, git_url: str) -> None:
         raise _cache_failure(git_url, operation="remove") from exc
 
 
-def _configured_cache_path(home: Path) -> Path:
-    config = home / "config.toml"
-    if not config.is_file():
-        return home / "cache"
-    try:
-        import tomllib
-
-        document = tomllib.loads(config.read_text())
-    except (OSError, tomllib.TOMLDecodeError) as exc:
-        raise CommandFailure(
-            code="cache.repository.unavailable",
-            summary="The doctidex-git cache configuration could not be read.",
-            subject={"kind": "cache-item"},
-            details={"operation": "read-config", "revision": None},
-        ) from exc
-    configured = document.get("cache-path", "cache")
-    if not isinstance(configured, str) or not configured:
-        raise CommandFailure(
-            code="cache.repository.unavailable",
-            summary="The doctidex-git cache configuration does not contain a usable cache path.",
-            subject={"kind": "cache-item"},
-            details={"operation": "read-config", "revision": None},
-        )
-    candidate = Path(configured)
-    return candidate if candidate.is_absolute() else home / candidate
-
-
 def _safe_cache_path(cache_path: Path, relative_path: str) -> Path:
     relative = Path(relative_path)
     if relative.is_absolute() or relative == Path(".") or ".." in relative.parts or not relative_path:
@@ -276,7 +248,7 @@ def _cache_failure(git_url: str, *, operation: str) -> CommandFailure:
 
 def _cache_repository_path(git_url: str) -> str:
     domain, repository_path = _repository_location(git_url)
-    return "/".join((domain, *repository_path))
+    return "/".join(("data", domain, *repository_path))
 
 
 def _repository_location(git_url: str) -> tuple[str, tuple[str, ...]]:

@@ -25,9 +25,16 @@ Path normalization may collapse `.` and `..`, but the result must not escape the
 
 ## Cache configuration
 
-The default doctidex-git home is `~/.doctidex-git`. `DOCTIDEX-GIT-HOME` selects another home. `config.toml` may set `cache-path`; otherwise the cache is `<home>/cache`.
+The default doctidex-git home is `~/.doctidex-git`. `DOCTIDEX-GIT-HOME` selects another home. The global config is
+`<home>/config.toml` and is created empty on first use.
 
-The cache stores bare Git repositories. It is not the authority for Installations, Refs, or Worktrees. Use
+`config.toml` may set `cache-path`; otherwise the cache is `<home>/cache`. A Git-root command also reads
+`.doctidex-git/config.toml` from the selected repository, and that file may override `cache-path`. User-level
+`cache clean` and `cache compact` use the global config only. A relative `cache-path` is resolved from the directory
+that contains the `config.toml` which declared it.
+
+Inside the cache root, `cache-status.json` records published cache entries, and bare Git repositories live under
+`data/<domain>/<repository...>`. The cache is not the authority for Installations, Refs, or Worktrees. Use
 [`cache clean`](cache.md#clean) and [`cache compact`](cache.md#compact) to maintain the cache.
 
 ## Installation context
