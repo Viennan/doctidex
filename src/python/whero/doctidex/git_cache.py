@@ -40,6 +40,40 @@ class GitCache:
 
         return GitCacheWriteTransaction(self, self.store.write_transaction())
 
+    def clean(self) -> tuple[str, ...]:
+        """Remove published cache repositories that have no live linked worktree."""
+
+        with self.write_transaction() as transaction:
+            unused = [
+                record
+                for record in transaction.records
+                if not _live_worktree_heads(_safe_cache_path(self.cache_path, record.path), record.git_url)
+            ]
+            if not unused:
+                return ()
+
+            surviving = tuple(record for record in transaction.records if record not in unused)
+            preparing = tuple(replace(record, status=CacheItemStatus.PREPARING) for record in unused)
+            transaction.replace_records((*surviving, *preparing))
+
+            for record in unused:
+                _remove_cache_repository(_safe_cache_path(self.cache_path, record.path), record.git_url)
+
+            transaction.replace_records(surviving)
+            return tuple(record.git_url for record in unused)
+
+    def compact(self) -> tuple[str, ...]:
+        """Run Git maintenance for every published cache repository."""
+
+        compacted: list[str] = []
+        with self.write_transaction() as transaction:
+            for record in transaction.records:
+                repository = _safe_cache_path(self.cache_path, record.path)
+                _git_cache_result(repository, record.git_url, "worktree", "prune")
+                _git_cache_result(repository, record.git_url, "gc", "--prune=now")
+                compacted.append(record.git_url)
+        return tuple(compacted)
+
 
 class GitCacheTransaction:
     """Base wrapper that keeps all Git cache activity inside a CacheStore transaction."""
@@ -80,6 +114,17 @@ class GitCacheReadOnlyTransaction(GitCacheTransaction):
 class GitCacheWriteTransaction(GitCacheTransaction):
     """Git cache access that can register and load a bare repository."""
 
+    @property
+    def records(self) -> tuple[CacheItem, ...]:
+        """Return the currently published CacheItem records."""
+
+        return self._write_transaction.records
+
+    def replace_records(self, records: tuple[CacheItem, ...] | list[CacheItem]) -> None:
+        """Publish a complete CacheItem record set."""
+
+        self._write_transaction.replace_records(records)
+
     def load(self, git_url: str) -> Path:
         """Reuse or create the CacheItem/repository for ``git_url``."""
 
@@ -114,6 +159,71 @@ class GitCacheWriteTransaction(GitCacheTransaction):
     def _write_transaction(self) -> CacheWriteTransaction:
         assert isinstance(self._transaction, CacheWriteTransaction)
         return self._transaction
+
+
+def _live_worktree_heads(repository: Path, git_url: str) -> tuple[str, ...]:
+    """Return the HEAD commit of each non-bare linked worktree."""
+
+    _git_cache_result(repository, git_url, "worktree", "prune")
+    output = _git_cache_result(repository, git_url, "worktree", "list", "--porcelain")
+    return tuple(head for _, head in _parse_worktree_entries(output))
+
+
+def _parse_worktree_entries(output: str) -> tuple[tuple[str, str], ...]:
+    """Parse non-bare linked worktree paths and HEAD hashes from porcelain output."""
+
+    entries: list[tuple[str, str]] = []
+    block: list[str] = []
+
+    def append(block: list[str]) -> None:
+        worktree: str | None = None
+        head: str | None = None
+        bare = False
+        for line in block:
+            if line == "bare":
+                bare = True
+            elif line.startswith("worktree "):
+                worktree = line[len("worktree ") :]
+            elif line.startswith("HEAD "):
+                head = line[len("HEAD ") :]
+        if worktree is not None and not bare and head is not None:
+            entries.append((worktree, head))
+
+    for line in output.splitlines():
+        if line:
+            block.append(line)
+            continue
+        append(block)
+        block = []
+    append(block)
+    return tuple(entries)
+
+
+def _git_cache_result(repository: Path, git_url: str, *arguments: str) -> str:
+    """Run one Git cache command and return its stdout."""
+
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(repository), *arguments],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise _cache_failure(git_url, operation=arguments[0]) from exc
+    return completed.stdout
+
+
+def _remove_cache_repository(repository: Path, git_url: str) -> None:
+    """Remove one cache repository path."""
+
+    try:
+        if repository.is_symlink() or repository.is_file():
+            repository.unlink()
+        elif repository.exists():
+            shutil.rmtree(repository)
+    except OSError as exc:
+        raise _cache_failure(git_url, operation="remove") from exc
 
 
 def _configured_cache_path(home: Path) -> Path:

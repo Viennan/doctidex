@@ -141,7 +141,7 @@ See [common.md](reference/common.md#installation-context) for the complete behav
 | Validation and repair | Observe problems without changes, then repair recoverable physical state. | Use `validate` first; use `repair` to align model and physical objects. |
 | Git hooks | Keep untracked runtime state branch-consistent and validate work-model structure before commits. | `init` installs hooks; use `hook install`, `hook pre-commit`, and `hook post-checkout`. |
 | Result contract | Every command emits machine-readable JSON. | Success uses `status: "ok"`; `validate` adds `valid`; failures use stable `message.code`. |
-| Cache | The CLI caches bare repositories under the doctidex-git home. | Configure with `DOCTIDEX-GIT-HOME` and `config.toml`; see [common.md](reference/common.md#cache-configuration). |
+| Cache | The CLI caches bare repositories under the doctidex-git home. | Configure with `DOCTIDEX-GIT-HOME` and `config.toml`; maintain it with `cache clean` and `cache compact`; see [cache.md](reference/cache.md). |
 | Installation context | Select an Installation with `--installation-context`; the allowed command set is restricted. | Only `validate`, `boundary-set parse`, `import query`, and `import restore` are allowed; `import restore` flattens the local Installation into the owner repository. |
 | Restore state | Tracked metadata may not have a physical worktree. | `import query` reports `available`, `restore-required`, or `missing`; run `import restore` for `restore-required`. |
 
@@ -157,6 +157,7 @@ See [common.md](reference/common.md#installation-context) for the complete behav
 | Validate the model and links | [validate.md](reference/validate.md) |
 | Align physical state with the model | [repair.md](reference/repair.md) |
 | Install and run Git hooks | [hook.md](reference/hook.md) |
+| Maintain the Git cache | [cache.md](reference/cache.md) |
 
 ## Usage boundaries
 

@@ -211,6 +211,14 @@ Commands: `repair`
 
 `repair` aligns JSON records and managed physical objects. It recovers residual journals, restores missing or inconsistent Installations, Refs, and Worktrees, removes unrecorded links, and reconciles ignore rules. For a dirty Installation, it discards the dirty changes and restores the recorded commit; it does not discard Worktree changes. It is maintenance, not history rollback, and does not modify Markdown link content.
 
+### Cache maintenance service
+
+Commands: `cache clean`, `cache compact`
+
+`cache clean` removes published cache repositories that have no non-bare linked Worktree. `cache compact` runs
+`git worktree prune` and `git gc --prune=now` for every published cache repository. Both commands use the CacheStore
+write lock and do not touch the RuntimeStore work model.
+
 ## Store and coordination services
 
 The RuntimeStore owns tracked and runtime JSON projections. The CacheStore owns bare repository cache records. The StoreCoordinator coordinates retry and cache-before-RuntimeStore lock order; it performs repair outside a failed RuntimeStore transaction and retries the actual operation without serializing the whole command. Explicit repair is owned by the repair service. Commands needing both domains acquire cache access before RuntimeStore access.
@@ -242,6 +250,7 @@ publication without a journal, because the complete multi-file work model can be
 | Store protocol and journals | [store/](../../../src/python/whero/doctidex/store/) |
 | Git source access and cache | [repository.py](../../../src/python/whero/doctidex/repository.py), [git_cache.py](../../../src/python/whero/doctidex/git_cache.py) |
 | Command workflows | [boundary.py](../../../src/python/whero/doctidex/boundary.py), [imports.py](../../../src/python/whero/doctidex/imports.py), [worktree.py](../../../src/python/whero/doctidex/worktree.py), [initialization.py](../../../src/python/whero/doctidex/initialization.py), [validate.py](../../../src/python/whero/doctidex/validate.py), [repair.py](../../../src/python/whero/doctidex/repair.py) |
+| Cache maintenance workflows | [git_cache.py](../../../src/python/whero/doctidex/git_cache.py) |
 | Cross-store recovery | [coordination.py](../../../src/python/whero/doctidex/coordination.py) |
 
 Model views own shared relationship semantics. Command modules own policy, such as whether a relationship blocks deletion, creates a diagnostic, or triggers physical repair.

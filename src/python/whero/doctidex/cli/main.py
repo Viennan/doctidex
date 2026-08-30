@@ -42,12 +42,13 @@ from whero.doctidex.store.runtime import RuntimeStore
 
 from .results import argument_error, error, success
 
-COMMANDS = ("init", "boundary-set", "import", "worktree", "validate", "repair", "hook")
+COMMANDS = ("init", "boundary-set", "import", "worktree", "validate", "repair", "hook", "cache")
 SUBCOMMANDS = {
     "boundary-set": {"add", "remove", "parse"},
     "import": {"install", "restore", "track", "remove", "ref", "unref", "query"},
     "worktree": {"create", "remove", "query"},
     "hook": {"install", "post-checkout", "pre-commit"},
+    "cache": {"clean", "compact"},
 }
 
 
@@ -135,6 +136,7 @@ def build_parser() -> CliArgumentParser:
     _add_worktree_parser(commands)
     _add_validate_parser(commands)
     _add_hook_parser(commands)
+    _add_cache_parser(commands)
     commands.add_parser("repair", help="Align physical state with the JSON work model.")
     return parser
 
@@ -191,6 +193,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_validate(invocation, args)
     if args.command == "hook":
         return _run_hook(invocation, args)
+    if args.command == "cache":
+        return _run_cache(invocation, args)
     return _run_repair(invocation)
 
 
@@ -498,6 +502,33 @@ def _run_hook(operation: ResolvedInvocation, args: argparse.Namespace) -> Comman
     return success(command=operation.command)
 
 
+def _run_cache(invocation: ParsedInvocation, args: argparse.Namespace) -> int:
+    """Run a user-level cache maintenance command without Git-root resolution."""
+
+    try:
+        cache = GitCache.from_environment()
+        if args.cache_command == "clean":
+            removed = cache.clean()
+            payload = success(command=invocation.command, removed=list(removed))
+        elif args.cache_command == "compact":
+            compacted = cache.compact()
+            payload = success(command=invocation.command, compacted=list(compacted))
+        else:
+            raise CommandFailure(
+                code="cache.command.unavailable",
+                summary="The requested cache maintenance command is not available.",
+                subject={"kind": "cache-item"},
+                details={"command": invocation.command},
+            )
+    except CommandFailure as exc:
+        payload = _command_failure(invocation, exc)
+    except (StoreFailure, ModelFormatError) as exc:
+        payload = _store_or_model_failure(invocation, exc)
+
+    print(_json(payload))
+    return _default_exit_status(payload)
+
+
 def _command_failure(invocation: ParsedInvocation | ResolvedInvocation, exc: CommandFailure) -> dict[str, object]:
     return error(
         command=invocation.command,
@@ -717,6 +748,13 @@ def _add_hook_parser(commands: argparse._SubParsersAction[argparse.ArgumentParse
     subcommands.add_parser("pre-commit", help="Run the doctidex-git pre-commit worker.")
 
 
+def _add_cache_parser(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    cache = commands.add_parser("cache", help="Maintain the user-level Git cache.")
+    subcommands = cache.add_subparsers(dest="cache_command", required=True, metavar="COMMAND")
+    subcommands.add_parser("clean", help="Remove unused cached bare repositories.")
+    subcommands.add_parser("compact", help="Run Git maintenance for cached bare repositories.")
+
+
 def _validate_revision_arguments(args: argparse.Namespace) -> None:
     if args.command == "import" and args.import_command == "install":
         if sum(bool(value) for value in (args.branch, args.tag, args.commit)) != 1:
@@ -744,7 +782,7 @@ def _validate_revision_arguments(args: argparse.Namespace) -> None:
 
 def _command_path(args: argparse.Namespace) -> str:
     parts = [args.command]
-    for name in ("boundary_command", "import_command", "worktree_command", "hook_command"):
+    for name in ("boundary_command", "import_command", "worktree_command", "hook_command", "cache_command"):
         value = getattr(args, name, None)
         if value:
             parts.append(value)
