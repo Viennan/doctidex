@@ -31,7 +31,7 @@ The `-o addopts=''` override is required because the default `addopts` excludes 
 ## Alpha tests
 
 Release-time end-to-end checks live under [`alpha-tests/`](alpha-tests/01-install-tracked-alpha.md). Each alpha test
-fixes a subagent prompt and an acceptance script, and runs against a freshly prepared workspace with published release
+fixes a Codex prompt and an acceptance script, and runs against a freshly prepared workspace with published release
 artifacts. These tests do not replace the default unit-test suite.
 
 ## External interference boundary

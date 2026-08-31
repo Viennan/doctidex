@@ -10,6 +10,7 @@ from whero.doctidex.repository import (
     branch_name_from_ref,
     current_branch_name,
     local_branch_names,
+    normalize_git_url,
 )
 
 
@@ -57,6 +58,18 @@ def test_local_branch_names_are_available_on_detached_head(git_root: Path) -> No
 )
 def test_branch_name_from_ref(reference: str, expected: str | None) -> None:
     assert branch_name_from_ref(reference) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    (
+        ("https://github.com/Viennan/doctidex.git", "git@github.com:Viennan/doctidex.git"),
+        ("git@github.com:Viennan/doctidex.git", "git@github.com:Viennan/doctidex.git"),
+        ("/tmp/source/repository", "/tmp/source/repository"),
+    ),
+)
+def test_normalize_git_url(value: str, expected: str) -> None:
+    assert normalize_git_url(value) == expected
 
 
 def test_branch_has_workspace_requires_tracked_work_model(git_root: Path) -> None:

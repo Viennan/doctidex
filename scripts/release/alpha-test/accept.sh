@@ -53,12 +53,12 @@ PY
 
 log="$workdir/alpha-command.log"
 check_log() {
-  grep -qE '^[^ ]+ 0 .*'"$1" "$log" || fail "command log does not contain expected behavior: $1"
+  grep -qE '^[^ ]+ 0 (.* )?'"$1"'( |$)' "$log" || fail "command log does not contain expected behavior: $1"
 }
 
-check_log ' init'
-check_log ' skills install'
-check_log ' import install'
-check_log ' --tracked'
+check_log 'init'
+check_log 'skills install'
+check_log 'import install'
+check_log '--tracked'
 
 echo "alpha acceptance passed"

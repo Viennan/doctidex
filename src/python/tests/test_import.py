@@ -6,6 +6,28 @@ from pathlib import Path
 from conftest import CliRunner, commit_file, git, git_head, read_json
 
 
+def test_import_install_normalizes_https_url_to_ssh(
+    initialized_root: Path,
+    cache_home: Path,
+    cli: CliRunner,
+) -> None:
+    result = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "install",
+        "--tracked",
+        "--url",
+        "https://github.com/example/repo.git",
+        "--commit",
+        "0123456789abcdef0123456789abcdef01234567",
+    )
+
+    assert result.code == 2
+    assert result.payload["message"]["code"] == "cache.repository.unavailable"
+    assert result.payload["message"]["subject"]["git-url"] == "git@github.com:example/repo.git"
+
+
 def test_import_track_ref_query_unref_and_remove(
     initialized_root: Path,
     source_repository: Path,

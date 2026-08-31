@@ -38,7 +38,7 @@ from whero.doctidex.installation import (
 )
 from whero.doctidex.model import ModelFormatError
 from whero.doctidex.paths import normalize_repo_path, repo_path_to_fs
-from whero.doctidex.repository import resolve_git_root
+from whero.doctidex.repository import normalize_git_url, resolve_git_root
 from whero.doctidex.store.files import StoreFailure
 from whero.doctidex.store.runtime import RuntimeStore
 
@@ -714,7 +714,7 @@ def _add_import_parser(commands: argparse._SubParsersAction[argparse.ArgumentPar
     tracking = install.add_mutually_exclusive_group(required=True)
     tracking.add_argument("--tracked", action="store_true", help="Track installation metadata in Git.")
     tracking.add_argument("--untracked", action="store_true", help="Keep installation metadata untracked.")
-    install.add_argument("--url", required=True, type=_non_empty, metavar="GIT-URL")
+    install.add_argument("--url", required=True, type=_git_url, metavar="GIT-URL")
     install.add_argument("--branch", type=_non_empty, metavar="BRANCH")
     install.add_argument("--tag", type=_non_empty, metavar="TAG")
     install.add_argument("--commit", type=_non_empty, metavar="HASH")
@@ -763,7 +763,7 @@ def _add_worktree_parser(commands: argparse._SubParsersAction[argparse.ArgumentP
     create = subcommands.add_parser("create", help="Create a managed worktree.")
     source = create.add_mutually_exclusive_group(required=True)
     source.add_argument("--install-id", type=_non_empty, metavar="INSTALL-ID")
-    source.add_argument("--url", type=_non_empty, metavar="GIT-URL")
+    source.add_argument("--url", type=_git_url, metavar="GIT-URL")
     create.add_argument("--branch", type=_non_empty, metavar="BRANCH")
     create.add_argument("--tag", type=_non_empty, metavar="TAG")
     create.add_argument("--commit", type=_non_empty, metavar="HASH")
@@ -894,6 +894,12 @@ def _non_empty(value: str) -> str:
     if not value:
         raise argparse.ArgumentTypeError("value must not be empty")
     return value
+
+
+def _git_url(value: str) -> str:
+    """Return a non-empty Git source URL normalized to SSH form."""
+
+    return normalize_git_url(_non_empty(value))
 
 
 def _json(payload: dict[str, object]) -> str:

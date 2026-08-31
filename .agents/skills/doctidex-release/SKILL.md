@@ -7,7 +7,7 @@ description: Build, validate, and publish doctidex-git releases through Git rele
 
 This is a guide, not a script. It owns the execution rules for the `doctidex-git` release workflow. Design rationale
 and versioning decisions live in the
-[release workflow Issue Note](../../../docs/dev/issues/developing/process/2026-08-31-build-doctidex-git-release-workflow.md).
+[release workflow Issue Note](../../../docs/dev/issues/implemented/process/2026-08-31-build-doctidex-git-release-workflow.md).
 
 ## When to use it
 
@@ -20,11 +20,12 @@ Run the phases in order and stop at a failed checkpoint:
 
 1. From `main`, fetch, fast-forward, confirm `vX.Y.Z`, then create `release/vX.Y.Z`.
 2. Run the default test suite.
-3. Set the alpha version, build the alpha wheel, smoke-test it, and publish `vX.Y.Za1`.
-4. Run the alpha test.
-5. Generate release notes, set the final version, build the final wheel, and publish `vX.Y.Z`.
+3. Run `scripts/release/publish-alpha.sh X.Y.Za1`.
+4. Run the alpha test directly in the prepared workspace with `codex exec`.
+5. Run `scripts/release/publish-final.sh X.Y.Z [PREVIOUS-TAG]`.
 
-The user confirms the version and the decision to proceed after each phase. The scripts own the mechanical steps.
+The publish scripts own the authentication check, version commit, branch push, wheel build, smoke test, release
+notes, and `gh release create` steps.
 
 ## Scripts
 
@@ -33,6 +34,10 @@ The user confirms the version and the decision to proceed after each phase. The 
 - [`generate-release-notes.sh`](../../../scripts/release/generate-release-notes.sh) lists newly implemented
   `feature`, `architecture`, and `bug-fix` Issue Notes.
 - [`publish-release.sh`](../../../scripts/release/publish-release.sh) creates a GitHub release and attaches the wheel.
+- [`publish-alpha.sh`](../../../scripts/release/publish-alpha.sh) automates the alpha checkpoints: auth, version
+  commit, branch push, wheel build, fresh-venv smoke test, and alpha publish.
+- [`publish-final.sh`](../../../scripts/release/publish-final.sh) automates the final checkpoints: auth, version
+  commit, branch push, wheel build, release notes, and final publish.
 
 Use the project-root `.venv` for Python commands.
 
@@ -46,7 +51,8 @@ scripts/release/alpha-test/prepare-workspace.sh <BASE> <VERSION>
 
 The script creates a unique versioned workspace such as `alpha-<VERSION>-XXXXXX`, its `.venv`, the
 `bin/doctidex-alpha` wrapper, and the command log. Read the fixed prompt and acceptance checks in
-[`01-install-tracked-alpha.md`](../../../docs/dev/alpha-tests/01-install-tracked-alpha.md), run the subagent task, then
+[`01-install-tracked-alpha.md`](../../../docs/dev/alpha-tests/01-install-tracked-alpha.md), run `codex exec` in the
+workspace with that prompt, then
 run:
 
 ```bash

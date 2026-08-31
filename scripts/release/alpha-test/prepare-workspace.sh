@@ -34,10 +34,9 @@ set -u
 workdir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 log="$workdir/alpha-command.log"
 
-export DOCTIDEX-GIT-HOME="$workdir/.doctidex-home"
 start="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-"$workdir/.venv/bin/doctidex-git" "$@"
+env "DOCTIDEX-GIT-HOME=$workdir/.doctidex-home" "$workdir/.venv/bin/doctidex-git" "$@"
 code=$?
 
 printf '%s %s %s\n' "$start" "$code" "$*" >> "$log"
@@ -54,7 +53,7 @@ cat <<EOF
 ALPHA_WORKDIR=$workdir
 ALPHA_VERSION=$version
 
-Fixed subagent prompt:
+Fixed codex prompt:
 ---
 Work only inside $workdir. It is already a Git repository with a .venv.
 Do not use pipx.

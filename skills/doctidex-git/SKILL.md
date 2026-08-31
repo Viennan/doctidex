@@ -73,6 +73,7 @@ doctidex-git import ref \
 `import install` stores the revision under the managed `/.doctidex-git/imports/` path. A Ref exposes that content at a
 short repository path such as `/external/<NAME>`, so related documents can sit nearby. Prefer a Ref over linking
 directly into the managed install path; use `--src-sub-dir` to link only a relevant subdirectory of the Installation.
+Remote `--url` values are canonicalized to Git SSH form; HTTPS input is converted at argument parsing.
 
 Use `--tracked` for references that must persist across clones; use `--untracked` for temporary references that do not
 need persistent tracking. A branch or tag resolves once to a commit, so re-run `import install` only when the revision

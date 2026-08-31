@@ -151,6 +151,24 @@ def repository_location(git_url: str) -> tuple[str, tuple[str, ...]]:
     return domain, components or ("repository",)
 
 
+def normalize_git_url(value: str) -> str:
+    """Return a remote Git URL in the canonical SSH form.
+
+    HTTPS remote URLs are converted to the ``git@host:path`` form. SSH/scp-like URLs and local
+    filesystem sources are returned unchanged.
+    """
+
+    parsed = urlsplit(value)
+    if parsed.scheme in {"http", "https"} and parsed.hostname:
+        path = parsed.path.strip("/")
+        return f"git@{parsed.hostname}:{path}"
+    if not value.startswith(("http://", "https://")) and re.fullmatch(
+        r"(?:[^@/:]+@)?[^/:]+:[^:]+", value
+    ):
+        return value
+    return value
+
+
 def resolve_revision(repository: Path, git_url: str, *, kind: str, value: str) -> str:
     """Fetch one selector with depth one and return its resolved commit hash."""
 
