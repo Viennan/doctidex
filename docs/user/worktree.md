@@ -18,6 +18,8 @@ doctidex-git worktree create \
 
 Default paths use `/.doctidex-git/worktrees/<domain>/<repository-path>/<tree-name>`. Without `--tree-name`, a short random final directory name is generated. Explicit path or tree-name collisions are errors.
 
+See [layout.md](layout.md) for the stable default Worktree directory organization and when to search it directly.
+
 A Worktree may branch, modify, and commit from its recorded base commit. `worktree create --work-path` must not be inside `/.doctidex-git/imports/` or below an existing boundary point; that request fails even when the directory is absent. `worktree create --install-id` creates an independent Worktree directory.
 
 Success:

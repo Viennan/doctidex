@@ -114,3 +114,4 @@ also be all-hex, and shape-based inference is not a durable path contract.
 - [Shared commit-hash Installation storage](2026-08-26-shared-commit-hash-installation-storage.md)
 - [Restore deterministic install-id from git-url and selector](2026-08-28-restore-deterministic-install-id-from-git-url-and-selector.md)
 - [Remove duplicated Installation workflow branches](../simplification/2026-08-27-remove-duplicated-installation-workflow-branches.md)
+- [Add repository search guidance to the doctidex-git Twin Skill](../feature/2026-08-31-add-repository-search-guidance-to-doctidex-git-twin-skill.md)

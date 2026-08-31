@@ -54,7 +54,8 @@ doctidex-git validate
 ## Repository layout at a glance
 
 The following directory tree shows one repository with an Installation, a Ref, an editable Worktree, and a custom
-boundary. It is a usage illustration, not a required directory-tree standard.
+boundary. It is a usage illustration, not a required directory-tree standard. The stable selector-derived directory
+layout used for direct search is documented in [layout.md](layout.md).
 
 ```text
 /path/to/repository                       # Git root; /... paths start here

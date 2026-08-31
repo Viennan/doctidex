@@ -15,6 +15,9 @@ This is a guide, not a script. The files under `references/` are the authoritati
 - Have `rg` available when possible; the CLI falls back to a slower Python scan when it is missing.
 - Read [overview.md](references/overview.md) to establish the shared mental model: Git root, Installation, Ref,
   Worktree, BoundaryPoint, and StructuredLinkAnnotation.
+- Treat `/.doctidex-git/imports/` and `/.doctidex-git/worktrees/` as searchable directories; when a domain,
+  repository, or selector is already known, search the derived path directly. See [layout.md](references/layout.md)
+  for the path contract.
 
 ## When to use it
 

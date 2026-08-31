@@ -81,3 +81,7 @@ documentation remains the authoritative reference, and the packaging step keeps 
 The trade-off is additional packaging surface: the build materializes symlinks, package data is generated under
 `_skill_data`, and that directory is ignored by Git. The resolver's marker check prevents false source-tree detection
 but requires the bundled tree to retain `doctidex-git/SKILL.md`.
+
+## Related
+
+- [Add repository search guidance to the doctidex-git Twin Skill](2026-08-31-add-repository-search-guidance-to-doctidex-git-twin-skill.md)

@@ -64,3 +64,7 @@ Twin Skill maintenance is now discoverable from the repository's agent scaffoldi
 places that need them and execution rules in a dedicated skill. The maintenance boundary is explicit: user documentation
 ownership stays with `doctidex-doc-maintenance`, while Twin Skill output ownership lives in
 `doctidex-twin-skill-maintenance`.
+
+## Related
+
+- [Add repository search guidance to the doctidex-git Twin Skill](../feature/2026-08-31-add-repository-search-guidance-to-doctidex-git-twin-skill.md)

@@ -23,7 +23,8 @@ Branch and tag selectors resolve once. Re-running the same branch/tag with an un
 The selector path includes a selector-kind segment: `branch/<BRANCH>`, `tag/<TAG>`, or `commit/<HASH>`. For a direct
 commit Installation, `install-path` is the shared Installation worktree for that commit. For a branch or tag
 Installation, `install-path` is a symbolic link to that shared worktree; commands continue to use the reported path,
-and the symlink does not change Installation read-only behavior.
+and the symlink does not change Installation read-only behavior. See [layout.md](layout.md) for the stable
+selector-derived directory organization.
 
 Success:
 
