@@ -5,7 +5,7 @@ Status: implemented
 ## Problem
 
 `hook install` previously wrote only a `post-checkout` hook. Nothing gated `git commit` on
-`validate --model-structure`, so a commit could enter history while the `.doctidex-git` work model was invalid or
+`validate --only-model-structure`, so a commit could enter history while the `.doctidex-git` work model was invalid or
 uninitialized. The user discovered that state later through a manual validation.
 
 ## Decision
@@ -33,7 +33,7 @@ exec /resolved/path/to/doctidex-git hook pre-commit "$@"
 ```
 
 `hook pre-commit` returns success when `.doctidex-git` is absent. When the workspace exists, it runs
-`validate --model-structure`. A valid model passes; an invalid model fails with
+`validate --only-model-structure`. A valid model passes; an invalid model fails with
 `hook.pre-commit.validation.failed` and carries the validation diagnostics in the failure details, which aborts the
 commit.
 
@@ -52,7 +52,7 @@ the uninitialized-repository skip, and the real `git commit` gate.
 ## Consequences
 
 Commits now fail when the work-model structure is invalid. That is the intended gate, but it adds a new failure point
-to `git commit`. The hook uses only `validate --model-structure`, so the gate remains scoped to work-model state and
+to `git commit`. The hook uses only `validate --only-model-structure`, so the gate remains scoped to work-model state and
 does not make commits depend on Markdown link scanning or managed physical-object checks.
 
 ## Related
@@ -62,12 +62,12 @@ does not make commits depend on Markdown link scanning or managed physical-objec
 
 ## Alternatives considered
 
-**Invoke `validate --model-structure` directly from the `pre-commit` shell script.**
+**Invoke `validate --only-model-structure` directly from the `pre-commit` shell script.**
 Rejected: it hardcodes the current validation step into the shell surface and makes the hook equivalent to the
 `validate` command. A `hook pre-commit` worker keeps the commit-time seam in Python, where future pre-commit work can
 be added without changing the installed script.
 
-**Run full `validate` instead of `validate --model-structure`.**
+**Run full `validate` instead of `validate --only-model-structure`.**
 Rejected: full validation also scans Markdown content and managed physical objects, which makes the commit gate
 slower and ties commits to link and content concerns outside work-model structure.
 

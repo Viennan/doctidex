@@ -14,7 +14,7 @@ relationship consistency, and physical-state checks.
 
 The validation internals are refactored without changing the public contract.
 
-`validate(store, *, subdir, model_structure)` remains the public entry point. The emitted rules, ordering, details,
+`validate(store, *, subdir, only_model_structure)` remains the public entry point. The emitted rules, ordering, details,
 and exit statuses are unchanged.
 
 ### Result assembly
