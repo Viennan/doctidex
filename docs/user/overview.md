@@ -102,8 +102,6 @@ The diagram maps to the retained concepts:
 <!-- doctidex: {cross-boundary-point: /external/example} -->
 ```
 
-`index.md` is not required in this layout.
-
 ## Mental model
 
 | Concept | User-visible meaning |
@@ -117,9 +115,6 @@ The diagram maps to the retained concepts:
 | BoundaryPoint | A path where the current repository's link and scan rules stop. |
 | StructuredLinkAnnotation | A `doctidex` comment that records the first BoundaryPoint crossed by a Markdown link. |
 | Branch snapshot | A branch-specific runtime history used to restore untracked Installation state after checkout. |
-
-`index.md` has no special role. `init` creates only the `.doctidex-git` workspace and its state files; it does not create
-or modify `index.md`.
 
 ## Installation context
 

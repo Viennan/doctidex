@@ -26,8 +26,10 @@ Substitute `WORKDIR`, `VERSION`, `WHEEL_URL`, and `GIT_TAG` before running this 
 Work only inside WORKDIR. It is already a Git repository with a .venv.
 Do not use pipx.
 Install the doctidex-git alpha wheel from WHEEL_URL into WORKDIR/.venv.
-Install the bundled Twin Skill into WORKDIR/.agents/skills.
+Install the bundled Twin Skill into WORKDIR/.agents/skills with the CLI's skills install command, for example
+WORKDIR/bin/doctidex-alpha skills install --path WORKDIR/.agents/skills, and read it.
 Use WORKDIR/bin/doctidex-alpha for every doctidex-git command; it supplies DOCTIDEX-GIT-HOME.
+Do not inspect or modify the installed Python source files. Use only the installed Twin Skill and its references.
 Initialize the workspace, then import the alpha tag GIT_TAG as a tracked Installation. The version under test is
 VERSION.
 ```

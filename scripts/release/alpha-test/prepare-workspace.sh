@@ -58,8 +58,10 @@ Fixed codex prompt:
 Work only inside $workdir. It is already a Git repository with a .venv.
 Do not use pipx.
 Install the doctidex-git alpha wheel from $wheel_url into $workdir/.venv.
-Install the bundled Twin Skill into $workdir/.agents/skills.
+Install the bundled Twin Skill into $workdir/.agents/skills with the CLI's skills install command, for example
+$workdir/bin/doctidex-alpha skills install --path $workdir/.agents/skills, and read it.
 Use $workdir/bin/doctidex-alpha for every doctidex-git command; it supplies DOCTIDEX-GIT-HOME.
+Do not inspect or modify the installed Python source files. Use only the installed Twin Skill and its references.
 Initialize the workspace, then import the alpha tag $git_tag as a tracked Installation.
 ---
 EOF
