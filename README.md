@@ -32,7 +32,7 @@ You do not have to guess the workflow:
 ```bash
 cd /path/to/repository
 doctidex-git init
-doctidex-git validate --model-structure
+doctidex-git validate --only-model-structure
 ```
 
 Then use `doctidex-git import install` and `doctidex-git import ref` to reference a fixed external revision. Full
