@@ -18,6 +18,9 @@ doctidex-git import install \
 
 `--tracked` or `--untracked` is required. Exactly one revision selector is required.
 
+`--url` accepts a Git SSH URL. An `https://` URL is accepted for convenience and is converted to SSH form at
+argument parsing.
+
 Branch and tag selectors resolve once. Re-running the same branch/tag with an unchanged remote commit reuses the Installation; a changed commit replaces it.
 
 The selector path includes a selector-kind segment: `branch/<BRANCH>`, `tag/<TAG>`, or `commit/<HASH>`. For a direct

@@ -1,6 +1,6 @@
 # Alpha test: install the alpha wheel and track its tag
 
-This test verifies the released alpha wheel through a fresh, prompt-driven subagent task.
+This test verifies the released alpha wheel through a fresh, prompt-driven Codex run.
 
 ## Workspace
 
@@ -20,16 +20,25 @@ The wrapper exports a non-default `DOCTIDEX-GIT-HOME`, invokes the installed alp
 
 ## Fixed prompt
 
-Substitute `WORKDIR`, `VERSION`, `WHEEL_URL`, and `GIT_TAG` before sending this prompt to the subagent:
+Substitute `WORKDIR`, `VERSION`, `WHEEL_URL`, and `GIT_TAG` before running this prompt with Codex:
 
 ```text
 Work only inside WORKDIR. It is already a Git repository with a .venv.
 Do not use pipx.
 Install the doctidex-git alpha wheel from WHEEL_URL into WORKDIR/.venv.
-Install the bundled Twin Skill into WORKDIR/.agents/skills.
+Install the bundled Twin Skill into WORKDIR/.agents/skills with the CLI's skills install command, for example
+WORKDIR/bin/doctidex-alpha skills install --path WORKDIR/.agents/skills, and read it.
 Use WORKDIR/bin/doctidex-alpha for every doctidex-git command; it supplies DOCTIDEX-GIT-HOME.
+Do not inspect or modify the installed Python source files. Use only the installed Twin Skill and its references.
 Initialize the workspace, then import the alpha tag GIT_TAG as a tracked Installation. The version under test is
 VERSION.
+```
+
+Run it from the prepared workspace:
+
+```bash
+codex exec --ephemeral -C <WORKDIR> --skip-git-repo-check -s danger-full-access \
+  --dangerously-bypass-approvals-and-sandbox '<PROMPT>'
 ```
 
 ## Acceptance

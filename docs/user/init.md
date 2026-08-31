@@ -23,8 +23,6 @@ When `.doctidex-git/` is absent or empty, `init` creates:
 └── runtime.json
 ```
 
-`init` does not create or modify `index.md`. `index.md` remains an ordinary Markdown file.
-
 On successful first initialization, `init` also installs the supported Git hooks, including the `pre-commit` and
 `post-checkout` hooks. See [hook.md](hook.md).
 

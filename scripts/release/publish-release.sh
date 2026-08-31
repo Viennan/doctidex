@@ -23,6 +23,12 @@ fi
 
 base_tag="${tag%%a[0-9]*}"
 target="release/${base_tag}"
+
+if ! git ls-remote --exit-code --heads origin "$target" >/dev/null 2>&1; then
+  echo "Remote branch $target does not exist; push it before publishing." >&2
+  exit 1
+fi
+
 args=(release create "$tag" "$wheel" --target "$target" --title "doctidex-git $tag")
 
 if [ "$prerelease" = "1" ] || [ "$prerelease" = "true" ]; then

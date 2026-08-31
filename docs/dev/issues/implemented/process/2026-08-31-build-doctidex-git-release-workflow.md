@@ -37,6 +37,10 @@ and rejects an unexpected filename. No PyPI publication is performed.
 - [`generate-release-notes.sh`](../../../../../scripts/release/generate-release-notes.sh);
 - [`publish-release.sh`](../../../../../scripts/release/publish-release.sh).
 
+Before either GitHub release is created, `gh auth status` must pass, the version change must be committed to the
+release branch, and the release branch must be pushed to `origin`. `publish-release.sh` verifies the remote branch
+before calling `gh release create`.
+
 Release notes include only newly implemented `feature`, `architecture`, and `bug-fix` Issue Notes, pinned to the
 final tag and based on the previous same-major final release.
 

@@ -16,6 +16,9 @@ doctidex-git worktree create \
 
 `--install-id` and `--url` are mutually exclusive. URL sources require exactly one revision selector.
 
+`--url` accepts a Git SSH URL. An `https://` URL is accepted for convenience and is converted to SSH form at
+argument parsing.
+
 Default paths use `/.doctidex-git/worktrees/<domain>/<repository-path>/<tree-name>`. Without `--tree-name`, a short random final directory name is generated. Explicit path or tree-name collisions are errors.
 
 See [layout.md](layout.md) for the stable default Worktree directory organization and when to search it directly.

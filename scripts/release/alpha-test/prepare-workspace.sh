@@ -34,10 +34,9 @@ set -u
 workdir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 log="$workdir/alpha-command.log"
 
-export DOCTIDEX-GIT-HOME="$workdir/.doctidex-home"
 start="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-"$workdir/.venv/bin/doctidex-git" "$@"
+env "DOCTIDEX-GIT-HOME=$workdir/.doctidex-home" "$workdir/.venv/bin/doctidex-git" "$@"
 code=$?
 
 printf '%s %s %s\n' "$start" "$code" "$*" >> "$log"
@@ -54,13 +53,15 @@ cat <<EOF
 ALPHA_WORKDIR=$workdir
 ALPHA_VERSION=$version
 
-Fixed subagent prompt:
+Fixed codex prompt:
 ---
 Work only inside $workdir. It is already a Git repository with a .venv.
 Do not use pipx.
 Install the doctidex-git alpha wheel from $wheel_url into $workdir/.venv.
-Install the bundled Twin Skill into $workdir/.agents/skills.
+Install the bundled Twin Skill into $workdir/.agents/skills with the CLI's skills install command, for example
+$workdir/bin/doctidex-alpha skills install --path $workdir/.agents/skills, and read it.
 Use $workdir/bin/doctidex-alpha for every doctidex-git command; it supplies DOCTIDEX-GIT-HOME.
+Do not inspect or modify the installed Python source files. Use only the installed Twin Skill and its references.
 Initialize the workspace, then import the alpha tag $git_tag as a tracked Installation.
 ---
 EOF
