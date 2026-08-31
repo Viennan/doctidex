@@ -19,7 +19,7 @@ if ! [[ "$version" =~ ^[0-9]+(\.[0-9]+)+a[0-9]+$ ]]; then
 fi
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-branch="release/${version%%a[0-9]*}"
+branch="release/v${version%%a[0-9]*}"
 tag="v${version}"
 
 gh auth status >/dev/null 2>&1 || {
@@ -34,13 +34,13 @@ fi
 
 "$root/scripts/release/set-version.sh" "$version"
 
-if ! git -C "$root" diff --quiet; then
+if ! git -C "$root" diff --quiet -- src/python/pyproject.toml src/python/whero/doctidex/__init__.py; then
   git -C "$root" add src/python/pyproject.toml src/python/whero/doctidex/__init__.py
   git -C "$root" commit -m "Set version to $version"
 fi
 
 git -C "$root" push -u origin "$branch"
-wheel="$("$root/scripts/release/build-wheel.sh" "$version")"
+wheel="$("$root/scripts/release/build-wheel.sh" "$version" | tail -n 1)"
 
 smoke_dir="$(mktemp -d /tmp/doctidex-alpha-smoke.XXXXXX)"
 trap 'rm -rf "$smoke_dir"' EXIT

@@ -35,13 +35,13 @@ fi
 
 "$root/scripts/release/set-version.sh" "$version"
 
-if ! git -C "$root" diff --quiet; then
+if ! git -C "$root" diff --quiet -- src/python/pyproject.toml src/python/whero/doctidex/__init__.py; then
   git -C "$root" add src/python/pyproject.toml src/python/whero/doctidex/__init__.py
   git -C "$root" commit -m "Set version to $version"
 fi
 
 git -C "$root" push -u origin "$branch"
-wheel="$("$root/scripts/release/build-wheel.sh" "$version")"
+wheel="$("$root/scripts/release/build-wheel.sh" "$version" | tail -n 1)"
 
 if [ -z "$previous" ]; then
   previous="$(git -C "$root" tag --list "v${version%%.*}*" --sort=-v:refname |
