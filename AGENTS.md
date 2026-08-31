@@ -46,6 +46,10 @@ Use [doctidex-twin-skill-maintenance](.agents/skills/doctidex-twin-skill-mainten
   boundary-expanding behavior change, or a breaking change;
 - rebuilding `_skill_data` for packaging.
 
+Use [doctidex-release](.agents/skills/doctidex-release/SKILL.md) when building, validating, or publishing a
+`doctidex-git` release, including creating release tags, building the wheel, generating release notes, and running
+alpha tests.
+
 ## Python Engineering Conventions
 
 - Use the project-root `.venv` as the default Python runtime for all Python code and tools in this repository. Create it before use when it does not exist.

@@ -4,6 +4,10 @@ All command clusters share Git-root selection, repository paths, cache configura
 
 ## Git root and paths
 
+Commands shown as `doctidex-git` assume the installed entry point is resolvable. The recommended install is
+`pipx install <WHEEL-URL>`; see [overview.md](overview.md#prerequisites) for the virtual-environment fallback when
+pipx is unavailable or disallowed.
+
 Every command accepts:
 
 ```bash

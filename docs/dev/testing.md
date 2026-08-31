@@ -28,6 +28,12 @@ cd src/python
 
 The `-o addopts=''` override is required because the default `addopts` excludes `validator_script`.
 
+## Alpha tests
+
+Release-time end-to-end checks live under [`alpha-tests/`](alpha-tests/01-install-tracked-alpha.md). Each alpha test
+fixes a subagent prompt and an acceptance script, and runs against a freshly prepared workspace with published release
+artifacts. These tests do not replace the default unit-test suite.
+
 ## External interference boundary
 
 The following three exclusions are one principle: `doctidex-git` does not coordinate against the user or other programs while a command is running.

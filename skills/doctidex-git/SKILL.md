@@ -11,7 +11,8 @@ This is a guide, not a script. The files under `references/` are the authoritati
 ## Before you start
 
 - Work from inside a Git repository, or pass `--repos-path <REPOSITORY-ROOT>`.
-- Confirm `doctidex-git` is on `PATH`.
+- Install the release with `pipx install <WHEEL-URL>`; see
+  [overview.md](references/overview.md#prerequisites) when pipx is unavailable or disallowed.
 - Have `rg` available when possible; the CLI falls back to a slower Python scan when it is missing.
 - Read [overview.md](references/overview.md) to establish the shared mental model: Git root, Installation, Ref,
   Worktree, BoundaryPoint, and StructuredLinkAnnotation.

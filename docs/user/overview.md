@@ -22,7 +22,11 @@ here.
 
 - Linux or macOS.
 - A Git worktree.
-- `doctidex-git` on `PATH`.
+- The recommended install is `pipx install <WHEEL-URL>`, which installs the CLI in an isolated environment and makes
+  `doctidex-git` available on `PATH`; run `pipx ensurepath` if the command is not found.
+- When pipx is unavailable or disallowed, install the wheel into a virtual environment with `pip` or `uv`, then use
+  `<venv>/bin/doctidex-git` or activate the environment. Use `command -v doctidex-git` to confirm resolution, and do
+  not edit shell rc files.
 - `rg` (ripgrep) with PCRE2 support is strongly recommended for fast Markdown link scanning. When `rg` is
   unavailable, `doctidex-git` falls back to a per-file Python scan with the same behavior but reduced performance on
   large repositories.
