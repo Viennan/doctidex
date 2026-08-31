@@ -46,4 +46,4 @@ Rejected: `imports.restore_context_import` already preserves the local `install-
 
 The Installation-context adapter no longer presents a generic write surface. `import restore` remains the only owner-mutating operation, so the public API matches the command admission table.
 
-The mapping change makes Installation-context query results deterministic by identity rather than by commit. Before restore, users see a local Installation without `presentation-path` and must run restore to make it accessible in the owner tree; this behavior is documented in [common.md](../../../../../docs/user/reference/common.md#installation-context) and [import.md](../../../../../docs/user/reference/import.md#installation-context).
+The mapping change makes Installation-context query results deterministic by identity rather than by commit. Before restore, users see a local Installation without `presentation-path` and must run restore to make it accessible in the owner tree; this behavior is documented in [common.md](../../../../../docs/user/common.md#installation-context) and [import.md](../../../../../docs/user/import.md#installation-context).

@@ -12,6 +12,22 @@ Design tests from the user surface and the current architecture, not from implem
 
 Prefer end-to-end tests that observe the CLI result and its durable filesystem and Git effects. Use a narrow mock only for a core mechanism that no realistic end-to-end case can reach.
 
+## Script validation tests
+
+`src/python/tests/test_validate_user_doc_links.py` tests only `scripts/validate-user-doc-links.py`. It is marked
+`validator_script`, so the default test suite excludes it, and it carries `no_cover` so it is not part of code-coverage
+statistics.
+
+Run it explicitly from `src/python/`:
+
+```bash
+cd src/python
+../../.venv/bin/python -m pytest -o addopts='' -m validator_script \
+  tests/test_validate_user_doc_links.py
+```
+
+The `-o addopts=''` override is required because the default `addopts` excludes `validator_script`.
+
 ## External interference boundary
 
 The following three exclusions are one principle: `doctidex-git` does not coordinate against the user or other programs while a command is running.

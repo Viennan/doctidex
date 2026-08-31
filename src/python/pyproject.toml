@@ -27,9 +27,16 @@ where = ["."]
 include = ["whero.doctidex*"]
 namespaces = true
 
+[tool.setuptools.package-data]
+"whero.doctidex" = ["_skill_data/**/*"]
+
 [tool.pytest.ini_options]
-addopts = "-q"
+addopts = "-q -m 'not validator_script'"
 testpaths = ["tests"]
+markers = [
+  "validator_script: tests for scripts/validate-user-doc-links.py; run explicitly and excluded from the default suite",
+  "no_cover: pytest-cov marker that disables coverage collection for the marked module",
+]
 
 [tool.ruff]
 line-length = 120

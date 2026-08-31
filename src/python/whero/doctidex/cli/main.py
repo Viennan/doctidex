@@ -16,6 +16,7 @@ from whero.doctidex import boundary as boundary_workflow
 from whero.doctidex import hooks as hook_workflow
 from whero.doctidex import imports as import_workflow
 from whero.doctidex import repair as repair_workflow
+from whero.doctidex import skills as skills_workflow
 from whero.doctidex import validate as validate_workflow
 from whero.doctidex import worktree as worktree_workflow
 from whero.doctidex.config import Config
@@ -43,13 +44,14 @@ from whero.doctidex.store.runtime import RuntimeStore
 
 from .results import argument_error, error, success
 
-COMMANDS = ("init", "boundary-set", "import", "worktree", "validate", "repair", "hook", "cache")
+COMMANDS = ("init", "boundary-set", "import", "worktree", "validate", "repair", "hook", "cache", "skills")
 SUBCOMMANDS = {
     "boundary-set": {"add", "remove", "parse"},
     "import": {"install", "restore", "track", "remove", "ref", "unref", "query"},
     "worktree": {"create", "remove", "query"},
     "hook": {"install", "post-checkout", "pre-commit"},
     "cache": {"clean", "compact"},
+    "skills": {"install"},
 }
 
 
@@ -138,6 +140,7 @@ def build_parser() -> CliArgumentParser:
     _add_validate_parser(commands)
     _add_hook_parser(commands)
     _add_cache_parser(commands)
+    _add_skills_parser(commands)
     commands.add_parser("repair", help="Align physical state with the JSON work model.")
     return parser
 
@@ -196,6 +199,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_hook(invocation, args)
     if args.command == "cache":
         return _run_cache(invocation, args)
+    if args.command == "skills":
+        return _run_skills(invocation, args)
     return _run_repair(invocation)
 
 
@@ -534,6 +539,24 @@ def _run_cache(invocation: ParsedInvocation, args: argparse.Namespace) -> int:
     return _default_exit_status(payload)
 
 
+def _run_skills(invocation: ParsedInvocation, args: argparse.Namespace) -> int:
+    """Run a user-level skill installation command without Git-root resolution."""
+
+    try:
+        installed, destination = skills_workflow.install_skills(Path(args.path))
+        install_path = str(destination / installed[0])
+        payload = success(
+            command=invocation.command,
+            skills=list(installed),
+            **{"install-path": install_path},
+        )
+    except CommandFailure as exc:
+        payload = _command_failure(invocation, exc)
+
+    print(_json(payload))
+    return _default_exit_status(payload)
+
+
 def _command_failure(invocation: ParsedInvocation | ResolvedInvocation, exc: CommandFailure) -> dict[str, object]:
     return error(
         command=invocation.command,
@@ -766,6 +789,13 @@ def _add_cache_parser(commands: argparse._SubParsersAction[argparse.ArgumentPars
     subcommands.add_parser("compact", help="Run Git maintenance for cached bare repositories.")
 
 
+def _add_skills_parser(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    skills = commands.add_parser("skills", help="Install doctidex-git Twin Skills.")
+    subcommands = skills.add_subparsers(dest="skills_command", required=True, metavar="COMMAND")
+    install = subcommands.add_parser("install", help="Install bundled Twin Skills into a target directory.")
+    install.add_argument("--path", required=True, type=_non_empty, metavar="DESTINATION-PATH")
+
+
 def _validate_revision_arguments(args: argparse.Namespace) -> None:
     if args.command == "import" and args.import_command == "install":
         if sum(bool(value) for value in (args.branch, args.tag, args.commit)) != 1:
@@ -793,7 +823,14 @@ def _validate_revision_arguments(args: argparse.Namespace) -> None:
 
 def _command_path(args: argparse.Namespace) -> str:
     parts = [args.command]
-    for name in ("boundary_command", "import_command", "worktree_command", "hook_command", "cache_command"):
+    for name in (
+        "boundary_command",
+        "import_command",
+        "worktree_command",
+        "hook_command",
+        "cache_command",
+        "skills_command",
+    ):
         value = getattr(args, name, None)
         if value:
             parts.append(value)

@@ -12,9 +12,11 @@ The tool manages:
 - custom boundary points;
 - validation and repair;
 - Git hooks that keep untracked runtime state consistent across branch switches and validate work-model structure
-  before commits.
+  before commits;
+- installable Twin Skills that carry the supported `doctidex-git` workflow into another repository.
 
-The command architecture is defined by [overview.md](../dev/architecture/overview.md).
+This guide states the user-facing behavior of `doctidex-git`; internal design details are intentionally out of scope
+here.
 
 ## Prerequisites
 
@@ -128,7 +130,7 @@ own `.doctidex-git` work model.
 `import query` reports `restore-state`. Tracked Installations are metadata-only until restored; after clone or
 physical removal, run `import restore --install-id <INSTALL-ID>`.
 
-See [common.md](reference/common.md#installation-context) for the complete behavior.
+See [common.md](common.md#installation-context) for the complete behavior.
 
 ## Core behaviors at a glance
 
@@ -140,8 +142,9 @@ See [common.md](reference/common.md#installation-context) for the complete behav
 | Custom boundaries | Add or remove custom escape paths. | Use `boundary-set add`, `boundary-set remove`, and `boundary-set parse`. |
 | Validation and repair | Observe problems without changes, then repair recoverable physical state. | Use `validate` first; use `repair` to align model and physical objects. |
 | Git hooks | Keep untracked runtime state branch-consistent and validate work-model structure before commits. | `init` installs hooks; use `hook install`, `hook pre-commit`, and `hook post-checkout`. |
+| Skills | Install the bundled `doctidex-git` Twin Skill into another repository. | Use `skills install --path <DEST>`; see [skills.md](skills.md). |
 | Result contract | Every command emits machine-readable JSON. | Success uses `status: "ok"`; `validate` adds `valid`; failures use stable `message.code`. |
-| Cache | The CLI caches bare repositories under a configured cache root. | Configure with `DOCTIDEX-GIT-HOME`, the global `config.toml`, and optional repository `cache-path`; maintain it with `cache clean` and `cache compact`; see [cache.md](reference/cache.md). |
+| Cache | The CLI caches bare repositories under a configured cache root. | Configure with `DOCTIDEX-GIT-HOME`, the global `config.toml`, and optional repository `cache-path`; maintain it with `cache clean` and `cache compact`; see [cache.md](cache.md). |
 | Installation context | Select an Installation with `--installation-context`; the allowed command set is restricted. | Only `validate`, `boundary-set parse`, `import query`, and `import restore` are allowed; `import restore` flattens the local Installation into the owner repository. |
 | Restore state | Tracked metadata may not have a physical worktree. | `import query` reports `available`, `restore-required`, or `missing`; run `import restore` for `restore-required`. |
 
@@ -149,15 +152,16 @@ See [common.md](reference/common.md#installation-context) for the complete behav
 
 | Task | Document |
 |---|---|
-| Common interface and recovery | [common.md](reference/common.md) |
-| Initialize the work model | [init.md](reference/init.md) |
-| Manage custom boundaries | [boundary-set.md](reference/boundary-set.md) |
-| Manage Installations and Refs | [import.md](reference/import.md) |
-| Manage Worktrees | [worktree.md](reference/worktree.md) |
-| Validate the model and links | [validate.md](reference/validate.md) |
-| Align physical state with the model | [repair.md](reference/repair.md) |
-| Install and run Git hooks | [hook.md](reference/hook.md) |
-| Maintain the Git cache | [cache.md](reference/cache.md) |
+| Common interface and recovery | [common.md](common.md) |
+| Initialize the work model | [init.md](init.md) |
+| Manage custom boundaries | [boundary-set.md](boundary-set.md) |
+| Manage Installations and Refs | [import.md](import.md) |
+| Manage Worktrees | [worktree.md](worktree.md) |
+| Validate the model and links | [validate.md](validate.md) |
+| Align physical state with the model | [repair.md](repair.md) |
+| Install and run Git hooks | [hook.md](hook.md) |
+| Maintain the Git cache | [cache.md](cache.md) |
+| Install Twin Skills | [skills.md](skills.md) |
 
 ## Usage boundaries
 
@@ -167,9 +171,9 @@ Installation directories are read-only; create a Worktree when you need to modif
 
 `hook install` and successful first-time `init` install `pre-commit` and `post-checkout` hooks. The `pre-commit` hook
 validates work-model structure before commits, and the `post-checkout` hook keeps untracked Installation and share
-state branch-consistent; see [hook.md](reference/hook.md).
+state branch-consistent; see [hook.md](hook.md).
 
 `doctidex-git` coordinates only `doctidex-git` processes that follow its lock and transaction protocol. It does not
 guarantee race safety against direct external edits, and it never rewrites Git history or undoes commits. `repair` may
 discard uncommitted Installation changes but never Worktree changes or commit history; see
-[repair.md](reference/repair.md#what-repair-does-not-do).
+[repair.md](repair.md#what-repair-does-not-do).

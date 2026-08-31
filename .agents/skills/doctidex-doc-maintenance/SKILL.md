@@ -28,7 +28,10 @@ Use [doctidex-prose-standard](../doctidex-prose-standard/SKILL.md) to calibrate 
 - Keep all user-surface information under `docs/user/`.
 - Provide overview documents with prerequisites and hot-using paths.
 - Provide detailed per-command-cluster reference manuals with complete input/output definitions and error handling.
-- Make user documentation self-sufficient: a user should obtain enough usage information from `docs/user/` alone. Include brief architecture explanations and links when they help understanding, but require opening a link only for extreme detail.
+- Make user documentation self-sufficient: explain usage-required design context in place under `docs/user/`. Do not link from user documentation to design documents, and do not copy or restate large portions of `docs/dev/`.
+- Keep all `docs/user/` links relative and inside `docs/user/`. Validate them with `scripts/validate-user-doc-links.py` before publishing user documentation as a skill.
+- Use [doctidex-twin-skill-maintenance](../doctidex-twin-skill-maintenance/SKILL.md) when adding, removing, or
+  renaming a `docs/user/*.md` file, or when a user-document change affects a Twin Skill under `skills/`.
 - Ensure `docs/user/overview.md` covers every key usage behavior. If a behavior is still unexpected after a careful read of the overview, add it to the overview. The mental model established by the overview must hold across the entire user surface.
 
 ## Architecture documentation
@@ -65,6 +68,8 @@ After maintaining documents, verify that:
 - each document stays within its subject and tree scope;
 - tutorials and references are not mixed without clear labels;
 - every affected link resolves;
+- `docs/user/` links stay relative and inside `docs/user/`, and pass `scripts/validate-user-doc-links.py`;
+- if a user-document change affects a Twin Skill under `skills/`, the Twin Skill maintenance rules were followed;
 - the glossary contains every design concept defined in the architecture documents;
 - non-trivial repository changes are reflected in the affected documents;
 - no document contains outdated current-state content; issue history that preserves design trajectory is not treated as outdated;

@@ -18,4 +18,5 @@ coverage.xml
 htmlcov/
 dist/
 *.egg-info/
+src/python/whero/doctidex/_skill_data/
 .whero-collapse-*/

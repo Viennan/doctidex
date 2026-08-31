@@ -5,6 +5,7 @@ Quick lookup for development and design terms. Each entry links to its authorita
 | Term | Short meaning | Authority |
 |---|---|---|
 | BoundaryPoint | A custom or model-derived path where the current repository's link and scan rules stop. | [overview.md](architecture/overview.md#boundary-points) |
+| Twin Skill(s) | The agent skills under top-level `skills/` that ship with the product and mirror `docs/user/` plus the CLI surface. | [overview.md](architecture/overview.md#twin-skills) |
 | StructuredLinkAnnotation | A `doctidex` HTML-comment YAML block attached to one Markdown link. | [overview.md](architecture/overview.md#link-and-annotation-semantics) |
 | Installation | An external Git source at one fixed commit and one read-only install path. | [overview.md](architecture/overview.md#installation) |
 | Restore state | Derived Installation availability: `available`, `restore-required`, or `missing`. | [overview.md](architecture/overview.md#installation) |

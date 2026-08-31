@@ -21,6 +21,8 @@ Version 2.x.x is the active development line.
 │   │   └── issues/
 │   │       └── AGENTS.md
 │   └── user/           # User-facing documentation for the user surface.
+├── scripts/            # Repository-local helper scripts.
+├── skills/             # Twin Skills shipped with the CLI.
 └── src/                # Source code.
     ├── AGENTS.md
     └── python/         # Python implementation and tests.
@@ -35,6 +37,14 @@ Scoped `AGENTS.md` files:
 Treat a **scoped-AGENTS.md** as the root `AGENTS.md` scoped to its path. Read every **scoped-AGENTS.md** on the path you access.
 
 Use [doctidex-scaffolding-builder](.agents/skills/doctidex-scaffolding-builder/SKILL.md) to keep this directory diagram and the scoped `AGENTS.md` list synchronized when either changes.
+
+Use [doctidex-twin-skill-maintenance](.agents/skills/doctidex-twin-skill-maintenance/SKILL.md) when:
+
+- adding, removing, or renaming a `docs/user/*.md` file;
+- changing `skills/doctidex-git/SKILL.md` or its `references/`;
+- changing CLI behavior that affects how an agent follows a Twin Skill, including a new core capability, a
+  boundary-expanding behavior change, or a breaking change;
+- rebuilding `_skill_data` for packaging.
 
 ## Python Engineering Conventions
 

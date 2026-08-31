@@ -103,11 +103,7 @@ A rejected Issue Note is the proposal, frozen: it keeps whatever proposal-time s
 
 Every Issue Note carries an `## Alternatives considered` section: each genuine alternative and why it lost, one bold-led paragraph per alternative or a `### Why not <X>?` subsection per contested one. A decision recorded without what it beat invites re-litigation — the failure Issue Notes exist to prevent.
 
-Alternatives are recorded, never invented. An Issue Note dated before 2026-07-05 whose alternatives are not reconstructible from the record carries this exact comment in place of the section, which is accepted for pre-format files only:
-
-```markdown
-<!-- issue-note-format: alternatives-not-recorded (pre-format Issue Note) -->
-```
+Alternatives are recorded, never invented.
 
 ### Chinese counterparts
 

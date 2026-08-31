@@ -13,6 +13,13 @@ symbolic refs, editable worktrees, custom boundaries, validation, and repair.
 
 The product is a Linux/macOS CLI, not a hosted service or a replacement for Git. It owns only managed declarations and derived boundaries. Ordinary repository content and user-created worktrees remain outside its ownership.
 
+### Twin Skills
+
+**Twin Skills** are the agent skills under the top-level `skills/` directory that ship with the Python distribution.
+Each Twin Skill mirrors `docs/user/` and the CLI surface; `skills install` publishes a Twin Skill into a consumer
+repository without opening a Git root or work model. Twin Skills are distinct from the repository-internal
+`.agents/skills/` scaffolding.
+
 ## Bounded context
 
 The Git-root is the boundary for every command. `--repos-path` selects the owner root when supplied; when omitted,
@@ -62,6 +69,7 @@ An `InstallationContext` records:
 | `init`, `worktree` | Forbidden. |
 | `import install`, `import track`, `import ref`, `import unref` | Forbidden. |
 | `boundary-set add`, `boundary-set remove`, `repair` | Forbidden. |
+| `skills install` | Not applicable; user-level skill distribution. |
 | Other commands | Not yet available. |
 
 Forbidden and unavailable commands fail before state mutation. The failure identifies the owning Installation path.
@@ -219,6 +227,15 @@ Commands: `cache clean`, `cache compact`
 `git worktree prune` and `git gc --prune=now` for every published cache repository. Both commands use the CacheStore
 write lock and do not touch the RuntimeStore work model.
 
+### Skill installation service
+
+Commands: `skills install`
+
+`skills install --path <DEST>` copies the bundled `doctidex-git` skill into `<DEST>/doctidex-git/`, replacing only
+that subtree. It resolves the skill from the repository-root `skills/` tree in development and from the packaged
+`whero.doctidex._skill_data` tree in an installed distribution. The command is user-level and does not resolve a Git
+root, open a RuntimeStore, or accept Installation context.
+
 ## Store and coordination services
 
 ### Config service
@@ -259,6 +276,7 @@ publication without a journal, because the complete multi-file work model can be
 | Git source access and cache | [repository.py](../../../src/python/whero/doctidex/repository.py), [git_cache.py](../../../src/python/whero/doctidex/git_cache.py) |
 | Command workflows | [boundary.py](../../../src/python/whero/doctidex/boundary.py), [imports.py](../../../src/python/whero/doctidex/imports.py), [worktree.py](../../../src/python/whero/doctidex/worktree.py), [initialization.py](../../../src/python/whero/doctidex/initialization.py), [validate.py](../../../src/python/whero/doctidex/validate.py), [repair.py](../../../src/python/whero/doctidex/repair.py) |
 | Cache maintenance workflows | [git_cache.py](../../../src/python/whero/doctidex/git_cache.py) |
+| Skill resolution and installation | [skills.py](../../../src/python/whero/doctidex/skills.py) |
 | Cross-store recovery | [coordination.py](../../../src/python/whero/doctidex/coordination.py) |
 
 Model views own shared relationship semantics. Command modules own policy, such as whether a relationship blocks deletion, creates a diagnostic, or triggers physical repair.

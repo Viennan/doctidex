@@ -59,7 +59,7 @@ The read-only adapter and identity-based `presentation-path` mapping are defined
 
 Validation checks the share worktree, every share reference, direct commit paths, and branch/tag symlinks. Repair aligns the share worktree first, then restores selector symlinks and removes unregistered Installation symlinks.
 
-The architecture document is [installation-shares.md](../../../architecture/installation-shares.md). The user-visible symlink behavior is documented in [import.md](../../../../user/reference/import.md).
+The architecture document is [installation-shares.md](../../../architecture/installation-shares.md). The user-visible symlink behavior is documented in [import.md](../../../../user/import.md).
 
 ## Testing
 
