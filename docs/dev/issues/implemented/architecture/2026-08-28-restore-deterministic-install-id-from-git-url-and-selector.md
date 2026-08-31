@@ -23,7 +23,7 @@ An `install-id` is the first 16 hexadecimal characters of the SHA-256 digest of 
 ```text
 branch: /.doctidex-git/imports/<domain>/<repository...>/branch/<escaped-value-segments>
 tag:    /.doctidex-git/imports/<domain>/<repository...>/tag/<escaped-value-segments>
-commit: /.doctidex-git/imports/<domain>/<repository...>/<commit-hash>
+commit: /.doctidex-git/imports/<domain>/<repository...>/commit/<commit-hash>
 install-id = first-16-hex-chars(sha256(selector-path))
 ```
 
@@ -96,6 +96,7 @@ branch/tag re-resolution, Installation-context restore without an owner-side rec
 
 ## Related
 
+- [Add commit selector prefix to Installation share paths](2026-08-31-add-commit-prefix-to-installation-share-paths.md)
 - [Shared commit-hash Installation storage](2026-08-26-shared-commit-hash-installation-storage.md)
 - [Select Installation context by install-id argument](2026-08-27-select-installation-context-by-install-id.md)
 - [Support Git branch switching with post-checkout runtime snapshots](../feature/2026-08-28-support-git-branch-switching-with-post-checkout-runtime-snapshots.md)

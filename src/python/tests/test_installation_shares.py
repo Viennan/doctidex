@@ -19,7 +19,7 @@ def _share(
     *,
     git_url: str = "https://example.test/repository.git",
     commit_hash: str = "0123456789abcdef",
-    install_path: str = "/.doctidex-git/imports/example/0123456789abcdef",
+    install_path: str = "/.doctidex-git/imports/example/commit/0123456789abcdef",
     install_ids: tuple[str, ...] = ("install",),
     context_references: tuple[InstallationContextReference, ...] = (),
     branch_refs: tuple[str, ...] = (),
@@ -179,7 +179,7 @@ def test_installation_share_requires_branch_refs() -> None:
                     {
                         "git-url": "https://example.test/repository.git",
                         "commit-hash": "0123456789abcdef",
-                        "install-path": "/.doctidex-git/imports/example/0123456789abcdef",
+                        "install-path": "/.doctidex-git/imports/example/commit/0123456789abcdef",
                         "install-ids": [],
                         "context-references": [],
                     }

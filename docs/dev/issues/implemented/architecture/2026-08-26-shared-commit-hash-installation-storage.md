@@ -23,9 +23,9 @@ Each share records:
 - `install-ids` for every Installation that resolves to that commit;
 - `context-references` for sub-Installations restored from InstallationContext.
 
-The share path is organized like the former commit-hash Installation path:
+The share path is the selector-derived commit path:
 
-`/.doctidex-git/imports/<domain>/<repository>/<commit-hash>`
+`/.doctidex-git/imports/<domain>/<repository>/commit/<commit-hash>`
 
 There is no hidden backing Installation and no physical-owner transfer among Installations.
 
@@ -96,4 +96,5 @@ The cost is a new runtime-only share relation and additional validation/repair r
 
 ## Related
 
+- [Add commit selector prefix to Installation share paths](2026-08-31-add-commit-prefix-to-installation-share-paths.md)
 - [Support Git branch switching with post-checkout runtime snapshots](../feature/2026-08-28-support-git-branch-switching-with-post-checkout-runtime-snapshots.md)

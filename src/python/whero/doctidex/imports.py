@@ -384,6 +384,12 @@ def ensure_selector_symlink(store: RuntimeStore, selector_install_path: str, sha
     _ensure_symlink(store, selector_install_path, share_install_path)
 
 
+def commit_install_path(git_url: str, commit_hash: str) -> str:
+    """Return the selector-derived InstallationShare path for one commit."""
+
+    return _selector_install_path(git_url, "commit", commit_hash)
+
+
 def ensure_install_worktree(
     repository: Path,
     target: Path,
@@ -440,114 +446,44 @@ def _install_resolved(
 ) -> Installation:
     with store.write_transaction() as transaction:
         view = transaction.write_model_view()
-        if selector_kind in {"branch", "tag"}:
-            return _install_selector_resolved(
-                store,
-                repository,
-                view,
+        selector_value = commit_hash if selector_kind == "commit" else selector_value
+        branch = branch if selector_kind == "branch" else ""
+        tag = tag if selector_kind == "tag" else ""
+
+        install_path = _selector_install_path(git_url, selector_kind, selector_value)
+        install_id = _install_id(install_path)
+        existing = view.installation(install_id)
+        if existing is not None and existing.install_path != install_path:
+            raise _install_id_collision_failure(install_id, existing.install_path, install_path)
+        if existing is not None and existing.commit_hash == commit_hash:
+            _ensure_installation_in_share(store, repository, view, existing)
+            return existing
+
+        if existing is not None:
+            _leave_share(store, view, existing)
+
+        installation_keys = tuple(dict.fromkeys((*_default_keys(git_url, branch=branch, tag=tag), *keys)))
+        if existing is None:
+            installation = Installation(
                 tracked=tracked,
                 git_url=git_url,
+                commit_hash=commit_hash,
+                install_id=install_id,
+                install_path=install_path,
+                keys=installation_keys,
                 branch=branch,
                 tag=tag,
-                keys=keys,
-                selector_value=selector_value,
-                commit_hash=commit_hash,
             )
-        return _install_commit_resolved(
-            store,
-            repository,
-            view,
-            tracked=tracked,
-            git_url=git_url,
-            keys=keys,
-            commit_hash=commit_hash,
-        )
-
-
-def _install_selector_resolved(
-    store: RuntimeStore,
-    repository: Path,
-    view: RuntimeWriteModelView,
-    *,
-    tracked: bool,
-    git_url: str,
-    branch: str,
-    tag: str,
-    keys: list[str],
-    selector_value: str,
-    commit_hash: str,
-) -> Installation:
-    selector_kind = "branch" if branch else "tag"
-    install_path = _selector_install_path(git_url, selector_kind, selector_value)
-    install_id = _install_id(install_path)
-    existing = view.installation(install_id)
-    if existing is not None and existing.install_path != install_path:
-        raise _install_id_collision_failure(install_id, existing.install_path, install_path)
-    if existing is not None and existing.commit_hash == commit_hash:
-        _ensure_installation_in_share(store, repository, view, existing)
-        return existing
-
-    if existing is not None:
-        _leave_share(store, view, existing)
-
-    if existing is None:
-        installation = Installation(
-            tracked=tracked,
-            git_url=git_url,
-            commit_hash=commit_hash,
-            install_id=install_id,
-            install_path=install_path,
-            keys=tuple(dict.fromkeys((*_default_keys(git_url, branch=branch, tag=tag), *keys))),
-            branch=branch,
-            tag=tag,
-        )
+        else:
+            installation = replace(
+                existing,
+                commit_hash=commit_hash,
+                tracked=tracked or bool(view.refs_for(existing)),
+                keys=installation_keys,
+            )
         view.upsert_installation(installation)
-    else:
-        installation = replace(
-            existing,
-            commit_hash=commit_hash,
-            tracked=tracked or bool(view.refs_for(existing)),
-            keys=tuple(dict.fromkeys((*_default_keys(git_url, branch=branch, tag=tag), *keys))),
-        )
-        view.upsert_installation(installation)
-    _ensure_installation_in_share(store, repository, view, installation)
-    return installation
-
-
-def _install_commit_resolved(
-    store: RuntimeStore,
-    repository: Path,
-    view: RuntimeWriteModelView,
-    *,
-    tracked: bool,
-    git_url: str,
-    keys: list[str],
-    commit_hash: str,
-) -> Installation:
-    share = _ensure_share_for_commit(store, repository, view, git_url, commit_hash)
-    install_id = _install_id(share.install_path)
-    existing = view.installation(install_id)
-    if existing is not None and existing.install_path != share.install_path:
-        raise _install_id_collision_failure(install_id, existing.install_path, share.install_path)
-    if existing is not None:
-        if tracked and not existing.tracked:
-            existing = view.set_installation_tracking(existing, tracked=True)
-        _ensure_installation_in_share(store, repository, view, existing)
-        return existing
-
-    installation = Installation(
-        tracked=tracked,
-        git_url=git_url,
-        commit_hash=commit_hash,
-        install_id=install_id,
-        install_path=share.install_path,
-        keys=tuple(dict.fromkeys((*_default_keys(git_url, branch="", tag=""), *keys))),
-        branch="",
-        tag="",
-    )
-    view.upsert_installation(installation)
-    _ensure_installation_in_share(store, repository, view, installation)
-    return installation
+        _ensure_installation_in_share(store, repository, view, installation)
+        return installation
 
 
 def _ensure_share_for_commit(
@@ -558,7 +494,7 @@ def _ensure_share_for_commit(
     commit_hash: str,
 ) -> InstallationShare:
     share = view.installation_share(git_url, commit_hash)
-    install_path = share.install_path if share is not None else _selector_install_path(git_url, "commit", commit_hash)
+    install_path = share.install_path if share is not None else commit_install_path(git_url, commit_hash)
     target = repo_path_to_fs(store.git_root, install_path)
     ensure_install_worktree(
         repository,
@@ -866,8 +802,7 @@ def _remove_install_path(target: Path, install_path: str) -> None:
 def _selector_install_path(git_url: str, selector_kind: str, selector_value: str) -> str:
     domain, repository_name = repository_location(git_url)
     components = [".doctidex-git", "imports", domain, *repository_name]
-    if selector_kind in {"branch", "tag"}:
-        components.append(selector_kind)
+    components.append(selector_kind)
     components.extend(selector_value.split("/"))
     if any(component in {"", ".", ".."} for component in components):
         raise _installation_target_failure("/.doctidex-git/imports", "invalid-source-path")

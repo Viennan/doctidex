@@ -315,7 +315,7 @@ def test_import_commit_install_reuses_same_source_and_commit(
     )
 
     assert repeated.payload == initial.payload
-    assert initial.payload["install-path"].endswith(f"/{commit}")
+    assert initial.payload["install-path"].endswith(f"/commit/{commit}")
 
 
 def test_branch_and_tag_with_same_name_have_distinct_ids_and_paths(

@@ -35,6 +35,10 @@ The same early-branch duplication appeared in other Installation workflow functi
 
 `_install_selector_resolved` and `_install_commit_resolved` remain early-return workflows. They were not flattened.
 
+This non-flattening decision is superseded by [Add commit selector prefix to Installation share
+paths](../architecture/2026-08-31-add-commit-prefix-to-installation-share-paths.md), which later collapses the two
+functions into one `_install_resolved` after the commit selector gains a kind segment.
+
 ### Share removal
 
 `_leave_share` detaches a replaced selector Installation without deleting its Installation record. `_remove_installation_reference` removes the Installation record and then detaches its share membership. Both functions call `_remove_from_installation_share` for the shared remaining-reference/empty-share cleanup.

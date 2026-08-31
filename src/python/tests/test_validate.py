@@ -251,7 +251,7 @@ def test_validate_reports_duplicate_share_branch_refs(
                 {
                     "git-url": "https://example.test/repository.git",
                     "commit-hash": "0123456789abcdef",
-                    "install-path": "/.doctidex-git/imports/example/0123456789abcdef",
+                    "install-path": "/.doctidex-git/imports/example/commit/0123456789abcdef",
                     "install-ids": [],
                     "context-references": [],
                     "branch-refs": ["main", "main"],
@@ -277,7 +277,7 @@ def test_validate_reports_duplicate_share_branch_refs(
     )
 
 
-def test_validate_reports_missing_context_reference_owner(
+def test_validate_reports_share_path_without_commit_kind(
     initialized_root: Path,
     cli: CliRunner,
 ) -> None:
@@ -291,6 +291,41 @@ def test_validate_reports_missing_context_reference_owner(
                     "git-url": "https://example.test/repository.git",
                     "commit-hash": "0123456789abcdef",
                     "install-path": "/.doctidex-git/imports/example/0123456789abcdef",
+                    "install-ids": [],
+                    "context-references": [],
+                    "branch-refs": [],
+                }
+            ],
+            "branch-snapshots": {},
+        },
+    )
+
+    result = cli.run("--repos-path", str(initialized_root), "validate", "--model-structure")
+
+    assert result.code == 1
+    violations = [
+        item
+        for diagnostic in result.payload["diagnostics"]
+        if diagnostic["rule"] == "work-model.valid"
+        for item in diagnostic["details"]["violations"]
+    ]
+    assert any(item["code"] == "installation.share.commit-path.invalid" for item in violations)
+
+
+def test_validate_reports_missing_context_reference_owner(
+    initialized_root: Path,
+    cli: CliRunner,
+) -> None:
+    write_json(
+        initialized_root / ".doctidex-git" / "runtime.json",
+        {
+            "imports": [],
+            "worktrees": [],
+            "installation-shares": [
+                {
+                    "git-url": "https://example.test/repository.git",
+                    "commit-hash": "0123456789abcdef",
+                    "install-path": "/.doctidex-git/imports/example/commit/0123456789abcdef",
                     "install-ids": [],
                     "context-references": [
                         {

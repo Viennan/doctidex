@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from whero.doctidex.errors import CommandFailure
+from whero.doctidex.imports import commit_install_path
 from whero.doctidex.initialization import RUNTIME_IGNORE_PATHS, WORKSPACE_ARTIFACTS
 from whero.doctidex.model import InlineAnnotation, Installation, ModelFormatError, RuntimeState
 from whero.doctidex.model_view import (
@@ -532,6 +533,21 @@ def _share_physical_violations(
     violations: list[dict[str, object]] = []
     for share in state.installation_shares:
         share_path = repo_path_to_fs(git_root, share.install_path)
+        expected_share_path = commit_install_path(share.git_url, share.commit_hash)
+        if share.install_path != expected_share_path:
+            violations.append(
+                {
+                    "code": "installation.share.commit-path.invalid",
+                    "path": share.install_path,
+                    "message": "An installation share does not use its selector-derived commit path.",
+                    "details": {
+                        "git-url": share.git_url,
+                        "commit-hash": share.commit_hash,
+                        "install-path": share.install_path,
+                        "expected-install-path": expected_share_path,
+                    },
+                }
+            )
         if not share_path.exists() or not _is_git_worktree(share_path):
             violations.append(
                 {

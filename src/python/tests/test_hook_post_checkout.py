@@ -24,7 +24,7 @@ def _write_branch_installation(git_root: Path) -> Installation:
     share = InstallationShare(
         git_url="https://example.test/repository.git",
         commit_hash="0123456789abcdef",
-        install_path="/.doctidex-git/imports/example/0123456789abcdef",
+        install_path="/.doctidex-git/imports/example/commit/0123456789abcdef",
         install_ids=("untracked",),
         branch_refs=("main",),
     )
@@ -143,7 +143,7 @@ def test_post_checkout_reports_missing_share_worktree(
 ) -> None:
     _branch_workspaces(git_root, cli)
     _write_branch_installation(git_root)
-    share_path = repo_path_to_fs(git_root, "/.doctidex-git/imports/example/0123456789abcdef")
+    share_path = repo_path_to_fs(git_root, "/.doctidex-git/imports/example/commit/0123456789abcdef")
     if share_path.exists():
         share_path.rmdir()
 

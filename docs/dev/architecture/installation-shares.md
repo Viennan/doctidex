@@ -25,7 +25,7 @@ Representative persisted shape:
 {
   "git-url": "<GIT-URL>",
   "commit-hash": "<HASH>",
-  "install-path": "/.doctidex-git/imports/<DOMAIN>/<REPOSITORY>/<HASH>",
+  "install-path": "/.doctidex-git/imports/<DOMAIN>/<REPOSITORY>/commit/<HASH>",
   "install-ids": ["<INSTALL-ID>", "<OTHER-INSTALL-ID>"],
   "context-references": [
     {
@@ -50,9 +50,10 @@ The `install-ids` order has no physical meaning. `install-path` is the authority
 
 ## Physical storage
 
-The share creates its real Git worktree at `install-path`. A direct commit Installation uses this exact path as its
-`install-path`. A branch or tag Installation keeps a selector-derived `install-path` that includes the selector kind
-(`/branch/<value>` or `/tag/<value>`) and has a symlink to `share.install-path`.
+The share creates its real Git worktree at the commit selector path
+`/.doctidex-git/imports/<DOMAIN>/<REPOSITORY>/commit/<HASH>`. A direct commit Installation uses this exact path as
+its `install-path`. A branch or tag Installation keeps a selector-derived `install-path` that includes the selector
+kind (`/branch/<value>` or `/tag/<value>`) and has a symlink to `share.install-path`.
 
 ## Install and restore
 
@@ -97,6 +98,7 @@ Validation checks:
 - the share worktree exists and is a detached Git worktree;
 - every share `install-id` resolves to a recorded owner-side Installation;
 - every `context-reference` names a recorded owner Installation and is unique by `(owner-install-id, install-id)`;
+- every share `install-path` is its `(git-url, commit-hash)` commit-derived path;
 - direct commit Installations use `share.install-path`;
 - branch and tag Installations symlink to `share.install-path`.
 
