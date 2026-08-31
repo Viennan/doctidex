@@ -8,10 +8,20 @@ See [common.md](common.md) for shared interface and errors.
 
 ```bash
 doctidex-git validate \
-  [--subdir <REPOSITORY-PATH> | --model-structure]
+  [--subdir <REPOSITORY-PATH> | --only-model-structure]
 ```
 
-`--subdir` and `--model-structure` are mutually exclusive.
+`--subdir` and `--only-model-structure` are mutually exclusive.
+
+The default invocation validates the full work model and scans cross-boundary Markdown links from the Git root.
+
+| Mode | Behavior |
+|---|---|
+| default | Validate the full work model and scan cross-boundary links from `/`. |
+| `--subdir <REPOSITORY-PATH>` | Validate the full work model but scan cross-boundary links only under the requested repository-internal directory. |
+| `--only-model-structure` | Validate only the work-model structure; skip the Markdown and link scan. |
+
+`--subdir` narrows the scan, not the work-model check.
 
 ## Result
 

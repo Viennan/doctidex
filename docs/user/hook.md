@@ -27,7 +27,7 @@ doctidex-git [--repos-path <REPOSITORY-ROOT-PATH>] hook pre-commit
 ```
 
 The installed `pre-commit` hook invokes this worker before each commit. The worker returns success when `.doctidex-git/`
-is absent or when `validate --model-structure` reports a valid work model. When the work model is invalid, the worker
+is absent or when `validate --only-model-structure` reports a valid work model. When the work model is invalid, the worker
 returns `hook.pre-commit.validation.failed` with the validation diagnostics and Git aborts the commit.
 
 ## Post-checkout
@@ -54,7 +54,7 @@ The no-argument rerun is apply-only for the current branch.
 |---|---|
 | `hook.command.unavailable` | `hook install` could not resolve the `doctidex-git` command path. |
 | `hook.install.unavailable` | The Git hooks directory or hook script could not be written. |
-| `hook.pre-commit.validation.failed` | The work model failed `validate --model-structure`; correct it and commit again. |
+| `hook.pre-commit.validation.failed` | The work model failed `validate --only-model-structure`; correct it and commit again. |
 | `hook.post-checkout.reconcile.failed` | Runtime state or physical Installation/share paths could not be reconciled; correct the model and rerun `hook post-checkout`. |
 
 ## Installation context

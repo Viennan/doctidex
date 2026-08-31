@@ -81,7 +81,7 @@ def run_pre_commit(git_root: Path) -> None:
     store = RuntimeStore(git_root)
     if not store.workspace_path.is_dir():
         return
-    result = validate_workflow.validate(store, model_structure=True)
+    result = validate_workflow.validate(store, only_model_structure=True)
     if not result.valid:
         raise CommandFailure(
             code="hook.pre-commit.validation.failed",

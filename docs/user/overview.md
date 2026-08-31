@@ -36,7 +36,7 @@ here.
 ```bash
 cd /path/to/repository
 doctidex-git init
-doctidex-git validate --model-structure
+doctidex-git validate --only-model-structure
 ```
 
 Then install a fixed external revision and expose it with a Ref:
@@ -141,7 +141,7 @@ See [common.md](common.md#installation-context) for the complete behavior.
 
 | Area | Essential behavior | Detail |
 |---|---|---|
-| Workspace bootstrap | Run `init` once, then `validate --model-structure`. | `init` creates `.doctidex-git/` and its state projections. |
+| Workspace bootstrap | Run `init` once, then `validate --only-model-structure`. | `init` creates `.doctidex-git/` and its state projections. |
 | Installations and Refs | Install a fixed revision, then expose it with a Ref. | Use `import install`, `import ref`, `import restore`, `import query`, `import remove`, and `import unload`. |
 | Worktrees | Create an editable worktree from an Installation or URL. | Use `worktree create`, `worktree query`, and `worktree remove`. |
 | Custom boundaries | Add or remove custom escape paths. | Use `boundary-set add`, `boundary-set remove`, and `boundary-set parse`. |

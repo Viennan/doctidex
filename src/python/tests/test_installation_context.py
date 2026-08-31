@@ -178,7 +178,7 @@ def test_installation_context_rejects_forbidden_commands_and_allows_read_only_co
         "--installation-context",
         install_id,
         "validate",
-        "--model-structure",
+        "--only-model-structure",
     )
     assert validated.code == 1
     assert validated.payload["status"] == "ok"
@@ -304,7 +304,7 @@ def test_installation_context_by_id_works_for_shared_branch_tag_and_commit_paths
             "--installation-context",
             install_id,
             "validate",
-            "--model-structure",
+            "--only-model-structure",
         )
         assert validated.code == 1
         assert validated.payload["valid"] is False
@@ -320,7 +320,7 @@ def test_unknown_installation_context_id_fails_before_mutation(
         "--installation-context",
         "missing-id",
         "validate",
-        "--model-structure",
+        "--only-model-structure",
     )
 
     assert failed.code == 2
@@ -354,7 +354,7 @@ def test_installation_context_rejects_not_restored_tracked_installation(
         "--installation-context",
         installed.payload["install-id"],
         "validate",
-        "--model-structure",
+        "--only-model-structure",
     )
 
     assert failed.code == 2
@@ -388,7 +388,7 @@ def test_installation_context_rejects_missing_untracked_installation(
         "--installation-context",
         installed.payload["install-id"],
         "validate",
-        "--model-structure",
+        "--only-model-structure",
     )
 
     assert failed.code == 2
@@ -501,7 +501,7 @@ def test_installation_context_id_discovers_owner_root_from_current_directory(
         "--installation-context",
         installed.payload["install-id"],
         "validate",
-        "--model-structure",
+        "--only-model-structure",
     )
 
     assert validated.code == 1

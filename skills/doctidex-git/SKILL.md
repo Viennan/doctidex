@@ -39,7 +39,7 @@ For a repository that does not yet have `.doctidex-git/`, initialize and verify:
 
 ```bash
 doctidex-git init
-doctidex-git validate --model-structure
+doctidex-git validate --only-model-structure
 ```
 
 `init` creates the workspace and installs the supported Git hooks.
@@ -48,7 +48,7 @@ For a fresh clone, `.doctidex-git/` already exists but the local Git hooks do no
 
 ```bash
 doctidex-git hook install
-doctidex-git validate --model-structure
+doctidex-git validate --only-model-structure
 ```
 
 See [init.md](references/init.md), [hook.md](references/hook.md), and [validate.md](references/validate.md).
@@ -100,8 +100,8 @@ and leaves the tracked record in place. `import query` then reports `restore-req
 
 ### Link across a boundary
 
-After creating a Ref, write the link relative to the Git root and follow it with the StructuredLinkAnnotation that
-names the first crossed BoundaryPoint:
+A Markdown link that crosses any BoundaryPoint — `custom`, `import`, `import-ref`, or `worktree` — must be followed
+by a `doctidex` StructuredLinkAnnotation that names the first boundary crossed:
 
 ```markdown
 [External](/external/<NAME>/path/to/doc.md)
@@ -109,7 +109,15 @@ names the first crossed BoundaryPoint:
 ```
 
 Paths beginning with `/` are rooted at the Git root; other paths are relative to the source document. Prefer relative
-links when they express the same target. See [overview.md](references/overview.md) and [common.md](references/common.md).
+links when they express the same target.
+
+To check only the affected scope:
+
+```bash
+doctidex-git validate --subdir <REPOSITORY-PATH>
+```
+
+See [overview.md](references/overview.md) and [common.md](references/common.md).
 
 ### Modify external content safely
 

@@ -143,7 +143,7 @@ Common errors:
 | `git-root.unresolved` | The requested or discovered path is not a usable Git root. |
 | `repository-path.invalid` | A repository-internal path is malformed or escapes the repository. |
 | `work-model.uninitialized` | Run `init` first. |
-| `work-model.invalid` | Run `validate --model-structure`. |
+| `work-model.invalid` | Run `validate --only-model-structure`. |
 | `store.transaction.unavailable` | Store or residual transaction recovery failed; run `repair` or retry. |
 
 ## Recovery boundary
@@ -153,7 +153,7 @@ Common errors:
 Normal commands detect residual RuntimeStore journals, run internal repair, and retry up to three times. For direct investigation:
 
 ```bash
-doctidex-git validate --model-structure
+doctidex-git validate --only-model-structure
 doctidex-git repair
 doctidex-git validate
 ```

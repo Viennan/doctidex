@@ -173,7 +173,7 @@ The Git root is the anchor for these paths; no `index.md` root-identity declarat
 Commands: `init`
 
 `init` establishes the `.doctidex-git` workspace, empty state projections, and Git ignore protection. A non-empty
-workspace is already initialized; `validate --model-structure` or `repair` is the next step.
+workspace is already initialized; `validate --only-model-structure` or `repair` is the next step.
 
 ### Hook service
 

@@ -39,7 +39,7 @@ def test_missing_required_argument_is_structured_json(cli: CliRunner) -> None:
 
 
 def test_validate_model_structure_is_mutually_exclusive_with_subdir(cli: CliRunner) -> None:
-    result = cli.run("validate", "--subdir", "/docs", "--model-structure")
+    result = cli.run("validate", "--subdir", "/docs", "--only-model-structure")
 
     assert result.code == 2
     assert result.payload["message"]["code"] == "argument.invalid"
@@ -59,7 +59,7 @@ def test_argument_error_context_does_not_treat_an_unknown_value_as_a_subcommand(
         ("--installation-context", "id", "--repos-path", "/repo", "boundary-set", "parse", "--path", "/x"),
         ("--installation-context", "id", "--repos-path", "/repo", "import", "query", "--install-id", "x"),
         ("--installation-context", "id", "--repos-path", "/repo", "worktree", "query", "--work-path", "/x"),
-        ("--installation-context", "id", "--repos-path", "/repo", "validate", "--model-structure"),
+        ("--installation-context", "id", "--repos-path", "/repo", "validate", "--only-model-structure"),
         ("--installation-context", "id", "--repos-path", "/repo", "repair"),
     ),
 )

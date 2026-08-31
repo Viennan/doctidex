@@ -486,7 +486,7 @@ def _run_validate(operation: ResolvedInvocation, args: argparse.Namespace) -> Co
     result = validate_workflow.validate(
         RuntimeStore(operation.root),
         subdir=args.subdir,
-        model_structure=args.model_structure,
+        only_model_structure=args.only_model_structure,
     )
     return success(
         command=operation.command,
@@ -681,9 +681,10 @@ def _run_init(invocation: ParsedInvocation) -> int:
                 message={
                     "code": "workspace.already-initialized",
                     "summary": (
-                        "Initialization has already been run; use validate --model-structure to check the work model."
+                        "Initialization has already been run; use validate --only-model-structure to check the "
+                        "work model."
                     ),
-                    "details": {"next-command": "validate --model-structure"},
+                    "details": {"next-command": "validate --only-model-structure"},
                 },
             )
         print(_json(payload))
@@ -781,7 +782,7 @@ def _add_validate_parser(commands: argparse._SubParsersAction[argparse.ArgumentP
     validate = commands.add_parser("validate", help="Validate the doctidex-git work model and tree.")
     mode = validate.add_mutually_exclusive_group()
     mode.add_argument("--subdir", type=_non_empty, metavar="REPOSITORY-INTERNAL-ABSOLUTE-PATH")
-    mode.add_argument("--model-structure", action="store_true", help="Validate only the work-model structure.")
+    mode.add_argument("--only-model-structure", action="store_true", help="Validate only the work-model structure.")
 
 
 def _add_hook_parser(commands: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:

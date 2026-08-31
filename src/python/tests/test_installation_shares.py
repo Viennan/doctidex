@@ -109,7 +109,7 @@ def test_validate_reports_conflicting_installation_shares(
         },
     )
 
-    result = cli.run("--repos-path", str(initialized_root), "validate", "--model-structure")
+    result = cli.run("--repos-path", str(initialized_root), "validate", "--only-model-structure")
 
     assert result.code == 1
     violations = [

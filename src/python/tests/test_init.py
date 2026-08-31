@@ -74,7 +74,7 @@ def test_init_reports_existing_workspace_and_keeps_its_state(initialized_root: P
 
     assert result.code == 0
     assert result.payload["message"]["code"] == "workspace.already-initialized"
-    assert result.payload["message"]["details"]["next-command"] == "validate --model-structure"
+    assert result.payload["message"]["details"]["next-command"] == "validate --only-model-structure"
     assert read_json(workspace / "boundary-set.json") == boundary_set
     assert read_json(workspace / "imports.json") == imports
     assert read_json(workspace / "import-refs.json") == []
@@ -91,7 +91,7 @@ def test_init_does_not_validate_existing_workspace(initialized_root: Path, cli: 
     assert result.code == 0
     assert result.payload["message"]["code"] == "workspace.already-initialized"
     assert cli.run("--repos-path", str(initialized_root), "validate").payload["valid"] is False
-    assert cli.run("--repos-path", str(initialized_root), "validate", "--model-structure").payload["valid"] is True
+    assert cli.run("--repos-path", str(initialized_root), "validate", "--only-model-structure").payload["valid"] is True
 
 
 def test_init_leaves_an_existing_index_untouched(git_root: Path, cli: CliRunner) -> None:
@@ -123,9 +123,9 @@ def test_init_reports_incomplete_existing_workspace_without_modifying_it(git_roo
 
     assert result.code == 0
     assert result.payload["message"]["code"] == "workspace.already-initialized"
-    assert result.payload["message"]["details"]["next-command"] == "validate --model-structure"
+    assert result.payload["message"]["details"]["next-command"] == "validate --only-model-structure"
     assert not (workspace / "runtime.json").exists()
-    validation = cli.run("--repos-path", str(git_root), "validate", "--model-structure")
+    validation = cli.run("--repos-path", str(git_root), "validate", "--only-model-structure")
     assert validation.code == 1
     assert validation.payload["diagnostics"][0]["rule"] == "work-model.valid"
 

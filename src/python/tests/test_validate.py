@@ -19,7 +19,7 @@ def test_validate_uninitialized_is_a_diagnostic_result(git_root: Path, cli: CliR
 
 
 def test_validate_model_structure_reports_uninitialized_workspace(git_root: Path, cli: CliRunner) -> None:
-    result = cli.run("--repos-path", str(git_root), "validate", "--model-structure")
+    result = cli.run("--repos-path", str(git_root), "validate", "--only-model-structure")
 
     assert result.code == 1
     assert {item["rule"] for item in result.payload["diagnostics"]} == {"work-model.valid"}
@@ -30,7 +30,7 @@ def test_validate_model_structure_skips_directory_tree_checks(initialized_root: 
     cli.run("--repos-path", str(initialized_root), "boundary-set", "add", "--path", "/external")
     _write_markdown(initialized_root, "[missing](/external/missing.md)\n")
 
-    structure = cli.run("--repos-path", str(initialized_root), "validate", "--model-structure")
+    structure = cli.run("--repos-path", str(initialized_root), "validate", "--only-model-structure")
     complete = cli.run("--repos-path", str(initialized_root), "validate")
 
     assert structure.code == 0
@@ -52,7 +52,7 @@ def test_validate_ignores_ordinary_missing_link(initialized_root: Path, cli: Cli
 def test_validate_model_structure_ignores_index_document_content(initialized_root: Path, cli: CliRunner) -> None:
     (initialized_root / "index.md").write_text("---\ntype: guide\n---\n")
 
-    result = cli.run("--repos-path", str(initialized_root), "validate", "--model-structure")
+    result = cli.run("--repos-path", str(initialized_root), "validate", "--only-model-structure")
 
     assert result.code == 0
     assert result.payload["valid"] is True
@@ -158,7 +158,7 @@ def test_validate_rejects_subdir_that_is_not_a_directory(initialized_root: Path,
 def test_validate_reports_missing_workspace_artifact(initialized_root: Path, cli: CliRunner) -> None:
     (initialized_root / ".doctidex-git" / "runtime.json").unlink()
 
-    result = cli.run("--repos-path", str(initialized_root), "validate", "--model-structure")
+    result = cli.run("--repos-path", str(initialized_root), "validate", "--only-model-structure")
 
     assert result.code == 1
     violations = result.payload["diagnostics"][0]["details"]["violations"]
@@ -186,7 +186,7 @@ def test_validate_reports_dirty_installation(
     (install_root / "readme.md").write_text("dirty tracked\n")
     (install_root / "dirty-extra.md").write_text("dirty untracked\n")
 
-    result = cli.run("--repos-path", str(initialized_root), "validate", "--model-structure")
+    result = cli.run("--repos-path", str(initialized_root), "validate", "--only-model-structure")
 
     assert result.code == 1
     violations = [
@@ -232,7 +232,7 @@ def test_validate_does_not_physically_check_inactive_branch_snapshots(
         },
     )
 
-    result = cli.run("--repos-path", str(initialized_root), "validate", "--model-structure")
+    result = cli.run("--repos-path", str(initialized_root), "validate", "--only-model-structure")
 
     assert result.code == 0
     assert result.payload["valid"] is True
@@ -261,7 +261,7 @@ def test_validate_reports_duplicate_share_branch_refs(
         },
     )
 
-    result = cli.run("--repos-path", str(initialized_root), "validate", "--model-structure")
+    result = cli.run("--repos-path", str(initialized_root), "validate", "--only-model-structure")
 
     assert result.code == 1
     violations = [
@@ -300,7 +300,7 @@ def test_validate_reports_share_path_without_commit_kind(
         },
     )
 
-    result = cli.run("--repos-path", str(initialized_root), "validate", "--model-structure")
+    result = cli.run("--repos-path", str(initialized_root), "validate", "--only-model-structure")
 
     assert result.code == 1
     violations = [
@@ -340,7 +340,7 @@ def test_validate_reports_missing_context_reference_owner(
         },
     )
 
-    result = cli.run("--repos-path", str(initialized_root), "validate", "--model-structure")
+    result = cli.run("--repos-path", str(initialized_root), "validate", "--only-model-structure")
 
     assert result.code == 1
     violations = [

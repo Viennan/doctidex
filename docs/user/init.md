@@ -37,8 +37,8 @@ If `.doctidex-git/` exists and is non-empty, `init` does not overwrite state. It
   "status": "ok",
   "message": {
     "code": "workspace.already-initialized",
-    "summary": "Initialization has already been run; use validate --model-structure to check the work model.",
-    "details": {"next-command": "validate --model-structure"}
+    "summary": "Initialization has already been run; use validate --only-model-structure to check the work model.",
+    "details": {"next-command": "validate --only-model-structure"}
   }
 }
 ```

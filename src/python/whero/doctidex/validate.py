@@ -37,17 +37,17 @@ def validate(
     store: RuntimeStore,
     *,
     subdir: str | None = None,
-    model_structure: bool = False,
+    only_model_structure: bool = False,
 ) -> ValidationResult:
     """Validate one workspace without changing state.
 
-    ``model_structure`` retains only repository-level work-model checks.
+    ``only_model_structure`` retains only repository-level work-model checks.
     """
 
-    scope = _scope(store.git_root, None if model_structure else subdir)
+    scope = _scope(store.git_root, None if only_model_structure else subdir)
     check = _check_model(store, scope)
     diagnostics = list(check.diagnostics)
-    if model_structure or check.model is None:
+    if only_model_structure or check.model is None:
         return _finalize(diagnostics, scope)
     # Content scanning relies on complete, valid work-model files. Any model
     # diagnostic means those files are not trustworthy, so skip the scan.
