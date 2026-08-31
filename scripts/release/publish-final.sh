@@ -43,6 +43,11 @@ fi
 git -C "$root" push -u origin "$branch"
 wheel="$("$root/scripts/release/build-wheel.sh" "$version" | tail -n 1)"
 
+if ! git -C "$root" tag --list "$tag" | grep -qx "$tag"; then
+  git -C "$root" tag "$tag"
+  git -C "$root" push origin "$tag"
+fi
+
 if [ -z "$previous" ]; then
   previous="$(git -C "$root" tag --list "v${version%%.*}*" --sort=-v:refname |
     grep -v "^v${version}$" | head -n 1 || true)"
