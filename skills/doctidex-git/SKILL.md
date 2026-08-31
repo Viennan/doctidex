@@ -1,6 +1,6 @@
 ---
 name: doctidex-git
-description: Use doctidex-git to make Git repositories interoperable knowledge nodes by initializing a workspace, installing fixed external revisions, creating Refs, writing annotated cross-boundary links, creating editable Worktrees, and validating or repairing managed state.
+description: Use doctidex-git to make Git repositories interoperable knowledge nodes by initializing a workspace, installing and unloading fixed external revisions, creating Refs, writing annotated cross-boundary links, creating editable Worktrees, and validating or repairing managed state.
 ---
 
 # doctidex-git
@@ -81,6 +81,18 @@ doctidex-git import restore --install-id <INSTALL-ID>
 ```
 
 See [import.md](references/import.md) for selector, Ref, and removal rules.
+
+### Free a tracked checkout without losing it
+
+When a tracked Installation is no longer needed on disk, unload it while keeping its metadata:
+
+```bash
+doctidex-git import unload --install-id <INSTALL-ID>
+```
+
+`unload` accepts more than one `--install-id`, detaches each selected tracked Installation from its shared checkout,
+and leaves the tracked record in place. `import query` then reports `restore-required`; run
+`import restore --install-id <INSTALL-ID>` to recreate it.
 
 ### Link across a boundary
 

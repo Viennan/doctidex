@@ -137,7 +137,7 @@ See [common.md](common.md#installation-context) for the complete behavior.
 | Area | Essential behavior | Detail |
 |---|---|---|
 | Workspace bootstrap | Run `init` once, then `validate --model-structure`. | `init` creates `.doctidex-git/` and its state projections. |
-| Installations and Refs | Install a fixed revision, then expose it with a Ref. | Use `import install`, `import ref`, `import restore`, `import query`, and `import remove`. |
+| Installations and Refs | Install a fixed revision, then expose it with a Ref. | Use `import install`, `import ref`, `import restore`, `import query`, `import remove`, and `import unload`. |
 | Worktrees | Create an editable worktree from an Installation or URL. | Use `worktree create`, `worktree query`, and `worktree remove`. |
 | Custom boundaries | Add or remove custom escape paths. | Use `boundary-set add`, `boundary-set remove`, and `boundary-set parse`. |
 | Validation and repair | Observe problems without changes, then repair recoverable physical state. | Use `validate` first; use `repair` to align model and physical objects. |
@@ -146,7 +146,7 @@ See [common.md](common.md#installation-context) for the complete behavior.
 | Result contract | Every command emits machine-readable JSON. | Success uses `status: "ok"`; `validate` adds `valid`; failures use stable `message.code`. |
 | Cache | The CLI caches bare repositories under a configured cache root. | Configure with `DOCTIDEX-GIT-HOME`, the global `config.toml`, and optional repository `cache-path`; maintain it with `cache clean` and `cache compact`; see [cache.md](cache.md). |
 | Installation context | Select an Installation with `--installation-context`; the allowed command set is restricted. | Only `validate`, `boundary-set parse`, `import query`, and `import restore` are allowed; `import restore` flattens the local Installation into the owner repository. |
-| Restore state | Tracked metadata may not have a physical worktree. | `import query` reports `available`, `restore-required`, or `missing`; run `import restore` for `restore-required`. |
+| Restore state | Tracked metadata may not have a physical worktree. | `import query` reports `available`, `restore-required`, or `missing`; run `import restore` for `restore-required`, or `import unload` to keep metadata while freeing a checkout. |
 
 ## Command documents
 

@@ -68,6 +68,7 @@ An `InstallationContext` records:
 | `import restore` | Allowed with special Installation-local routing. |
 | `init`, `worktree` | Forbidden. |
 | `import install`, `import track`, `import ref`, `import unref` | Forbidden. |
+| `import remove`, `import unload` | Not yet available. |
 | `boundary-set add`, `boundary-set remove`, `repair` | Forbidden. |
 | `skills install` | Not applicable; user-level skill distribution. |
 | Other commands | Not yet available. |
@@ -194,9 +195,9 @@ This service manages custom BoundaryPoints. `remove` refuses a derived boundary.
 
 ### Import service
 
-Commands: `import install`, `import restore`, `import track`, `import remove`, `import ref`, `import unref`, `import query`
+Commands: `import install`, `import restore`, `import track`, `import remove`, `import unload`, `import ref`, `import unref`, `import query`
 
-`install` resolves one revision, prepares the install path, and records a tracked or untracked Installation. `restore` recreates a tracked Installation at its recorded commit without re-resolving branch or tag. `track` moves an Installation into the tracked projection. `remove` deletes records and physical paths only when no Ref or in-scope link depends on them, and additionally removes branch snapshots selected by `--branch` or made stale by `--auto`, reconciling Installation share references. `ref` and `unref` maintain managed symbolic links. `query` supports identity, path, ref, and fuzzy key selectors.
+`install` resolves one revision, prepares the install path, and records a tracked or untracked Installation. `restore` recreates a tracked Installation at its recorded commit without re-resolving branch or tag. `track` moves an Installation into the tracked projection. `remove` deletes records and physical paths only when no Ref or in-scope link depends on them, and additionally removes branch snapshots selected by `--branch` or made stale by `--auto`, reconciling Installation share references. `unload` detaches tracked Installations from their Installation shares while keeping their records, and deletes an orphaned share. `ref` and `unref` maintain managed symbolic links. `query` supports identity, path, ref, and fuzzy key selectors.
 
 ### Worktree service
 

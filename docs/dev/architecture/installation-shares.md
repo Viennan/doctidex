@@ -72,6 +72,10 @@ Removing an Installation removes its `install-id` and physical path. The share a
 `install-id`, `context-reference`, or `branch-refs` entry remains. When the last reference disappears, the share and
 worktree are deleted together.
 
+`import unload` uses the same share-ownership rule while keeping the tracked Installation record: it removes the
+selected `install-id` and selector symlink, leaves `context-references` and other `branch-refs` in place, and deletes
+an orphaned share and worktree.
+
 `import remove --branch` and stale-branch `--auto` cleanup remove branch snapshots, drop the deleted branch names from
 `branch-refs` in the active share records and the share records inside remaining branch snapshots, and then delete a
 share whose `install-ids`, `context-references`, and `branch-refs` are all empty.

@@ -47,7 +47,7 @@ from .results import argument_error, error, success
 COMMANDS = ("init", "boundary-set", "import", "worktree", "validate", "repair", "hook", "cache", "skills")
 SUBCOMMANDS = {
     "boundary-set": {"add", "remove", "parse"},
-    "import": {"install", "restore", "track", "remove", "ref", "unref", "query"},
+    "import": {"install", "restore", "track", "remove", "unload", "ref", "unref", "query"},
     "worktree": {"create", "remove", "query"},
     "hook": {"install", "post-checkout", "pre-commit"},
     "cache": {"clean", "compact"},
@@ -419,6 +419,9 @@ def _run_import(operation: ResolvedInvocation, args: argparse.Namespace) -> Comm
                 branches=tuple(args.branch or ()),
             )
             return success(command=operation.command)
+        if name == "unload":
+            import_workflow.unload(store, tuple(args.install_id))
+            return success(command=operation.command)
         if name == "ref":
             import_workflow.ref(store, args.install_id, args.src_sub_dir or "", args.target_dir)
             return success(command=operation.command)
@@ -726,6 +729,15 @@ def _add_import_parser(commands: argparse._SubParsersAction[argparse.ArgumentPar
     selection.add_argument("--untracked", action="store_true", help="Select all untracked installations.")
     selection.add_argument("--auto", action="store_true", help="Select installations eligible for automatic cleanup.")
     selection.add_argument("--branch", action="append", default=[], type=_non_empty, metavar="BRANCH")
+
+    unload = subcommands.add_parser("unload", help="Detach selected tracked installations.")
+    unload.add_argument(
+        "--install-id",
+        action="append",
+        required=True,
+        type=_non_empty,
+        metavar="INSTALL-ID",
+    )
 
     ref = subcommands.add_parser("ref", help="Create a managed installation reference.")
     ref.add_argument("--install-id", required=True, type=_non_empty, metavar="INSTALL-ID")

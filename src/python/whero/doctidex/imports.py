@@ -201,6 +201,15 @@ def remove(
             _remove_branch_snapshot_history(store, view, deleted_branches)
 
 
+def unload(store: RuntimeStore, install_ids: tuple[str, ...]) -> None:
+    """Detach selected tracked Installations from their Installation shares."""
+
+    with store.write_transaction() as transaction:
+        view = transaction.write_model_view()
+        selected = _tracked_installations(store, view, install_ids)
+        _unload_installations_batch(store, view, selected)
+
+
 def ref(store: RuntimeStore, install_id: str, src_sub_dir: str, target_dir: str) -> Ref:
     """Create a managed symbolic reference into one Installation."""
 
@@ -1063,6 +1072,92 @@ def _current_branch_removal_failure(branch: str) -> CommandFailure:
         subject={"kind": "branch-snapshot", "branch": branch},
         details={"operation": "remove"},
     )
+
+
+def _tracked_installations(
+    store: RuntimeStore,
+    view: RuntimeWriteModelView,
+    install_ids: tuple[str, ...],
+) -> tuple[Installation, ...]:
+    """Return the tracked Installations to detach, excluding already restore-required records."""
+
+    selected: list[Installation] = []
+    seen: set[str] = set()
+    for install_id in install_ids:
+        if install_id in seen:
+            continue
+        seen.add(install_id)
+        installation = _find_installation(view, install_id)
+        if not installation.tracked:
+            raise _installation_failure(
+                "installation.tracking-state.invalid",
+                installation,
+                {"required-tracked": True, "actual-tracked": False},
+            )
+        if installation_restore_state(store.git_root, installation) == "restore-required":
+            continue
+        selected.append(installation)
+    return tuple(selected)
+
+
+def _unload_installations_batch(
+    store: RuntimeStore,
+    view: RuntimeWriteModelView,
+    selected: tuple[Installation, ...],
+) -> None:
+    """Detach several Installations and publish the resulting share collection once."""
+
+    if not selected:
+        return
+
+    unloaded_ids = {item.install_id for item in selected}
+    current_branch = current_branch_name(store.git_root)
+
+    for item in selected:
+        if item.branch or item.tag:
+            _remove_unload_path(store, item.install_path)
+
+    final_shares: list[InstallationShare] = []
+    orphaned_shares: list[InstallationShare] = []
+    for share in view.state.installation_shares:
+        if not any(install_id in unloaded_ids for install_id in share.install_ids):
+            final_shares.append(share)
+            continue
+
+        install_ids = tuple(item for item in share.install_ids if item not in unloaded_ids)
+        branch_refs = _branch_refs_after_unload(share.branch_refs, install_ids, current_branch)
+        if install_ids or share.context_references or branch_refs:
+            final_shares.append(replace(share, install_ids=install_ids, branch_refs=branch_refs))
+        else:
+            orphaned_shares.append(share)
+
+    view.replace_installation_shares(final_shares)
+    for share in orphaned_shares:
+        _remove_unload_path(store, share.install_path)
+
+
+def _branch_refs_after_unload(
+    branch_refs: tuple[str, ...],
+    install_ids: tuple[str, ...],
+    current_branch: str | None,
+) -> tuple[str, ...]:
+    """Drop the current branch from a share that no longer has active Installations."""
+
+    if install_ids or current_branch is None:
+        return branch_refs
+    return tuple(branch for branch in branch_refs if branch != current_branch)
+
+
+def _remove_unload_path(store: RuntimeStore, install_path: str) -> None:
+    try:
+        _remove_path(repo_path_to_fs(store.git_root, install_path))
+    except OSError as exc:
+        raise CommandFailure(
+            code="installation.unload.reconcile.failed",
+            summary="The installation could not be detached from its share.",
+            subject={"kind": "installation", "install-path": install_path},
+            details={"operation": "remove-physical-path"},
+        ) from exc
 
 
 def _remove_installations_batch(

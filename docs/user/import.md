@@ -114,6 +114,23 @@ still references the same share.
 Removing a branch snapshot also removes that branch from `InstallationShare.branch-refs`. When a share has no
 remaining `install-ids`, `context-references`, or `branch-refs`, the share and its physical worktree are deleted.
 
+## Unload
+
+```bash
+doctidex-git import unload --install-id <INSTALL-ID>...
+```
+
+`--install-id` is repeatable and at least one is required. `unload` accepts only tracked Installations and detaches
+them from their Installation share while keeping the Installation record. A tracked Installation that is already
+`restore-required` is a no-op.
+
+Unloading a branch or tag Installation removes its selector symlink. A direct-commit Installation's physical checkout
+is removed only when its share has no remaining `install-id`, `context-reference`, or `branch-ref`; when none remain,
+the share and its physical worktree are deleted.
+
+Managed Refs and cross-boundary Markdown links are left in place. After unload, `import query` reports
+`restore-required`, and `import restore --install-id <INSTALL-ID>` recreates the physical checkout.
+
 ## Handleable errors
 
 | Code | Cause and next step |
@@ -122,10 +139,11 @@ remaining `install-ids`, `context-references`, or `branch-refs`, the share and i
 | `cache.repository.unavailable` | Bare repository cannot be obtained. |
 | `installation.target.unavailable` | Install path is occupied or unusable. |
 | `installation.not-found` | Requested Installation does not exist. |
-| `installation.tracking-state.invalid` | `restore` received an untracked Installation. |
+| `installation.tracking-state.invalid` | `restore` or `unload` received an untracked Installation. |
 | `installation.restore.unavailable` | Tracked Installation cannot be restored at its commit. |
 | `installation.restore.required` | A tracked Installation is not restored; run `import restore`. |
 | `installation.remove.blocked` | Ref or cross-boundary link still depends on the Installation. |
+| `installation.unload.reconcile.failed` | A selector symlink, share, or physical worktree could not be removed during unload. |
 | `import.branch-snapshot.remove.current-branch` | `--branch` named the currently checked-out branch. |
 | `import.branch-snapshot.reconcile.failed` | A share or physical worktree could not be cleaned during snapshot removal. |
 | `ref.source.unavailable` | Installation or `src-sub-dir` cannot be a link source. |
@@ -144,7 +162,8 @@ doctidex-git --repos-path <OWNER-ROOT> --installation-context <INSTALL-ID> impor
 
 In Installation context, `import query` and `import restore` are allowed. `import restore` reads the local
 Installation and installs it into the owner work model as an untracked Installation. `import install`,
-`import track`, `import ref`, and `import unref` are forbidden.
+`import track`, `import ref`, and `import unref` are forbidden. `import remove` and `import unload` are not
+available in Installation context.
 
 Running an import command with a path inside a managed Installation but without `--installation-context`
 produces `installation.context.argument-required`.
