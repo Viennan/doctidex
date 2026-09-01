@@ -18,6 +18,22 @@ doctidex-git import install \
 
 `--tracked` or `--untracked` is required. Exactly one revision selector is required.
 
+`--key` is repeatable and adds user query keys to the Installation. The CLI also derives default keys from the Git
+URL: the repository path without scheme and without a trailing `.git`, plus `repository@branch` and `repository@tag`
+when those selectors are present. Use `import query --key <FRAGMENT>` later to find an Installation by any of its
+stored keys.
+
+For example:
+
+```text
+https://github.com/example/project.git  -> repository: example/project
+git@github.com:example/project.git      -> repository: example/project
+```
+
+An `https://` URL is converted to SSH form before keys are derived, so both inputs above produce the same repository
+portion. Installing either form with `--branch main` therefore derives the default keys
+`example/project` and `example/project@main`.
+
 `--url` accepts a Git SSH URL. An `https://` URL is accepted for convenience and is converted to SSH form at
 argument parsing.
 
@@ -70,7 +86,8 @@ doctidex-git import query \
    --ref-path <REPOSITORY-PATH> | --key <QUERY-KEY>...)
 ```
 
-Exactly one selector class is required. `--key` is repeatable fuzzy search.
+Exactly one selector class is required. `--key` is repeatable fuzzy search. A query key can be any substring of a
+stored Installation key; results are ordered by the number of matched keys and then by exact key matches.
 
 `restore-state` is one of `available`, `restore-required`, or `missing`. A tracked Installation with only
 metadata and no physical worktree is `restore-required`; run `import restore --install-id <INSTALL-ID>` to make
@@ -102,10 +119,14 @@ it available. An untracked Installation with a missing physical path is `missing
 
 ```bash
 doctidex-git import remove \
-  (--install-id <INSTALL-ID> | --untracked | --auto | --branch <BRANCH>...)
+  (--install-id <INSTALL-ID> | --untracked | --auto | \
+   --presentation-installation-context | --branch <BRANCH>...)
 ```
 
 `--install-id` selects one Installation. `--untracked` selects all untracked Installations. `--auto` selects untracked Installations and Installations without managed Refs.
+`--presentation-installation-context` selects InstallationShares that can only be Presentation-Installation shares:
+`install-ids` is empty and `branch-refs` is empty or contains only the current branch. `--auto` also includes this
+cleanup.
 
 `--branch` is repeatable and selects branch snapshots by branch short name. The currently checked-out branch cannot be
 selected; an unknown branch name is a no-op.
@@ -168,14 +189,17 @@ doctidex-git --repos-path <OWNER-ROOT> --installation-context <INSTALL-ID> impor
 ```
 
 In Installation context, `import query` and `import restore` are allowed. `import restore` reads the local
-Installation and installs it into the owner work model as an untracked Installation. `import install`,
-`import track`, `import ref`, and `import unref` are forbidden. `import remove` and `import unload` are not
-available in Installation context.
+Installation and publishes an owner-side `presentation-path` and `presentation-install-id` without mutating that
+Installation's own work model. `import install`, `import track`, `import ref`, and `import unref` are forbidden.
+`import remove` and `import unload` are not available in Installation context.
 
 Running an import command with a path inside a managed Installation but without `--installation-context`
 produces `installation.context.argument-required`.
 
-When an Installation-context `import query` result has no `presentation-path`, the Installation has not yet been restored into the owner work model. In the same Installation context, run `import restore --install-id <INSTALL-ID>` to install it and obtain its owner-side path.
+When an Installation-context `import query` result has no `presentation-path`, the Installation has not yet been
+published into the owner work model. In the same Installation context, run `import restore --install-id
+<INSTALL-ID>` to obtain its owner-side path and `presentation-install-id`. Use that `presentation-install-id` as the
+next `--installation-context <INSTALL-ID>` for recursive access.
 
-In Installation-context query results, a candidate with `presentation-path` is `available`; otherwise
-`restore-state` falls back to the local `install-path` check.
+In Installation-context query results, a candidate with `presentation-path` is `available` and also includes
+`presentation-install-id`; otherwise `restore-state` falls back to the local `install-path` check.

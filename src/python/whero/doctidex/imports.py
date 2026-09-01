@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
 import shutil
 import subprocess
@@ -17,6 +16,7 @@ from whero.doctidex.model import (
     InstallationContextReference,
     InstallationShare,
     Ref,
+    install_id_for_path,
 )
 from whero.doctidex.model_view import scan_cross_boundary_links
 from whero.doctidex.paths import (
@@ -125,11 +125,13 @@ def restore_context_import(
             subject={"kind": "installation", "install-id": local.install_id},
             details={"owner-path": str(owner_store.git_root), "reason": "share-unavailable"},
         )
+    presentation_install_id = install_id_for_path(owner_share_path)
     return replace(
         local,
         presentation_path=str(
             repo_path_to_fs(owner_store.git_root, owner_share_path)
         ),
+        presentation_install_id=presentation_install_id,
     )
 
 
@@ -169,20 +171,23 @@ def remove(
     *,
     untracked: bool,
     auto: bool,
+    presentation_installation_context: bool = False,
     branches: tuple[str, ...] = (),
 ) -> None:
     """Remove selected Installations after confirming no link or Ref blocks them."""
 
     with store.write_transaction() as transaction:
         view = transaction.write_model_view()
-        if branches:
+        if presentation_installation_context:
+            deleted_branches = ()
+        elif branches:
             deleted_branches = _explicit_branch_snapshot_names(store, view, branches)
         elif auto:
             deleted_branches = _stale_branch_snapshot_names(store, view)
         else:
             deleted_branches = ()
 
-        if not branches:
+        if not branches and not presentation_installation_context:
             selected = _select_installations(view, install_id, untracked=untracked, auto=auto)
             blocked = _blocked_installations(store.git_root, view, selected)
             if blocked:
@@ -199,6 +204,9 @@ def remove(
 
         if deleted_branches:
             _remove_branch_snapshot_history(store, view, deleted_branches)
+
+        if presentation_installation_context or auto:
+            _remove_presentation_installation_context(store, view)
 
 
 def unload(store: RuntimeStore, install_ids: tuple[str, ...]) -> None:
@@ -332,6 +340,11 @@ def query(
                 else installation_restore_state(git_root, item)
             ),
             **({"presentation-path": item.presentation_path} if item.presentation_path is not None else {}),
+            **(
+                {"presentation-install-id": item.presentation_install_id}
+                if item.presentation_install_id is not None
+                else {}
+            ),
             "keys": list(item.keys),
             "refs": [
                 {"src-sub-dir": ref.src_sub_dir, "target-dir": ref.target_dir}
@@ -451,7 +464,7 @@ def _install_resolved(
         tag = tag if selector_kind == "tag" else ""
 
         install_path = _selector_install_path(git_url, selector_kind, selector_value)
-        install_id = _install_id(install_path)
+        install_id = install_id_for_path(install_path)
         existing = view.installation(install_id)
         if existing is not None and existing.install_path != install_path:
             raise _install_id_collision_failure(install_id, existing.install_path, install_path)
@@ -493,6 +506,8 @@ def _ensure_share_for_commit(
     git_url: str,
     commit_hash: str,
 ) -> InstallationShare:
+    """Ensure one share and physical worktree exist; Presentation-Installations are derived, not persisted."""
+
     share = view.installation_share(git_url, commit_hash)
     install_path = share.install_path if share is not None else commit_install_path(git_url, commit_hash)
     target = repo_path_to_fs(store.git_root, install_path)
@@ -807,10 +822,6 @@ def _selector_install_path(git_url: str, selector_kind: str, selector_value: str
     if any(component in {"", ".", ".."} for component in components):
         raise _installation_target_failure("/.doctidex-git/imports", "invalid-source-path")
     return f"/{'/'.join(components)}"
-
-
-def _install_id(selector_install_path: str) -> str:
-    return hashlib.sha256(selector_install_path.encode("utf-8")).hexdigest()[:16]
 
 
 def _install_id_collision_failure(install_id: str, existing_path: str, computed_path: str) -> CommandFailure:
@@ -1142,6 +1153,82 @@ def _remove_installations_batch(
     view.replace_installation_shares(final_shares)
     for share in orphaned_shares:
         _remove_path(repo_path_to_fs(store.git_root, share.install_path))
+
+
+def _remove_presentation_installation_context(
+    store: RuntimeStore,
+    view: RuntimeWriteModelView,
+) -> None:
+    """Remove shares that can only be Presentation-Installation shares."""
+
+    state = view.state
+    current_branch = current_branch_name(store.git_root)
+
+    selected_shares = tuple(
+        share
+        for share in state.installation_shares
+        if _is_presentation_only_share(share, current_branch=current_branch)
+    )
+    if not selected_shares:
+        return
+
+    selected_keys = {_share_key(share) for share in selected_shares}
+    selected_presentation_ids = {
+        install_id_for_path(share.install_path) for share in selected_shares
+    }
+
+    view.replace_installation_shares(
+        tuple(
+            _without_presentation_context_references(share, selected_presentation_ids)
+            for share in state.installation_shares
+            if _share_key(share) not in selected_keys
+        )
+    )
+    view.replace_branch_snapshots(
+        {
+            branch: replace(
+                snapshot,
+                installation_shares=tuple(
+                    _without_presentation_context_references(share, selected_presentation_ids)
+                    for share in snapshot.installation_shares
+                    if _share_key(share) not in selected_keys
+                ),
+            )
+            for branch, snapshot in state.branch_snapshots.items()
+        }
+    )
+    for share in selected_shares:
+        _remove_path(repo_path_to_fs(store.git_root, share.install_path))
+
+
+def _is_presentation_only_share(
+    share: InstallationShare,
+    *,
+    current_branch: str | None,
+) -> bool:
+    """Return whether ``share`` can only be a Presentation-Installation share."""
+
+    if share.install_ids:
+        return False
+    if current_branch is None:
+        return not share.branch_refs
+    return all(branch == current_branch for branch in share.branch_refs)
+
+
+def _without_presentation_context_references(
+    share: InstallationShare,
+    selected_presentation_ids: set[str],
+) -> InstallationShare:
+    """Return ``share`` without context references owned by the selected Presentation-Installations."""
+
+    context_references = tuple(
+        reference
+        for reference in share.context_references
+        if reference.owner_install_id not in selected_presentation_ids
+    )
+    if context_references == share.context_references:
+        return share
+    return replace(share, context_references=context_references)
 
 
 def _installation_failure(code: str, installation: Installation, details: dict[str, object]) -> CommandFailure:

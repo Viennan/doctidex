@@ -137,7 +137,7 @@ Installation-local unlocked read transaction, then performs the owner-side write
 2. run cache-before-RuntimeStore coordination through `WorkflowCoordinator.with_repository`;
 3. open the owner RuntimeStore write transaction;
 4. ensure the owner `InstallationShare` and add the `InstallationContextReference`;
-5. return the Installation-local record with an owner-side `presentation-path`.
+5. return the Installation-local record with an owner-side `presentation-path` and `presentation-install-id`.
 
 Owner-side publication therefore still uses the normal RuntimeStore journal protocol. No Installation-local journal is
 created because the selected Installation's declarations remain read-only from the owner's perspective.

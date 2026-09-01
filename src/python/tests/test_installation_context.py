@@ -626,6 +626,7 @@ def test_installation_context_queries_local_install_and_restores_to_owner(
     assert restored.payload["install-id"] == "nested-id"
     assert restored.payload["install-path"] == "/.doctidex-git/imports/nested"
     assert Path(restored.payload["presentation-path"]).is_dir()
+    assert restored.payload["presentation-install-id"] == owner_nested.payload["install-id"]
 
     queried_after_restore = cli.run(
         "--repos-path",
@@ -641,6 +642,7 @@ def test_installation_context_queries_local_install_and_restores_to_owner(
     assert restored_candidate["presentation-path"] == str(
         initialized_root / owner_nested.payload["install-path"].lstrip("/")
     )
+    assert restored_candidate["presentation-install-id"] == owner_nested.payload["install-id"]
     assert restored_candidate["restore-state"] == "available"
 
     runtime = read_json(initialized_root / ".doctidex-git" / "runtime.json")

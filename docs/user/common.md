@@ -69,13 +69,19 @@ The following commands are allowed in Installation context:
 - `import query`
 - `import restore`
 
-`import restore` has special Installation-local routing: it reads the requested Installation from the local work model and installs it into the owner work model as an untracked Installation. It never creates a nested Installation inside the current Installation; the local Installation is flattened into the owner repository. The returned Installation keeps its local identity and provides an owner-side `presentation-path`.
+`import restore` has special Installation-local routing: it reads the requested Installation from the local work model
+and publishes an owner-side `presentation-path` and `presentation-install-id` without mutating that Installation's own
+work model. It never creates a nested Installation inside the current Installation. The returned Installation keeps
+its local identity.
 
 If the selected `--installation-context` refers to a tracked Installation whose physical worktree is absent, the
 command fails with `installation.restore.required` before mutation. Run `import restore --install-id
 <INSTALL-ID>` in the owner root to recreate the physical worktree.
 
-When an Installation-context `import query` result has no `presentation-path`, the Installation exists only in the local work model. In the same Installation context, run `import restore --install-id <INSTALL-ID>` to install it into the owner work model and obtain its owner-side path.
+When an Installation-context `import query` result has no `presentation-path`, the Installation exists only in the
+local work model. In the same Installation context, run `import restore --install-id <INSTALL-ID>` to obtain its
+owner-side path and `presentation-install-id`. Use that `presentation-install-id` as the next
+`--installation-context <INSTALL-ID>` for recursive access.
 
 ### Forbidden commands
 

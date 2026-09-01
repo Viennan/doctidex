@@ -14,6 +14,7 @@ The share store owns Installation storage only. It does not change the Worktree 
 |---|---|
 | **InstallationShare** | One machine-local relation for a Git URL and commit. It owns the shared physical worktree path and the Installation identities that reference it. |
 | **InstallationContextReference** | Provenance for one sub-Installation restored from InstallationContext. |
+| **Presentation-Installation** | An in-memory commit Installation derived from a share that has no normal commit twin. |
 
 ### InstallationShare
 
@@ -81,6 +82,10 @@ an orphaned share and worktree.
 `branch-refs` in the active share records and the share records inside remaining branch snapshots, and then delete a
 share whose `install-ids`, `context-references`, and `branch-refs` are all empty.
 
+`import remove --presentation-installation-context` is a targeted Presentation-only cleanup. It deletes shares whose
+`install-ids` is empty and whose `branch-refs` is empty or contains only the current branch. `import remove --auto`
+also includes this cleanup.
+
 There is no physical-owner transfer among Installations and no synthetic backing Installation.
 
 ## InstallationContext
@@ -89,7 +94,7 @@ There is no physical-owner transfer among Installations and no synthetic backing
 `install-id`, ensures the owner `InstallationShare` for the sub-Installation's `(git-url, commit-hash)`, and records
 one `InstallationContextReference` in that share. It does not create an owner-side Installation and does not add the
 sub-Installation id to `share.install-ids`. The query surface reports owner-side restore state through the share path
-as `presentation-path`.
+as `presentation-path`, and returns the matching owner-side commit id as `presentation-install-id`.
 
 ## Validation and repair
 

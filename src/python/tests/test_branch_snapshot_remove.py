@@ -119,7 +119,7 @@ def test_remove_explicit_multiple_branches_and_unknown_is_noop(initialized_root:
     assert state.installation_shares[0].branch_refs == ("main",)
 
 
-def test_remove_auto_removes_stale_snapshot_and_keeps_current(initialized_root: Path) -> None:
+def test_remove_auto_removes_stale_snapshot_and_presentation_only_share(initialized_root: Path) -> None:
     share = _share(branch_refs=("main", "gone"))
     snapshot = BranchSnapshot(installations=(), worktrees=(), installation_shares=(share,))
     _write_state(
@@ -138,7 +138,8 @@ def test_remove_auto_removes_stale_snapshot_and_keeps_current(initialized_root: 
 
     state = RuntimeStore(initialized_root).read_state()
     assert set(state.branch_snapshots) == {"main"}
-    assert state.installation_shares[0].branch_refs == ("main",)
+    assert state.branch_snapshots["main"].installation_shares == ()
+    assert state.installation_shares == ()
 
 
 def test_remove_auto_deletes_orphaned_share_and_worktree(initialized_root: Path) -> None:

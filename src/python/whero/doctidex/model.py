@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -28,6 +29,7 @@ class Installation:
     branch: str = ""
     tag: str = ""
     presentation_path: str | None = None
+    presentation_install_id: str | None = None
 
     @classmethod
     def from_json(cls, value: object, *, artifact: str) -> Installation:
@@ -54,6 +56,7 @@ class Installation:
             branch=branch,
             tag=tag,
             presentation_path=None,
+            presentation_install_id=None,
         )
 
     def to_json(self) -> dict[str, object]:
@@ -248,6 +251,63 @@ class InstallationShare:
         }
 
 
+def is_presentation_installation(
+    installation: Installation,
+    shares: tuple[InstallationShare, ...],
+) -> bool:
+    """Return whether ``installation`` is a derived commit twin rather than a normal Installation."""
+
+    if installation.tracked or installation.branch or installation.tag:
+        return False
+    for share in shares:
+        if (
+            share.git_url == installation.git_url
+            and share.commit_hash == installation.commit_hash
+            and share.install_path == installation.install_path
+        ):
+            return installation.install_id not in share.install_ids
+    return False
+
+
+def _derived_presentation_installations(
+    persisted_installations: tuple[Installation, ...],
+    shares: tuple[InstallationShare, ...],
+) -> tuple[Installation, ...]:
+    """Return one derived Presentation-Installation for each share without a normal commit twin."""
+
+    commit_keys = {
+        (item.git_url, item.commit_hash, item.install_path)
+        for item in persisted_installations
+        if not item.branch and not item.tag
+    }
+    derived: list[Installation] = []
+    for share in shares:
+        key = (share.git_url, share.commit_hash, share.install_path)
+        if key in commit_keys:
+            continue
+        derived.append(
+            Installation(
+                tracked=False,
+                git_url=share.git_url,
+                commit_hash=share.commit_hash,
+                install_id=install_id_for_path(share.install_path),
+                install_path=share.install_path,
+                keys=(),
+                branch="",
+                tag="",
+                presentation_path=None,
+                presentation_install_id=None,
+            )
+        )
+    return tuple(derived)
+
+
+def install_id_for_path(install_path: str) -> str:
+    """Return the deterministic install-id for a selector-derived install path."""
+
+    return hashlib.sha256(install_path.encode("utf-8")).hexdigest()[:16]
+
+
 @dataclass(frozen=True, slots=True)
 class BranchSnapshot:
     """One branch's runtime history without its branch-snapshots field."""
@@ -344,6 +404,12 @@ class RuntimeState:
             *(BoundaryPoint(type="import-ref", path=item.target_dir) for item in self.refs),
             *(BoundaryPoint(type="worktree", path=item.work_path) for item in self.worktrees),
         )
+
+    @property
+    def presentation_installations(self) -> tuple[Installation, ...]:
+        """Return derived Presentation-Installations for shares without a normal commit twin."""
+
+        return _derived_presentation_installations(self.installations, self.installation_shares)
 
     @classmethod
     def empty(cls) -> RuntimeState:

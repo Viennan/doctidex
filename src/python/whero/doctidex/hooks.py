@@ -211,8 +211,6 @@ def _merge_share_membership(
                     context_references=target.context_references,
                 )
             )
-    current_keys = {_share_key(item) for item in current_shares}
-    merged.extend(item for item in target_shares if _share_key(item) not in current_keys)
     return tuple(merged)
 
 

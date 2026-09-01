@@ -52,7 +52,7 @@ repository. The command clusters below are independent capabilities; use the one
 | Hooks | `hook install`, `pre-commit`, and `post-checkout` keep runtime state branch-consistent and validate before commit. | [hook.md](references/hook.md) |
 | Cache | `cache clean` and `cache compact` maintain the user-level Git cache. | [cache.md](references/cache.md) |
 | Skills | `skills install` publishes the bundled Twin Skill into a target repository. | [skills.md](references/skills.md) |
-| Installation context | `--installation-context <INSTALL-ID>` selects a doctidex-managed Installation and exposes its local work model to a restricted command set. | [common.md](references/common.md#installation-context) |
+| Installation context | `--installation-context <INSTALL-ID>` selects a doctidex-managed Installation and exposes its local work model to a restricted command set; restored results expose `presentation-install-id` for recursive use. | [common.md](references/common.md#installation-context) |
 
 These areas compose. For example, an Installation plus a Ref creates a stable external path; a Worktree can then make
 an editable copy of that content; validation and repair keep the model and physical state aligned.
@@ -88,7 +88,8 @@ Ref:
 doctidex-git import install \
   --tracked \
   --url <GIT-URL> \
-  --branch <BRANCH>
+  --branch <BRANCH> \
+  --key <QUERY-KEY>
 
 doctidex-git import ref \
   --install-id <INSTALL-ID> \
@@ -98,10 +99,18 @@ doctidex-git import ref \
 
 Use `--tracked` when the reference should persist across clones; use `--untracked` for a temporary reference. A
 branch or tag resolves once to a commit, so run `import install` again only when that fixed revision should change.
+`--key` is repeatable; the CLI also derives default keys from the repository path and selector, so fuzzy lookups can
+start from [those defaults](references/import.md#install) or from keys you add.
 In a fresh clone, a tracked Installation may be metadata-only until restored:
 
 ```bash
 doctidex-git import restore --install-id <INSTALL-ID>
+```
+
+Find an Installation later with a fuzzy key fragment:
+
+```bash
+doctidex-git import query --key <QUERY-KEY-FRAGMENT>
 ```
 
 See [import.md](references/import.md) for selectors, Ref rules, removal, and `restore-state`.
@@ -162,15 +171,21 @@ See [boundary-set.md](references/boundary-set.md).
 
 ### Operate inside a managed Installation context
 
-When the selected repository is itself a doctidex-managed Installation, use `--installation-context <INSTALL-ID>` to
-read its local work model:
+When the selected repository is itself a doctidex-managed Installation, prefer passing both the owner root and the
+selected Installation:
 
 ```bash
-doctidex-git --installation-context <INSTALL-ID> import query
+doctidex-git --repos-path <OWNER-ROOT> --installation-context <INSTALL-ID> import query
 ```
 
-`validate`, `boundary-set parse`, `import query`, and `import restore` are allowed in that context; mutating or
-owner-model commands are rejected. See [common.md](references/common.md#installation-context).
+`validate`, `boundary-set parse`, `import query`, and `import restore` are allowed in that context; other mutating
+commands are rejected. After restore, use the returned `presentation-install-id` as the next
+`--installation-context <INSTALL-ID>` for recursive access. See
+[common.md](references/common.md#installation-context).
+
+If an indirect child Installation is valuable enough to reference directly from the owner repository, return to the
+owner root and promote it to a direct Installation with `import install`, then reference it like any other
+Installation.
 
 ### Check and repair state
 

@@ -10,7 +10,15 @@ from typing import Self
 
 from whero.doctidex import imports as import_workflow
 from whero.doctidex.errors import CommandFailure
-from whero.doctidex.model import BoundaryPoint, Installation, ModelFormatError, Ref, RuntimeState, Worktree
+from whero.doctidex.model import (
+    BoundaryPoint,
+    Installation,
+    ModelFormatError,
+    Ref,
+    RuntimeState,
+    Worktree,
+    install_id_for_path,
+)
 from whero.doctidex.paths import repo_path_to_fs
 from whero.doctidex.store.files import StoreFailure
 from whero.doctidex.store.runtime import RuntimeReadDiagnosticTransaction, RuntimeStore
@@ -45,7 +53,17 @@ def resolve_installation_context_by_id(owner_root: Path, install_id: str) -> Ins
     """Resolve one recorded Installation by owner ``install_id``."""
 
     with _owner_diagnostic_transaction(owner_root) as transaction:
-        installation = transaction.model_view().installation(install_id)
+        model_view = transaction.model_view()
+        installation = model_view.installation(install_id)
+        if installation is None:
+            installation = next(
+                (
+                    item
+                    for item in model_view.state.presentation_installations
+                    if item.install_id == install_id
+                ),
+                None,
+            )
     if installation is None:
         raise CommandFailure(
             code="installation.not-found",
@@ -271,17 +289,18 @@ class InstallationRuntimeModelView:
             return None
         owner_installation = self._owner_view.installation_at(self.context.install_path)
         if owner_installation is None:
-            return replace(local, presentation_path=None)
+            return replace(local, presentation_path=None, presentation_install_id=None)
         context = self._owner_view.context_reference(owner_installation.install_id, local.install_id)
         if context is None:
-            return replace(local, presentation_path=None)
+            return replace(local, presentation_path=None, presentation_install_id=None)
         share, _ = context
         owner_path = repo_path_to_fs(self.context.owner_root, share.install_path)
         if not owner_path.exists():
-            return replace(local, presentation_path=None)
+            return replace(local, presentation_path=None, presentation_install_id=None)
         return replace(
             local,
             presentation_path=str(owner_path),
+            presentation_install_id=install_id_for_path(share.install_path),
         )
 
 

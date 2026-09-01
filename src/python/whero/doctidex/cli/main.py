@@ -376,6 +376,8 @@ def _run_import(operation: ResolvedInvocation, args: argparse.Namespace) -> Comm
         }
         if item.presentation_path is not None:
             fields["presentation-path"] = item.presentation_path
+        if item.presentation_install_id is not None:
+            fields["presentation-install-id"] = item.presentation_install_id
         return success(
             command=operation.command,
             **fields,
@@ -422,6 +424,7 @@ def _run_import(operation: ResolvedInvocation, args: argparse.Namespace) -> Comm
                 args.install_id,
                 untracked=args.untracked,
                 auto=args.auto,
+                presentation_installation_context=args.presentation_installation_context,
                 branches=tuple(args.branch or ()),
             )
             return success(command=operation.command)
@@ -735,6 +738,11 @@ def _add_import_parser(commands: argparse._SubParsersAction[argparse.ArgumentPar
     selection.add_argument("--install-id", type=_non_empty, metavar="INSTALL-ID")
     selection.add_argument("--untracked", action="store_true", help="Select all untracked installations.")
     selection.add_argument("--auto", action="store_true", help="Select installations eligible for automatic cleanup.")
+    selection.add_argument(
+        "--presentation-installation-context",
+        action="store_true",
+        help="Select shares whose remaining context-reference owners are Presentation-Installations.",
+    )
     selection.add_argument("--branch", action="append", default=[], type=_non_empty, metavar="BRANCH")
 
     unload = subcommands.add_parser("unload", help="Detach selected tracked installations.")

@@ -122,11 +122,14 @@ The diagram maps to the retained concepts:
 
 ## Installation context
 
-Use `--installation-context <INSTALL-ID>` to operate on a recorded Installation. In that context, `validate`,
-`boundary-set parse`, `import query`, and `import restore` are allowed. Commands that mutate the owner work model,
-create Worktrees, or initialize a workspace are forbidden. Running from inside a managed Installation without
-`--installation-context` is blocked and asks for the argument. `import restore` does not install inside the current
-Installation; it flattens the local Installation into the owner repository.
+Prefer passing both `--repos-path <OWNER-ROOT>` and `--installation-context <INSTALL-ID>` to operate on a recorded
+Installation. In that context, `validate`,
+`boundary-set parse`, `import query`, and `import restore` are allowed. Commands that create or modify owner-side
+Installations, Refs, Worktrees, custom boundaries, hooks, or repair are forbidden. Running from inside a managed
+Installation without `--installation-context` is blocked and asks for the argument. `import restore` does not mutate
+the selected Installation's own work model; it publishes an owner-side `presentation-path` and
+`presentation-install-id`. Use that `presentation-install-id` as the next `--installation-context <INSTALL-ID>` for
+recursive access.
 
 This context is meaningful only when the selected Installation is itself maintained by doctidex-git and has its
 own `.doctidex-git` work model.
@@ -150,7 +153,7 @@ See [common.md](common.md#installation-context) for the complete behavior.
 | Version | Print the installed CLI version as plain text. | Use `doctidex-git --version`. |
 | Result contract | Every command emits machine-readable JSON; `--version` is a plain informational option. | Success uses `status: "ok"`; `validate` adds `valid`; failures use stable `message.code`. |
 | Cache | The CLI caches bare repositories under a configured cache root. | Configure with `DOCTIDEX-GIT-HOME`, the global `config.toml`, and optional repository `cache-path`; maintain it with `cache clean` and `cache compact`; see [cache.md](cache.md). |
-| Installation context | Select an Installation with `--installation-context`; the allowed command set is restricted. | Only `validate`, `boundary-set parse`, `import query`, and `import restore` are allowed; `import restore` flattens the local Installation into the owner repository. |
+| Installation context | Select an Installation with `--installation-context`; the allowed command set is restricted. | Only `validate`, `boundary-set parse`, `import query`, and `import restore` are allowed; `import restore` returns `presentation-install-id` for the next recursive `--installation-context`. |
 | Restore state | Tracked metadata may not have a physical worktree. | `import query` reports `available`, `restore-required`, or `missing`; run `import restore` for `restore-required`, or `import unload` to keep metadata while freeing a checkout. |
 
 ## Command documents

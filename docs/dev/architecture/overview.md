@@ -85,13 +85,14 @@ An `InstallationRuntimeStore` coordinates two stores without merging their state
 
 An `InstallationRuntimeModelView` exposes Installation-local records. It maps a local sub-Installation to the owner
 through `InstallationShare.context-references` keyed by `(owner-install-id, install-id)`, then sets
-`presentation-path` to the owner share path when the share is present; otherwise the field is absent. The Installation
-and owner models remain separate.
+`presentation-path` to the owner share path and `presentation-install-id` to the owner-side commit Installation id when
+the share is present; otherwise both fields are absent. The Installation and owner models remain separate.
 
 `import restore` with `--installation-context` reads the requested Installation from the local model, ensures the
 owner `InstallationShare` for its commit, and records a `context-reference`. It does not create an owner-side
 Installation or nested Installation. The result keeps the local Installation identity and supplies the owner-side
-`presentation-path`.
+`presentation-path` and `presentation-install-id`. The latter can be used as the next `--installation-context
+<INSTALL-ID>`.
 
 ## Domain model
 
@@ -104,6 +105,7 @@ Installation or nested Installation. The result keeps the local Installation ide
 | **StructuredLinkAnnotation** | A `doctidex` HTML-comment YAML block attached to one Markdown link. |
 | **CacheItem** | A cached bare repository identity and publication state. |
 | **InstallationShare** | A runtime-local relation that owns one shared Installation worktree and its cross-branch references. |
+| **Presentation-Installation** | An in-memory commit Installation derived from an InstallationShare that has no normal commit twin. |
 | **BranchSnapshot** | One branch's untracked runtime history stored in `runtime.json`. |
 | **RuntimeState** | The merged tracked and runtime model view. |
 
@@ -119,6 +121,9 @@ with `installation.restore.required` when a tracked selected Installation is not
 Revision selectors are resolution inputs, not live tracking relationships. A branch or tag resolves once to `commit-hash`; a direct commit is reused by URL and commit.
 
 Multiple Installations that resolve the same source to the same commit share one physical Git worktree through the [Installation share store](installation-shares.md).
+
+An `InstallationShare` without a normal commit Installation also derives a Presentation-Installation in the in-memory
+`RuntimeState`. The derived record is not persisted in `imports.json`, `runtime.json`, or a branch snapshot.
 
 ### Branch snapshot
 
@@ -184,7 +189,8 @@ Commands: `hook install`, `hook post-checkout`, `hook pre-commit`
 idempotent. Existing hook content is preserved below the injected block. Successful first initialization installs the
 same hooks. `hook post-checkout` is the worker invoked by the post-checkout hook; it saves and restores branch
 snapshots, updates only `runtime.json` under the RuntimeStore exclusive lock, and then aligns physical Installation
-objects while still holding that lock. `hook pre-commit` is the worker invoked by the pre-commit hook; it returns
+objects while still holding that lock. The share merge preserves the current repository-global share set and does not
+import target-only share records. `hook pre-commit` is the worker invoked by the pre-commit hook; it returns
 success when `.doctidex-git` is absent or the work-model structure is valid, and otherwise fails with
 `hook.pre-commit.validation.failed`.
 
@@ -198,7 +204,7 @@ This service manages custom BoundaryPoints. `remove` refuses a derived boundary.
 
 Commands: `import install`, `import restore`, `import track`, `import remove`, `import unload`, `import ref`, `import unref`, `import query`
 
-`install` resolves one revision, prepares the install path, and records a tracked or untracked Installation. `restore` recreates a tracked Installation at its recorded commit without re-resolving branch or tag. `track` moves an Installation into the tracked projection. `remove` deletes records and physical paths only when no Ref or in-scope link depends on them, and additionally removes branch snapshots selected by `--branch` or made stale by `--auto`, reconciling Installation share references. `unload` detaches tracked Installations from their Installation shares while keeping their records, and deletes an orphaned share. `ref` and `unref` maintain managed symbolic links. `query` supports identity, path, ref, and fuzzy key selectors.
+`install` resolves one revision, prepares the install path, and records a tracked or untracked Installation. `restore` recreates a tracked Installation at its recorded commit without re-resolving branch or tag. `track` moves an Installation into the tracked projection. `remove` deletes records and physical paths only when no Ref or in-scope link depends on them, removes branch snapshots selected by `--branch` or made stale by `--auto`, and can run the Presentation-only share cleanup through `--presentation-installation-context` or `--auto`. `unload` detaches tracked Installations from their Installation shares while keeping their records, and deletes an orphaned share. `ref` and `unref` maintain managed symbolic links. `query` supports identity, path, ref, and fuzzy key selectors.
 
 ### Worktree service
 

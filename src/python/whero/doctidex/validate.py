@@ -385,7 +385,10 @@ def _share_record_violations(state: RuntimeState) -> list[dict[str, object]]:
 
 def _context_reference_violations(state: RuntimeState) -> list[dict[str, object]]:
     violations: list[dict[str, object]] = []
-    installations_by_id = {item.install_id for item in state.installations}
+    installations_by_id = {
+        item.install_id
+        for item in (*state.installations, *state.presentation_installations)
+    }
     seen: dict[tuple[str, str], str] = {}
     for share in state.installation_shares:
         for reference in share.context_references:
