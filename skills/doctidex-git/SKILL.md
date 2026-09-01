@@ -9,8 +9,8 @@ doctidex:
 
 This is the Twin Skill for `doctidex-git`.
 
-This is a guide, not a script. The files under `references/` are the authoritative, detailed reference;
-[overview.md](references/overview.md) is required reading before any command.
+This is a guide, not a script. It shows the CLI's capability space and points to
+[overview.md](references/overview.md) and the other `references/` documents for authoritative detail.
 
 ## Install and update
 
@@ -36,31 +36,41 @@ This skill is authoritative only for the CLI version recorded by `doctidex.versi
   repository, or selector is already known, search the derived path directly. See [layout.md](references/layout.md)
   for the path contract.
 
-## When to use it
+## Capability space
 
-Reach for `doctidex-git` when a repository needs to:
+`doctidex-git` helps a repository participate in an interconnected knowledge network while remaining an ordinary Git
+repository. The command clusters below are independent capabilities; use the ones the current task needs.
 
-- reference another Git repository at one fixed revision without vendoring it;
-- expose a stable, read-only path into that revision through a Ref;
-- make a temporary editable copy of an installed revision without changing the Installation;
-- keep cross-boundary Markdown links and the repository's boundary rules consistent.
+| Area | What it gives you | Start here |
+|---|---|---|
+| Workspace | `init` creates `.doctidex-git/`; `validate --only-model-structure` checks the model shape. | [init.md](references/init.md), [validate.md](references/validate.md) |
+| Installations | `import install`, `restore`, `track`, `query`, `remove`, and `unload` manage fixed external revisions and restore state. | [import.md](references/import.md) |
+| Refs | `import ref` and `import unref` expose stable read-only paths into Installations. | [import.md](references/import.md) |
+| Worktrees | `worktree create`, `query`, and `remove` manage editable worktrees from an Installation or URL. | [worktree.md](references/worktree.md) |
+| Boundaries | `boundary-set add`, `remove`, and `parse` declare or inspect custom boundary points. | [boundary-set.md](references/boundary-set.md) |
+| Validation and repair | `validate` observes problems; `repair` aligns recoverable physical state. | [validate.md](references/validate.md), [repair.md](references/repair.md) |
+| Hooks | `hook install`, `pre-commit`, and `post-checkout` keep runtime state branch-consistent and validate before commit. | [hook.md](references/hook.md) |
+| Cache | `cache clean` and `cache compact` maintain the user-level Git cache. | [cache.md](references/cache.md) |
+| Skills | `skills install` publishes the bundled Twin Skill into a target repository. | [skills.md](references/skills.md) |
+| Installation context | `--installation-context <INSTALL-ID>` selects a doctidex-managed Installation and exposes its local work model to a restricted command set. | [common.md](references/common.md#installation-context) |
 
-It does not replace Git, and it does not rewrite commit history.
+These areas compose. For example, an Installation plus a Ref creates a stable external path; a Worktree can then make
+an editable copy of that content; validation and repair keep the model and physical state aligned.
 
-## Common working scenarios
+## Common scenarios
+
+These examples show common combinations; they are not the only supported workflows.
 
 ### Bootstrap a repository
 
-For a repository that does not yet have `.doctidex-git/`, initialize and verify:
+For a repository that does not yet have `.doctidex-git/`, a common start is:
 
 ```bash
 doctidex-git init
 doctidex-git validate --only-model-structure
 ```
 
-`init` creates the workspace and installs the supported Git hooks.
-
-For a fresh clone, `.doctidex-git/` already exists but the local Git hooks do not. Reinstall hooks and verify:
+For a fresh clone, `.doctidex-git/` may already exist while local Git hooks do not. Reinstall hooks and verify:
 
 ```bash
 doctidex-git hook install
@@ -69,9 +79,9 @@ doctidex-git validate --only-model-structure
 
 See [init.md](references/init.md), [hook.md](references/hook.md), and [validate.md](references/validate.md).
 
-### Install and reference a fixed external revision
+### Reference a fixed external revision
 
-When a document needs content from another repository at a known commit, install that revision and expose it with a
+When a document needs content from another repository at a known commit, install the revision and expose it with a
 Ref:
 
 ```bash
@@ -86,60 +96,30 @@ doctidex-git import ref \
   --target-dir /external/<NAME>
 ```
 
-`import install` stores the revision under the managed `/.doctidex-git/imports/` path. A Ref exposes that content at a
-short repository path such as `/external/<NAME>`, so related documents can sit nearby. Prefer a Ref over linking
-directly into the managed install path; use `--src-sub-dir` to link only a relevant subdirectory of the Installation.
-Remote `--url` values are canonicalized to Git SSH form; HTTPS input is converted at argument parsing.
-
-Use `--tracked` for references that must persist across clones; use `--untracked` for temporary references that do not
-need persistent tracking. A branch or tag resolves once to a commit, so re-run `import install` only when the revision
-should change.
-
-In a fresh clone, a tracked Installation is metadata-only until restored. Before accessing it, run:
+Use `--tracked` when the reference should persist across clones; use `--untracked` for a temporary reference. A
+branch or tag resolves once to a commit, so run `import install` again only when that fixed revision should change.
+In a fresh clone, a tracked Installation may be metadata-only until restored:
 
 ```bash
 doctidex-git import restore --install-id <INSTALL-ID>
 ```
 
-See [import.md](references/import.md) for selector, Ref, and removal rules.
+See [import.md](references/import.md) for selectors, Ref rules, removal, and `restore-state`.
 
 ### Free a tracked checkout without losing it
 
-When a tracked Installation is no longer needed on disk, unload it while keeping its metadata:
+`import unload` detaches a tracked Installation from its shared checkout while keeping its record:
 
 ```bash
 doctidex-git import unload --install-id <INSTALL-ID>
 ```
 
-`unload` accepts more than one `--install-id`, detaches each selected tracked Installation from its shared checkout,
-and leaves the tracked record in place. `import query` then reports `restore-required`; run
-`import restore --install-id <INSTALL-ID>` to recreate it.
-
-### Link across a boundary
-
-A Markdown link that crosses any BoundaryPoint — `custom`, `import`, `import-ref`, or `worktree` — must be followed
-by a `doctidex` StructuredLinkAnnotation that names the first boundary crossed:
-
-```markdown
-[External](/external/<NAME>/path/to/doc.md)
-<!-- doctidex: {cross-boundary-point: /external/<NAME>} -->
-```
-
-Paths beginning with `/` are rooted at the Git root; other paths are relative to the source document. Prefer relative
-links when they express the same target.
-
-To check only the affected scope:
-
-```bash
-doctidex-git validate --subdir <REPOSITORY-PATH>
-```
-
-See [overview.md](references/overview.md) and [common.md](references/common.md).
+`import query` then reports `restore-required`; use `import restore --install-id <INSTALL-ID>` to recreate it.
 
 ### Modify external content safely
 
-An Installation is read-only. When the work needs to edit, branch, or commit from that revision, create an editable
-Worktree instead:
+An Installation is read-only. Create an editable Worktree when the task needs to branch, modify, or commit from its
+recorded commit:
 
 ```bash
 doctidex-git worktree create \
@@ -147,12 +127,31 @@ doctidex-git worktree create \
   --work-path /projects/<NAME>
 ```
 
-The Worktree starts from the Installation's recorded commit and may branch, modify, and commit freely. See
-[worktree.md](references/worktree.md).
+See [worktree.md](references/worktree.md).
+
+### Link across a boundary
+
+A Markdown link that crosses a BoundaryPoint must be followed by a `doctidex` StructuredLinkAnnotation naming the first
+boundary crossed:
+
+```markdown
+[External](/external/<NAME>/path/to/doc.md)
+<!-- doctidex: {cross-boundary-point: /external/<NAME>} -->
+```
+
+Paths beginning with `/` are rooted at the Git root; other paths are relative to the source document. To check a
+smaller scope:
+
+```bash
+doctidex-git validate --subdir <REPOSITORY-PATH>
+```
+
+See [overview.md](references/overview.md), [common.md](references/common.md), and
+[validate.md](references/validate.md).
 
 ### Add a custom boundary
 
-When an ordinary vendored or local directory should also stop the link scan, declare it as a custom BoundaryPoint:
+When an ordinary vendored or local directory should stop the link scan, declare it as a custom BoundaryPoint:
 
 ```bash
 doctidex-git boundary-set add --path /vendor/<NAME>
@@ -161,17 +160,30 @@ doctidex-git boundary-set parse --path /vendor/<NAME>/readme.md
 
 See [boundary-set.md](references/boundary-set.md).
 
+### Operate inside a managed Installation context
+
+When the selected repository is itself a doctidex-managed Installation, use `--installation-context <INSTALL-ID>` to
+read its local work model:
+
+```bash
+doctidex-git --installation-context <INSTALL-ID> import query
+```
+
+`validate`, `boundary-set parse`, `import query`, and `import restore` are allowed in that context; mutating or
+owner-model commands are rejected. See [common.md](references/common.md#installation-context).
+
 ### Check and repair state
 
-After changing links or boundaries, validate before repairing:
+`validate` observes problems; `repair` aligns recoverable physical state. These are separate capabilities, so use the
+one that fits the current need:
 
 ```bash
 doctidex-git validate
 doctidex-git repair
 ```
 
-`validate` is read-only. `repair` aligns recoverable physical state; it does not rewrite Markdown links or roll back Git
-history. See [validate.md](references/validate.md) and [repair.md](references/repair.md).
+`repair` does not rewrite Markdown links or roll back Git history. See [validate.md](references/validate.md) and
+[repair.md](references/repair.md).
 
 ## Rules you must follow
 
@@ -179,8 +191,7 @@ history. See [validate.md](references/validate.md) and [repair.md](references/re
 - Treat Installation directories as read-only; create a Worktree when a revision must be modified.
 - Never remove or rename managed Installation, Worktree, Ref, or boundary paths by hand.
 - Always place a `doctidex` StructuredLinkAnnotation immediately after a Markdown link that crosses a BoundaryPoint.
-- Run `validate` after changing links or boundaries; run `repair` only to recover physical state, not to rewrite
-  document content.
+- Use `validate` to observe problems; use `repair` to recover physical state, not to rewrite document content.
 
 For shared result envelopes, structured errors, and Installation-context behavior, use
 [common.md](references/common.md).

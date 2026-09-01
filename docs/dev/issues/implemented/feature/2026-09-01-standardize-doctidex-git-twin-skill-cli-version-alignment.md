@@ -101,3 +101,4 @@ conventional version discovery.
 - [Formalize doctidex-git Twin Skill maintenance in scaffolding](../process/2026-08-31-formalize-doctidex-git-twin-skill-maintenance.md)
 - [Build the doctidex-git CLI release workflow](../process/2026-08-31-build-doctidex-git-release-workflow.md)
 - [Clarify doctidex-git installation and entry-point guidance](../bug-fix/2026-08-31-clarify-doctidex-git-installation-and-entry-point.md)
+- [Restate the doctidex-git Twin Skill narrative contract](2026-09-01-restate-doctidex-git-twin-skill-narrative-contract.md)

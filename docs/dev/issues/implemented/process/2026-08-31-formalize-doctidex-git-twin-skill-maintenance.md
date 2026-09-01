@@ -71,3 +71,4 @@ ownership stays with `doctidex-doc-maintenance`, while Twin Skill output ownersh
 
 - [Add repository search guidance to the doctidex-git Twin Skill](../feature/2026-08-31-add-repository-search-guidance-to-doctidex-git-twin-skill.md)
 - [Standardize doctidex-git Twin Skill and CLI version alignment](../feature/2026-09-01-standardize-doctidex-git-twin-skill-cli-version-alignment.md)
+- [Restate the doctidex-git Twin Skill narrative contract](../feature/2026-09-01-restate-doctidex-git-twin-skill-narrative-contract.md)
