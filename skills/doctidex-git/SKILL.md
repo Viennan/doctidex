@@ -2,7 +2,7 @@
 name: doctidex-git
 description: Twin agent skill for doctidex-git. Use it to turn a Git repository into a node in an interconnected knowledge network — navigate docs, reference fixed external revisions, and stay a normal Git repo.
 doctidex:
-  version: 2.2.0a1
+  version: 2.2.0
 ---
 
 # doctidex-git
