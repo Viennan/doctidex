@@ -3,12 +3,22 @@ from __future__ import annotations
 import pytest
 from conftest import CliRunner
 
+from whero.doctidex import __version__
+from whero.doctidex.cli.main import main
+
 
 def test_success_result_envelope(cli: CliRunner, git_root) -> None:
     result = cli.run("--repos-path", str(git_root), "init")
 
     assert result.code == 0
     assert result.payload == {"status": "ok", "message": {}}
+
+
+def test_version_flag_prints_package_version(capsys: pytest.CaptureFixture[str]) -> None:
+    code = main(["--version"])
+
+    assert code == 0
+    assert capsys.readouterr().out == f"doctidex-git {__version__}\n"
 
 
 @pytest.mark.parametrize(

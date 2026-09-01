@@ -28,6 +28,8 @@ if [ ! -x "$venv_python" ]; then
   exit 1
 fi
 
+"$venv_python" "$root/scripts/validate-version-alignment.py"
+
 (
   cd "$src_python"
   "$venv_python" -m pip wheel . --no-deps --no-build-isolation --no-cache-dir --wheel-dir dist

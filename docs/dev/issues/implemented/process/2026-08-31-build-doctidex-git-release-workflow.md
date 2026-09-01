@@ -25,8 +25,9 @@ One version family produces:
 | Git tag | `vX.Y.Za1` | `vX.Y.Z` |
 | Wheel | `whero_doctidex-X.Y.Za1-py3-none-any.whl` | `whero_doctidex-X.Y.Z-py3-none-any.whl` |
 
-`set-version.sh` updates both `pyproject.toml` and `__init__.py` from one version. `build-wheel.sh` builds the wheel
-and rejects an unexpected filename. No PyPI publication is performed.
+`set-version.sh` updates `pyproject.toml`, `__init__.py`, and the Twin Skill `doctidex.version` from one version.
+`validate-version-alignment.py` verifies those projections agree, `build-wheel.sh` runs that validator before building,
+and the build rejects an unexpected wheel filename. No PyPI publication is performed.
 
 ### Release scripts
 
@@ -36,6 +37,9 @@ and rejects an unexpected filename. No PyPI publication is performed.
 - [`build-wheel.sh`](../../../../../scripts/release/build-wheel.sh);
 - [`generate-release-notes.sh`](../../../../../scripts/release/generate-release-notes.sh);
 - [`publish-release.sh`](../../../../../scripts/release/publish-release.sh).
+
+[`validate-version-alignment.py`](../../../../../scripts/validate-version-alignment.py) verifies the three tracked
+version projections.
 
 Before either GitHub release is created, `gh auth status` must pass, the version change must be committed to the
 release branch, and the release branch must be pushed to `origin`. `publish-release.sh` verifies the remote branch
@@ -65,6 +69,7 @@ with root [`AGENTS.md`](../../../../../AGENTS.md) routing release and packaging 
 ## Verification
 
 - All six release shell scripts pass `bash -n`.
+- `scripts/validate-version-alignment.py` passes.
 - `build-wheel.sh 2.0.0.dev0` produced `whero_doctidex-2.0.0.dev0-py3-none-any.whl`.
 - `prepare-workspace.sh` produced distinct `alpha-<VERSION>-XXXXXX` workspaces with `.git`, `.venv`, the wrapper, and
   the command log.
@@ -106,3 +111,4 @@ subagent that can run the fixed prompt.
 ## Related
 
 - [Clarify doctidex-git installation and entry-point guidance](../bug-fix/2026-08-31-clarify-doctidex-git-installation-and-entry-point.md)
+- [Standardize doctidex-git Twin Skill and CLI version alignment](../feature/2026-09-01-standardize-doctidex-git-twin-skill-cli-version-alignment.md)

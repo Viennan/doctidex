@@ -12,6 +12,7 @@ from functools import wraps
 from pathlib import Path
 from typing import Concatenate, NoReturn, ParamSpec
 
+from whero.doctidex import __version__
 from whero.doctidex import boundary as boundary_workflow
 from whero.doctidex import hooks as hook_workflow
 from whero.doctidex import imports as import_workflow
@@ -119,6 +120,11 @@ def build_parser() -> CliArgumentParser:
     parser = CliArgumentParser(
         prog="doctidex-git",
         description="Manage doctidex v2 Git work models.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
     )
     parser.add_argument(
         "--repos-path",

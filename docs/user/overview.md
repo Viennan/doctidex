@@ -22,14 +22,18 @@ here.
 
 - Linux or macOS.
 - A Git worktree.
-- The recommended install is `pipx install <WHEEL-URL>`, which installs the CLI in an isolated environment and makes
-  `doctidex-git` available on `PATH`; run `pipx ensurepath` if the command is not found.
-- When pipx is unavailable or disallowed, install the wheel into a virtual environment with `pip` or `uv`, then use
-  `<venv>/bin/doctidex-git` or activate the environment. Use `command -v doctidex-git` to confirm resolution, and do
-  not edit shell rc files.
+- Supported CLI versions and wheel URLs are published in the `doctidex` GitHub Releases at
+  https://github.com/Viennan/doctidex/releases. Use the wheel URL from the release you want.
+- Recommended: `pipx install <WHEEL-URL>`.
+- Without pipx: create a virtual environment, install the wheel with `pip` or `uv`, then use
+  `<venv>/bin/doctidex-git`.
+- **After updating the CLI, reinstall the matching skill with `doctidex-git skills install --path <DEST>`.**
 - `rg` (ripgrep) with PCRE2 support is strongly recommended for fast Markdown link scanning. When `rg` is
   unavailable, `doctidex-git` falls back to a per-file Python scan with the same behavior but reduced performance on
   large repositories.
+
+Run `doctidex-git --version` to confirm the installed CLI version; this informational option prints plain text, while
+command results use JSON.
 
 ## Quick start
 
@@ -143,7 +147,8 @@ See [common.md](common.md#installation-context) for the complete behavior.
 | Validation and repair | Observe problems without changes, then repair recoverable physical state. | Use `validate` first; use `repair` to align model and physical objects. |
 | Git hooks | Keep untracked runtime state branch-consistent and validate work-model structure before commits. | `init` installs hooks; use `hook install`, `hook pre-commit`, and `hook post-checkout`. |
 | Skills | Install the bundled `doctidex-git` Twin Skill into another repository. | Use `skills install --path <DEST>`; see [skills.md](skills.md). |
-| Result contract | Every command emits machine-readable JSON. | Success uses `status: "ok"`; `validate` adds `valid`; failures use stable `message.code`. |
+| Version | Print the installed CLI version as plain text. | Use `doctidex-git --version`. |
+| Result contract | Every command emits machine-readable JSON; `--version` is a plain informational option. | Success uses `status: "ok"`; `validate` adds `valid`; failures use stable `message.code`. |
 | Cache | The CLI caches bare repositories under a configured cache root. | Configure with `DOCTIDEX-GIT-HOME`, the global `config.toml`, and optional repository `cache-path`; maintain it with `cache clean` and `cache compact`; see [cache.md](cache.md). |
 | Installation context | Select an Installation with `--installation-context`; the allowed command set is restricted. | Only `validate`, `boundary-set parse`, `import query`, and `import restore` are allowed; `import restore` flattens the local Installation into the owner repository. |
 | Restore state | Tracked metadata may not have a physical worktree. | `import query` reports `available`, `restore-required`, or `missing`; run `import restore` for `restore-required`, or `import unload` to keep metadata while freeing a checkout. |

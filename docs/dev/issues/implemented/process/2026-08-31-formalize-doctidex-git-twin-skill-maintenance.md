@@ -33,6 +33,8 @@ records `skills/` as the Twin Skill output and routes these actions to the skill
 - `SKILL.md` is an agent-facing usage guide with prerequisites, mandatory `overview.md` reading, authoritative
   references, scenario-based command guidance, mandatory document-access rules, and a concrete frontmatter
   `description`;
+- `SKILL.md` records the co-released CLI version in `doctidex.version`, and maintenance keeps that value equal to the
+  Python package version;
 - publication runs the link validator and materializes `_skill_data` as real files;
 - the generated package-data directory remains ignored by Git.
 
@@ -68,3 +70,4 @@ ownership stays with `doctidex-doc-maintenance`, while Twin Skill output ownersh
 ## Related
 
 - [Add repository search guidance to the doctidex-git Twin Skill](../feature/2026-08-31-add-repository-search-guidance-to-doctidex-git-twin-skill.md)
+- [Standardize doctidex-git Twin Skill and CLI version alignment](../feature/2026-09-01-standardize-doctidex-git-twin-skill-cli-version-alignment.md)

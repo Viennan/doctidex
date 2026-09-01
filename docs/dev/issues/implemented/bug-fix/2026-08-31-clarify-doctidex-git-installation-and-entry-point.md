@@ -12,27 +12,26 @@ shell rc files to make the command resolve.
 ## Decision
 
 [`docs/user/overview.md`](../../../../user/overview.md#prerequisites) now owns the installation and entry-point
-guidance. It recommends:
+guidance. It names the `doctidex` GitHub Releases source, recommends:
 
 ```bash
 pipx install <WHEEL-URL>
 ```
 
-`pipx` installs the CLI in an isolated environment and makes `doctidex-git` available on `PATH`; `pipx ensurepath`
-is the recovery step when the command is not found. The guide describes the virtual-environment fallback only when
-pipx is unavailable or disallowed: install the wheel with `pip` or `uv`, then use `<venv>/bin/doctidex-git` or
-activate the environment. `command -v doctidex-git` confirms resolution, and the guidance does not instruct users to
-edit shell rc files.
+`pipx` installs the CLI in an isolated environment and makes `doctidex-git` available on `PATH`. The guide gives a
+one-sentence virtual-environment fallback with `pip` or `uv`, and requires reinstalling the matching skill after a CLI
+update.
 
 [`docs/user/common.md`](../../../../user/common.md#git-root-and-paths) states the pipx recommendation in one sentence
-and links back to the overview for the fallback. It does not repeat the install steps.
+and links back to the overview for installation. It does not repeat the install steps.
 
-[`skills/doctidex-git/SKILL.md`](../../../../../skills/doctidex-git/SKILL.md) replaces the old `Confirm
-doctidex-git is on PATH` prerequisite with a short `pipx install <WHEEL-URL>` pointer to the same guidance.
+[`skills/doctidex-git/SKILL.md`](../../../../../skills/doctidex-git/SKILL.md) carries the installation and update
+guidance in a dedicated `## Install and update` section and points to the same release source.
 
 The packaged `whero.doctidex._skill_data` copy was rebuilt so installed skills match the development tree.
 
-No CLI behavior or source code changed.
+The later version-alignment decision adds `doctidex-git --version`; that surface is owned by
+[the version-alignment Issue Note](../feature/2026-09-01-standardize-doctidex-git-twin-skill-cli-version-alignment.md).
 
 ## Verification
 
@@ -71,3 +70,4 @@ Linux/macOS.
 ## Related
 
 - [Build the doctidex-git CLI release workflow](../process/2026-08-31-build-doctidex-git-release-workflow.md)
+- [Standardize doctidex-git Twin Skill and CLI version alignment](../feature/2026-09-01-standardize-doctidex-git-twin-skill-cli-version-alignment.md)

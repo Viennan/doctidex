@@ -1,8 +1,10 @@
 # Doctidex Repository Guide
 
-First read [docs/dev/architecture/overview.md](docs/dev/architecture/overview.md) before starting work.
+## Start here
 
-Start a non-trivial repository change from an Issue Note proposal. See [docs/dev/issues/AGENTS.md](docs/dev/issues/AGENTS.md).
+- First read [docs/dev/architecture/overview.md](docs/dev/architecture/overview.md) before starting work.
+- Start a non-trivial repository change from an Issue Note proposal. See
+  [docs/dev/issues/AGENTS.md](docs/dev/issues/AGENTS.md).
 
 ## Repository Overview
 
@@ -28,6 +30,8 @@ Version 2.x.x is the active development line.
     └── python/         # Python implementation and tests.
 ```
 
+## Scoped guidance
+
 Scoped `AGENTS.md` files:
 
 - `docs/AGENTS.md`
@@ -35,6 +39,11 @@ Scoped `AGENTS.md` files:
 - `src/AGENTS.md`
 
 Treat a **scoped-AGENTS.md** as the root `AGENTS.md` scoped to its path. Read every **scoped-AGENTS.md** on the path you access.
+
+## Maintenance routing
+
+- When a non-trivial repository change is made, update [README.md](README.md) only to introduce or refresh the
+  product's distinctive, most competitive capabilities, and keep those statements current in the same change.
 
 Use [doctidex-scaffolding-builder](.agents/skills/doctidex-scaffolding-builder/SKILL.md) to keep this directory diagram and the scoped `AGENTS.md` list synchronized when either changes.
 

@@ -26,8 +26,9 @@ aligned: `docs/user/`, `skills/doctidex-git/`, and the packaged `whero.doctidex.
   - give common Git-repository scenarios with command snippets, not an exhaustive command list;
   - state mandatory document-access rules;
   - use heuristic tone except for hard requirements;
-  - keep the frontmatter `description` concrete: briefly state the vision that Git repositories become interoperable
-    knowledge nodes, then name the workflows `doctidex-git` takes over under that vision.
+  - keep the frontmatter `description` concise and scoped to the Twin Skill identity and the product promise;
+  - keep a top-level `doctidex.version` field equal to the co-released CLI version.
+- When the CLI version changes, update `doctidex.version` in the same change as the Python package version.
 - Run [scripts/validate-user-doc-links.py](../../../scripts/validate-user-doc-links.py) before publication.
 - Materialize package data so `src/python/whero/doctidex/_skill_data/` contains real files, not symlinks. The generated
   directory is ignored by Git.
@@ -37,6 +38,7 @@ aligned: `docs/user/`, `skills/doctidex-git/`, and the packaged `whero.doctidex.
 Verify that:
 
 - every flat `docs/user/*.md` has a matching `skills/doctidex-git/references/` entry;
+- `SKILL.md` has a `doctidex.version` field equal to `whero.doctidex.__version__`;
 - `SKILL.md` links resolve;
 - the user-document link validator passes;
 - `_skill_data` is materialized when packaging changed;

@@ -4,6 +4,10 @@
 
 See [common.md](common.md) for shared interface and errors.
 
+The installed skill is version-matched to the CLI that installed it. **After updating the CLI, reinstall the matching
+skill with `doctidex-git skills install --path <DEST>`.** See [overview.md](overview.md#prerequisites) for release and
+wheel URL discovery.
+
 ## Install
 
 ```bash

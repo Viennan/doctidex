@@ -29,8 +29,11 @@ notes, and `gh release create` steps.
 
 ## Scripts
 
-- [`set-version.sh`](../../../scripts/release/set-version.sh) updates the Python version in both version sources.
+- [`set-version.sh`](../../../scripts/release/set-version.sh) updates the Python package, `pyproject.toml`, and Twin
+  Skill version sources.
 - [`build-wheel.sh`](../../../scripts/release/build-wheel.sh) builds the pure-Python wheel and verifies its filename.
+- [`validate-version-alignment.py`](../../../scripts/validate-version-alignment.py) verifies that the Python package,
+  `pyproject.toml`, and Twin Skill version projections agree.
 - [`generate-release-notes.sh`](../../../scripts/release/generate-release-notes.sh) lists newly implemented
   `feature`, `architecture`, and `bug-fix` Issue Notes.
 - [`publish-release.sh`](../../../scripts/release/publish-release.sh) creates a GitHub release and attaches the wheel.

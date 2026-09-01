@@ -35,8 +35,8 @@ fi
 
 "$root/scripts/release/set-version.sh" "$version"
 
-if ! git -C "$root" diff --quiet -- src/python/pyproject.toml src/python/whero/doctidex/__init__.py; then
-  git -C "$root" add src/python/pyproject.toml src/python/whero/doctidex/__init__.py
+if ! git -C "$root" diff --quiet -- src/python/pyproject.toml src/python/whero/doctidex/__init__.py skills/doctidex-git/SKILL.md; then
+  git -C "$root" add src/python/pyproject.toml src/python/whero/doctidex/__init__.py skills/doctidex-git/SKILL.md
   git -C "$root" commit -m "Set version to $version"
 fi
 

@@ -18,7 +18,8 @@ The product is a Linux/macOS CLI, not a hosted service or a replacement for Git.
 **Twin Skills** are the agent skills under the top-level `skills/` directory that ship with the Python distribution.
 Each Twin Skill mirrors `docs/user/` and the CLI surface; `skills install` publishes a Twin Skill into a consumer
 repository without opening a Git root or work model. Twin Skills are distinct from the repository-internal
-`.agents/skills/` scaffolding.
+`.agents/skills/` scaffolding. A shipped Twin Skill records its co-released CLI version in the frontmatter
+`doctidex.version` field; release version synchronization keeps that field equal to the Python package version.
 
 ## Bounded context
 
@@ -235,7 +236,8 @@ Commands: `skills install`
 `skills install --path <DEST>` copies the bundled `doctidex-git` skill into `<DEST>/doctidex-git/`, replacing only
 that subtree. It resolves the skill from the repository-root `skills/` tree in development and from the packaged
 `whero.doctidex._skill_data` tree in an installed distribution. The command is user-level and does not resolve a Git
-root, open a RuntimeStore, or accept Installation context.
+root, open a RuntimeStore, or accept Installation context. The copied skill retains its `doctidex.version` metadata,
+so an agent can compare it with `doctidex-git --version`.
 
 ## Store and coordination services
 
@@ -255,7 +257,7 @@ publication without a journal, because the complete multi-file work model can be
 
 ## Cross-cutting rules
 
-- The CLI emits machine-readable JSON.
+- Commands emit machine-readable JSON; `doctidex-git --version` prints the installed version as plain text.
 - `validate` returns `valid` plus diagnostics; operational failures use structured errors and exit status 2.
 - Path normalization rejects repository escape.
 - Markdown syntax recognition uses `markdown-it-py`; boundary and source-location logic supplements parser-recognized links.

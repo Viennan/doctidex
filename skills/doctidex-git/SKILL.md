@@ -1,18 +1,34 @@
 ---
 name: doctidex-git
-description: Use doctidex-git to make Git repositories interoperable knowledge nodes by initializing a workspace, installing and unloading fixed external revisions, creating Refs, writing annotated cross-boundary links, creating editable Worktrees, and validating or repairing managed state.
+description: Twin agent skill for doctidex-git. Use it to turn a Git repository into a node in an interconnected knowledge network — navigate docs, reference fixed external revisions, and stay a normal Git repo.
+doctidex:
+  version: 2.0.0
 ---
 
 # doctidex-git
 
+This is the Twin Skill for `doctidex-git`.
+
 This is a guide, not a script. The files under `references/` are the authoritative, detailed reference;
 [overview.md](references/overview.md) is required reading before any command.
+
+## Install and update
+
+This skill is authoritative only for the CLI version recorded by `doctidex.version`.
+
+- Get the CLI version and wheel URL from the `doctidex` GitHub Releases at
+  https://github.com/Viennan/doctidex/releases.
+- Recommended: `pipx install <WHEEL-URL>`.
+- Without pipx, install the wheel with `pip` or `uv` in a virtual environment and use
+  `<venv>/bin/doctidex-git`; see [overview.md](references/overview.md#prerequisites).
+- **After updating the CLI, or whenever `doctidex-git --version` does not match `doctidex.version`, reinstall the
+  matching skill with `doctidex-git skills install --path <DEST>`.**
 
 ## Before you start
 
 - Work from inside a Git repository, or pass `--repos-path <REPOSITORY-ROOT>`.
-- Install the release with `pipx install <WHEEL-URL>`; see
-  [overview.md](references/overview.md#prerequisites) when pipx is unavailable or disallowed.
+- Before use, especially after updating the CLI or reinstalling skills, run `doctidex-git --version` and compare it
+  with `doctidex.version`.
 - Have `rg` available when possible; the CLI falls back to a slower Python scan when it is missing.
 - Read [overview.md](references/overview.md) to establish the shared mental model: Git root, Installation, Ref,
   Worktree, BoundaryPoint, and StructuredLinkAnnotation.

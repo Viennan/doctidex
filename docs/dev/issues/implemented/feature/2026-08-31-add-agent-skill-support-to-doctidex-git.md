@@ -85,3 +85,4 @@ but requires the bundled tree to retain `doctidex-git/SKILL.md`.
 ## Related
 
 - [Add repository search guidance to the doctidex-git Twin Skill](2026-08-31-add-repository-search-guidance-to-doctidex-git-twin-skill.md)
+- [Standardize doctidex-git Twin Skill and CLI version alignment](2026-09-01-standardize-doctidex-git-twin-skill-cli-version-alignment.md)

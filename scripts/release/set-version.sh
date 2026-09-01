@@ -21,8 +21,9 @@ fi
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 pyproject="$root/src/python/pyproject.toml"
 init="$root/src/python/whero/doctidex/__init__.py"
+skill="$root/skills/doctidex-git/SKILL.md"
 
-for file in "$pyproject" "$init"; do
+for file in "$pyproject" "$init" "$skill"; do
   if [ ! -f "$file" ]; then
     echo "Missing version source: $file" >&2
     exit 1
@@ -36,5 +37,9 @@ DOCTIDEX_RELEASE_VERSION="$version" perl -pi -e \
 DOCTIDEX_RELEASE_VERSION="$version" perl -pi -e \
   's/^__version__ = "[^"]+"/__version__ = "$ENV{DOCTIDEX_RELEASE_VERSION}"/' \
   "$init"
+
+DOCTIDEX_RELEASE_VERSION="$version" perl -pi -e \
+  's/^  version: .*/  version: $ENV{DOCTIDEX_RELEASE_VERSION}/' \
+  "$skill"
 
 echo "$version"
