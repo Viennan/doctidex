@@ -154,3 +154,4 @@ Rejected: recursive access across a knowledge network is a core product promise,
 - [Support Git branch switching with post-checkout runtime snapshots](../../implemented/feature/2026-08-28-support-git-branch-switching-with-post-checkout-runtime-snapshots.md)
 - [Remove branch snapshots from import remove](../../implemented/feature/2026-08-29-remove-branch-snapshots-with-import-remove.md)
 - [Add import unload command](../../implemented/feature/2026-08-31-add-import-unload-command.md)
+- [Index Presentation-Installations for Installation-context mapping](../bug-fix/2026-09-02-index-presentation-installations-for-installation-context.md)

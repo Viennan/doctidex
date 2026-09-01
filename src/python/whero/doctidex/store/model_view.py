@@ -78,6 +78,12 @@ class RuntimeModelView:
         return self._transaction._installations_by_id.get(install_id)
 
     @_requires_current_indexes
+    def persisted_installation(self, install_id: str) -> Installation | None:
+        """Return the persisted Installation with ``install_id``, excluding derived records."""
+
+        return self._transaction._persisted_installations_by_id.get(install_id)
+
+    @_requires_current_indexes
     def installation_at(self, install_path: str) -> Installation | None:
         """Return the installation at ``install_path``, if present."""
 
@@ -203,7 +209,7 @@ class RuntimeWriteModelView(RuntimeModelView):
         installations = tuple(
             installation if item.install_id == installation.install_id else item for item in self.state.installations
         )
-        if self.installation(installation.install_id) is None:
+        if self.persisted_installation(installation.install_id) is None:
             installations = (*installations, installation)
         self._write_transaction._replace_collections(installations=installations)
 

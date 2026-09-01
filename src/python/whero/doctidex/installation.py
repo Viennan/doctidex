@@ -55,15 +55,6 @@ def resolve_installation_context_by_id(owner_root: Path, install_id: str) -> Ins
     with _owner_diagnostic_transaction(owner_root) as transaction:
         model_view = transaction.model_view()
         installation = model_view.installation(install_id)
-        if installation is None:
-            installation = next(
-                (
-                    item
-                    for item in model_view.state.presentation_installations
-                    if item.install_id == install_id
-                ),
-                None,
-            )
     if installation is None:
         raise CommandFailure(
             code="installation.not-found",

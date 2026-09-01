@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 
 from whero.doctidex.model import (
+    BoundaryPoint,
     BranchSnapshot,
     Installation,
     InstallationShare,
@@ -65,6 +66,20 @@ def test_share_without_commit_installation_derives_presentation_installation() -
     assert presentation.presentation_path is None
     assert presentation.presentation_install_id is None
     assert is_presentation_installation(presentation, state.installation_shares) is True
+
+
+def test_presentation_installation_contributes_import_boundary() -> None:
+    share = _share()
+    documents = _documents(installations=[], shares=[share.to_json()])
+
+    state = RuntimeState.from_documents(
+        boundary_set=documents["boundary-set.json"],
+        imports=documents["imports.json"],
+        import_refs=documents["import-refs.json"],
+        runtime=documents["runtime.json"],
+    )
+
+    assert BoundaryPoint(type="import", path=share.install_path) in state.boundary_points
 
 
 def test_share_with_normal_commit_installation_does_not_derive_duplicate() -> None:

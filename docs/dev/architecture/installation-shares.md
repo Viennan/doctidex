@@ -16,6 +16,10 @@ The share store owns Installation storage only. It does not change the Worktree 
 | **InstallationContextReference** | Provenance for one sub-Installation restored from InstallationContext. |
 | **Presentation-Installation** | An in-memory commit Installation derived from a share that has no normal commit twin. |
 
+Presentation-Installations are not persisted in `imports.json`, `runtime.json`, or a branch snapshot. Their
+`install-path` values participate in derived import boundaries, so boundary-aware scans treat them like normal
+Installation roots without adding durable boundary records.
+
 ### InstallationShare
 
 An `InstallationShare` is persisted in `runtime.json` under `installation-shares`. It is untracked and never appears in `imports.json`.
@@ -102,7 +106,8 @@ Validation checks:
 
 - the share worktree exists and is a detached Git worktree;
 - every share `install-id` resolves to a recorded owner-side Installation;
-- every `context-reference` names a recorded owner Installation and is unique by `(owner-install-id, install-id)`;
+- every `context-reference` names a recorded owner Installation or a derived Presentation-Installation and is unique
+  by `(owner-install-id, install-id)`;
 - every share `install-path` is its `(git-url, commit-hash)` commit-derived path;
 - direct commit Installations use `share.install-path`;
 - branch and tag Installations symlink to `share.install-path`.

@@ -87,7 +87,7 @@ def restore_context_import(
     """Restore one Installation-local sub-Installation into the owner work model."""
 
     with installation_store.unlocked_read_only_transaction() as transaction:
-        local = transaction.model_view().installation(sub_install_id)
+        local = transaction.model_view().persisted_installation(sub_install_id)
     if local is None:
         raise CommandFailure(
             code="installation.not-found",
@@ -465,7 +465,7 @@ def _install_resolved(
 
         install_path = _selector_install_path(git_url, selector_kind, selector_value)
         install_id = install_id_for_path(install_path)
-        existing = view.installation(install_id)
+        existing = view.persisted_installation(install_id)
         if existing is not None and existing.install_path != install_path:
             raise _install_id_collision_failure(install_id, existing.install_path, install_path)
         if existing is not None and existing.commit_hash == commit_hash:
@@ -847,7 +847,7 @@ def _ref_target_reservation(
 
 
 def _find_installation(model: RuntimeModelView, install_id: str) -> Installation:
-    installation = model.installation(install_id)
+    installation = model.persisted_installation(install_id)
     if installation is None:
         raise CommandFailure(
             code="installation.not-found",
@@ -875,7 +875,7 @@ def _select_installations(
     model: RuntimeModelView, install_id: str | None, *, untracked: bool, auto: bool
 ) -> tuple[Installation, ...]:
     if install_id:
-        installation = model.installation(install_id)
+        installation = model.persisted_installation(install_id)
         return (installation,) if installation is not None else ()
     if untracked:
         return tuple(item for item in model.installations if not item.tracked)

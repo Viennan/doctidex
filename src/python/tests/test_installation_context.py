@@ -654,3 +654,144 @@ def test_installation_context_queries_local_install_and_restores_to_owner(
         and reference["owner-install-id"] == installed_id
         for reference in share["context-references"]
     )
+
+
+def test_installation_context_crosses_presentation_installation_owner(
+    tmp_path: Path,
+    initialized_root: Path,
+    source_repository: Path,
+    cache_home: Path,
+    cli: CliRunner,
+) -> None:
+    grandchild_source = make_git_repository(tmp_path / "grandchild-source")
+    grandchild_commit = commit_file(grandchild_source, "readme.md", "grandchild\n")
+
+    child_source = make_git_repository(tmp_path / "child-source")
+    child_workspace = child_source / ".doctidex-git"
+    write_json(child_workspace / "boundary-set.json", [])
+    write_json(child_workspace / "import-refs.json", [])
+    write_json(
+        child_workspace / "runtime.json",
+        {"imports": [], "worktrees": [], "installation-shares": [], "branch-snapshots": {}},
+    )
+    write_json(
+        child_workspace / "imports.json",
+        [
+            {
+                "tracked": True,
+                "git-url": str(grandchild_source),
+                "commit-hash": grandchild_commit,
+                "install-id": "grandchild-id",
+                "install-path": "/.doctidex-git/imports/grandchild",
+                "keys": ["grandchild"],
+                "branch": "main",
+                "tag": "",
+            }
+        ],
+    )
+    assert git(child_source, "add", ".doctidex-git").returncode == 0
+    assert git(child_source, "commit", "--quiet", "-m", "child workspace").returncode == 0
+
+    parent_workspace = source_repository / ".doctidex-git"
+    write_json(parent_workspace / "boundary-set.json", [])
+    write_json(parent_workspace / "import-refs.json", [])
+    write_json(
+        parent_workspace / "runtime.json",
+        {"imports": [], "worktrees": [], "installation-shares": [], "branch-snapshots": {}},
+    )
+    write_json(
+        parent_workspace / "imports.json",
+        [
+            {
+                "tracked": True,
+                "git-url": str(child_source),
+                "commit-hash": git_head(child_source),
+                "install-id": "child-id",
+                "install-path": "/.doctidex-git/imports/child",
+                "keys": ["child"],
+                "branch": "main",
+                "tag": "",
+            }
+        ],
+    )
+    assert git(source_repository, "add", ".doctidex-git").returncode == 0
+    assert git(source_repository, "commit", "--quiet", "-m", "parent workspace").returncode == 0
+
+    parent = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "install",
+        "--untracked",
+        "--url",
+        str(source_repository),
+        "--branch",
+        "main",
+    )
+    parent_id = parent.payload["install-id"]
+
+    child_restored = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "--installation-context",
+        parent_id,
+        "import",
+        "restore",
+        "--install-id",
+        "child-id",
+    )
+    assert child_restored.code == 0
+    child_presentation_id = child_restored.payload["presentation-install-id"]
+    assert Path(child_restored.payload["presentation-path"]).is_dir()
+
+    grandchild_restored = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "--installation-context",
+        child_presentation_id,
+        "import",
+        "restore",
+        "--install-id",
+        "grandchild-id",
+    )
+    assert grandchild_restored.code == 0
+    assert grandchild_restored.payload["install-id"] == "grandchild-id"
+    assert Path(grandchild_restored.payload["presentation-path"]).is_dir()
+    grandchild_presentation_id = grandchild_restored.payload["presentation-install-id"]
+
+    queried_after_restore = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "--installation-context",
+        child_presentation_id,
+        "import",
+        "query",
+        "--install-id",
+        "grandchild-id",
+    )
+    queried_candidate = queried_after_restore.payload["candidates"][0]
+    assert queried_candidate["presentation-install-id"] == grandchild_presentation_id
+    assert queried_candidate["presentation-path"] == grandchild_restored.payload["presentation-path"]
+
+    runtime = read_json(initialized_root / ".doctidex-git" / "runtime.json")
+    assert all(item["install-id"] != "child-id" for item in runtime["imports"])
+    assert all(item["install-id"] != "grandchild-id" for item in runtime["imports"])
+
+    child_share = next(
+        share
+        for share in runtime["installation-shares"]
+        if any(reference["install-id"] == "child-id" for reference in share["context-references"])
+    )
+    assert child_share["install-ids"] == []
+
+    grandchild_share = next(
+        share
+        for share in runtime["installation-shares"]
+        if any(reference["install-id"] == "grandchild-id" for reference in share["context-references"])
+    )
+    assert grandchild_share["install-ids"] == []
+    assert any(
+        reference["install-id"] == "grandchild-id"
+        and reference["owner-install-id"] == child_presentation_id
+        for reference in grandchild_share["context-references"]
+    )

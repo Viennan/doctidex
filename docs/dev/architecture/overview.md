@@ -123,7 +123,8 @@ Revision selectors are resolution inputs, not live tracking relationships. A bra
 Multiple Installations that resolve the same source to the same commit share one physical Git worktree through the [Installation share store](installation-shares.md).
 
 An `InstallationShare` without a normal commit Installation also derives a Presentation-Installation in the in-memory
-`RuntimeState`. The derived record is not persisted in `imports.json`, `runtime.json`, or a branch snapshot.
+`RuntimeState`. The derived record is not persisted in `imports.json`, `runtime.json`, or a branch snapshot. Its
+`install-path` participates in derived import boundaries.
 
 ### Branch snapshot
 
@@ -148,7 +149,7 @@ The complete boundary view is derived from current state:
 | Type | Source |
 |---|---|
 | `custom` | `boundary-set.json` |
-| `import` | `Installation.install-path` |
+| `import` | `Installation.install-path`, including derived Presentation-Installation install paths |
 | `import-ref` | `Ref.target-dir` |
 | `worktree` | `Worktree.work-path` |
 

@@ -401,6 +401,7 @@ class RuntimeState:
         return (
             *self.custom_boundary_points,
             *(BoundaryPoint(type="import", path=item.install_path) for item in self.installations),
+            *(BoundaryPoint(type="import", path=item.install_path) for item in self.presentation_installations),
             *(BoundaryPoint(type="import-ref", path=item.target_dir) for item in self.refs),
             *(BoundaryPoint(type="worktree", path=item.work_path) for item in self.worktrees),
         )

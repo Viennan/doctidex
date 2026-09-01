@@ -328,15 +328,15 @@ def _command_path() -> str:
     argv0 = Path(sys.argv[0])
     if argv0.name == "doctidex-git" or "doctidex-git" in argv0.name:
         candidates.append(argv0.resolve())
-    executable = shutil.which("doctidex-git")
-    if executable is not None:
-        candidates.append(Path(executable).resolve())
     adjacent = Path(sys.executable).resolve().parent / "doctidex-git"
     if adjacent.is_file():
         candidates.append(adjacent)
     prefix_adjacent = Path(sys.prefix) / "bin" / "doctidex-git"
     if prefix_adjacent.is_file():
         candidates.append(prefix_adjacent.resolve())
+    executable = shutil.which("doctidex-git")
+    if executable is not None:
+        candidates.append(Path(executable).resolve())
     for candidate in candidates:
         if candidate.is_file():
             return str(candidate)

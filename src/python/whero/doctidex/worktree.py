@@ -206,7 +206,7 @@ def align_custom_ignores(git_root: Path, work_paths: tuple[str, ...]) -> None:
 
 def _read_installation(store: RuntimeStore, install_id: str):
     with store.read_only_transaction() as transaction:
-        return transaction.model_view().installation(install_id)
+        return transaction.model_view().persisted_installation(install_id)
 
 
 def _create_from_repository(

@@ -195,7 +195,7 @@ def _align_installation_shares(store: RuntimeStore, cache_transaction: GitCacheW
 def _align_refs(store: RuntimeStore, model: RuntimeRepairModelView) -> None:
     missing_installation_refs: list[str] = []
     for reference in model.refs:
-        installation = model.installation(reference.install_id)
+        installation = model.persisted_installation(reference.install_id)
         if installation is None:
             _remove_ref_target(store, reference.target_dir, reference.install_id)
             missing_installation_refs.append(reference.target_dir)

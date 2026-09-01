@@ -332,6 +332,7 @@ class RuntimeTransaction:
         self._snapshot_hashes: dict[str, str | None] = {}
         self._installations_by_id: dict[str, Installation] = {}
         self._installations_by_path: dict[str, Installation] = {}
+        self._persisted_installations_by_id: dict[str, Installation] = {}
         self._installation_shares_by_commit: dict[tuple[str, str], InstallationShare] = {}
         self._context_references_by_owner_install: dict[
             tuple[str, str], tuple[InstallationShare, InstallationContextReference]
@@ -396,8 +397,16 @@ class RuntimeTransaction:
     def _reindex(self) -> None:
         """Rebuild the private lookup indexes consumed by the current ModelView."""
 
-        self._installations_by_id = {item.install_id: item for item in self.state.installations}
-        self._installations_by_path = {item.install_path: item for item in self.state.installations}
+        self._persisted_installations_by_id = {item.install_id: item for item in self.state.installations}
+        presentation_installations = self.state.presentation_installations
+        self._installations_by_id = (
+            {item.install_id: item for item in presentation_installations}
+            | self._persisted_installations_by_id
+        )
+        self._installations_by_path = (
+            {item.install_path: item for item in presentation_installations}
+            | {item.install_path: item for item in self.state.installations}
+        )
         self._installation_shares_by_commit = {
             (item.git_url, item.commit_hash): item for item in self.state.installation_shares
         }
