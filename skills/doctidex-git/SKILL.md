@@ -99,6 +99,8 @@ doctidex-git import ref \
 
 Use `--tracked` when the reference should persist across clones; use `--untracked` for a temporary reference. A
 branch or tag resolves once to a commit, so run `import install` again only when that fixed revision should change.
+Tracking is one-way: re-running `--untracked` on an existing tracked Installation does not demote it; remove it first
+to install that selector as untracked.
 `--key` is repeatable; the CLI also derives default keys from the repository path and selector, so fuzzy lookups can
 start from [those defaults](references/import.md#install) or from keys you add.
 In a fresh clone, a tracked Installation may be metadata-only until restored:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+import pytest
 from conftest import CliRunner, commit_file, git, git_head, read_json
 
 
@@ -255,6 +256,54 @@ def test_import_branch_revision_replacement_retains_managed_ref(
     assert imports[0]["install-id"] == updated.payload["install-id"]
     assert imports[0]["tracked"] is True
     assert refs[0]["install-id"] == updated.payload["install-id"]
+
+
+@pytest.mark.parametrize("selector_kind", ["branch", "tag"])
+def test_import_untracked_reinstall_keeps_tracked_installation_tracked_without_ref(
+    initialized_root: Path,
+    source_repository: Path,
+    cache_home: Path,
+    cli: CliRunner,
+    selector_kind: str,
+) -> None:
+    selector_args = ("--branch", "main") if selector_kind == "branch" else ("--tag", "v1")
+    initial = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "install",
+        "--tracked",
+        "--url",
+        str(source_repository),
+        *selector_args,
+    )
+    assert initial.code == 0
+
+    new_commit = commit_file(source_repository, "next.md", "next\n")
+    if selector_kind == "tag":
+        git(source_repository, "tag", "--force", "v1")
+
+    updated = cli.run(
+        "--repos-path",
+        str(initialized_root),
+        "import",
+        "install",
+        "--untracked",
+        "--url",
+        str(source_repository),
+        *selector_args,
+    )
+
+    assert updated.code == 0
+    assert updated.payload["install-id"] == initial.payload["install-id"]
+    assert updated.payload["install-path"] == initial.payload["install-path"]
+    assert git_head(initialized_root / updated.payload["install-path"].lstrip("/")) == new_commit
+
+    imports = read_json(initialized_root / ".doctidex-git" / "imports.json")
+    runtime = read_json(initialized_root / ".doctidex-git" / "runtime.json")
+    assert imports[0]["install-id"] == initial.payload["install-id"]
+    assert imports[0]["tracked"] is True
+    assert runtime["imports"] == []
 
 
 def test_import_tag_revision_replacement(

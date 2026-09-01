@@ -18,6 +18,10 @@ doctidex-git import install \
 
 `--tracked` or `--untracked` is required. Exactly one revision selector is required.
 
+Tracking is one-way. `--untracked` applies only to a new Installation; re-running `import install --untracked` on an
+existing tracked Installation with a changed branch or tag commit keeps it tracked. To install that selector as
+untracked, remove the tracked Installation first.
+
 `--key` is repeatable and adds user query keys to the Installation. The CLI also derives default keys from the Git
 URL: the repository path without scheme and without a trailing `.git`, plus `repository@branch` and `repository@tag`
 when those selectors are present. Use `import query --key <FRAGMENT>` later to find an Installation by any of its

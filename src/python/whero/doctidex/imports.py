@@ -491,7 +491,7 @@ def _install_resolved(
             installation = replace(
                 existing,
                 commit_hash=commit_hash,
-                tracked=tracked or bool(view.refs_for(existing)),
+                tracked=tracked or existing.tracked,
                 keys=installation_keys,
             )
         view.upsert_installation(installation)
