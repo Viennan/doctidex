@@ -11,7 +11,7 @@ The active implementation is `doctidex-git` v2, a pure-Python Linux/macOS CLI.
 Install a release wheel with pipx:
 
 ```bash
-pipx install <WHEEL-URL>
+pipx install --force <WHEEL-URL>
 ```
 
 The wheel URL comes from the GitHub release for the version you want. See
