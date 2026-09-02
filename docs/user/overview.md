@@ -24,7 +24,7 @@ here.
 - A Git worktree.
 - Supported CLI versions and wheel URLs are published in the `doctidex` GitHub Releases at
   https://github.com/Viennan/doctidex/releases. Use the wheel URL from the release you want.
-- Recommended: `pipx install <WHEEL-URL>`.
+- Recommended: `pipx install --force <WHEEL-URL>`.
 - Without pipx: create a virtual environment, install the wheel with `pip` or `uv`, then use
   `<venv>/bin/doctidex-git`.
 - **After updating the CLI, reinstall the matching skill with `doctidex-git skills install --path <DEST>`.**

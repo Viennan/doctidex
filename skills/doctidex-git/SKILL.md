@@ -18,7 +18,7 @@ This skill is authoritative only for the CLI version recorded by `doctidex.versi
 
 - Get the CLI version and wheel URL from the `doctidex` GitHub Releases at
   https://github.com/Viennan/doctidex/releases.
-- Recommended: `pipx install <WHEEL-URL>`.
+- Recommended: `pipx install --force <WHEEL-URL>`.
 - Without pipx, install the wheel with `pip` or `uv` in a virtual environment and use
   `<venv>/bin/doctidex-git`; see [overview.md](references/overview.md#prerequisites).
 - **After updating the CLI, or whenever `doctidex-git --version` does not match `doctidex.version`, reinstall the
